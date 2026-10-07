@@ -1,0 +1,130 @@
+/*
+ * ALM design tokens — 화면설계서 3장
+ * 컴포넌트는 이 변수만 사용한다. 색 값을 직접 쓰지 않는다.
+ * 테마: 기본은 OS 설정, <html data-theme="light|dark">로 강제.
+ */
+:root {
+  /* color — light */
+  --bg: #f1f3ef;
+  --surface: #ffffff;
+  --sunk: #e7ebe5;
+  --line: #d5dbd3;
+  --ink: #18221e;
+  --muted: #5c6a63;
+  --faint: #8a968f;
+  --accent: #1e5c52;
+  --accent-ink: #ffffff;
+  --accent-soft: #dcebe6;
+  --tag: #e9c645;
+  --tag-ink: #2a2306;
+  --ok: #2f7d4a;
+  --ok-soft: #ddf0e2;
+  --warn: #a86a06;
+  --warn-soft: #faebcb;
+  --bad: #b23a2e;
+  --bad-soft: #f7deda;
+  --info: #2f5e9e;
+  --info-soft: #dee7f5;
+  --rail: #16201c;
+  --rail-ink: #c9d3ce;
+  --rail-hi: #ffffff;
+  --scrim: rgba(10, 15, 12, 0.35);
+  --shadow: 0 1px 2px rgba(20, 30, 25, 0.06), 0 4px 16px rgba(20, 30, 25, 0.06);
+
+  /* lifecycle stages (theme-independent) */
+  --stage-plan: #7b8ba6;
+  --stage-procure: #2f5e9e;
+  --stage-deploy: #2c8c7a;
+  --stage-operate: #1e5c52;
+  --stage-maintain: #c48a1a;
+  --stage-retire: #9a4a40;
+
+  /* type */
+  --f-display: 'Manrope', 'Pretendard', system-ui, sans-serif;
+  --f-body: 'Source Sans 3', 'Pretendard', system-ui, sans-serif;
+  --f-mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+  --fs-h1: 22px;
+  --fs-h2: 14px;
+  --fs-kpi: 24px;
+  --fs-body: 14px;
+  --fs-table: 13px;
+  --fs-small: 12px;
+  --fs-label: 11px;
+
+  /* space · radius */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --r: 6px;
+  --r-panel: 8px;
+  --r-pill: 10px;
+
+  /* layout */
+  --rail-w: 232px;
+  --drawer-w: 760px;
+  --control-h: 34px;
+  --control-h-sm: 26px;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #111815;
+    --surface: #18211d;
+    --sunk: #202b26;
+    --line: #2c3833;
+    --ink: #e4eae6;
+    --muted: #9aa8a1;
+    --faint: #6e7c75;
+    --accent: #5fb3a2;
+    --accent-ink: #0d1714;
+    --accent-soft: #1d3530;
+    --tag: #e2bf3e;
+    --tag-ink: #231d04;
+    --ok: #6cc08a;
+    --ok-soft: #1c3325;
+    --warn: #e3a94a;
+    --warn-soft: #3a2d14;
+    --bad: #ee7b6e;
+    --bad-soft: #3d1f1b;
+    --info: #7fa8e3;
+    --info-soft: #1d2a3e;
+    --rail: #0b110e;
+    --rail-ink: #a9b6af;
+    --scrim: rgba(0, 0, 0, 0.5);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.3);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #111815;
+  --surface: #18211d;
+  --sunk: #202b26;
+  --line: #2c3833;
+  --ink: #e4eae6;
+  --muted: #9aa8a1;
+  --faint: #6e7c75;
+  --accent: #5fb3a2;
+  --accent-ink: #0d1714;
+  --accent-soft: #1d3530;
+  --tag: #e2bf3e;
+  --tag-ink: #231d04;
+  --ok: #6cc08a;
+  --ok-soft: #1c3325;
+  --warn: #e3a94a;
+  --warn-soft: #3a2d14;
+  --bad: #ee7b6e;
+  --bad-soft: #3d1f1b;
+  --info: #7fa8e3;
+  --info-soft: #1d2a3e;
+  --rail: #0b110e;
+  --rail-ink: #a9b6af;
+  --scrim: rgba(0, 0, 0, 0.5);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.3);
+  color-scheme: dark;
+}

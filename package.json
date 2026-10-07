@@ -1,0 +1,16 @@
+{
+  "name": "alm",
+  "private": true,
+  "description": "Asset Lifecycle Manager (BSG America) monorepo",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w apps/web",
+    "build": "npm run build -w apps/web",
+    "test": "npm run test -w apps/web",
+    "typecheck": "npm run typecheck -w apps/web",
+    "storybook": "npm run storybook -w apps/web",
+    "build-storybook": "npm run build-storybook -w apps/web"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "app": { "name": "자산 라이프사이클", "tenant": "BSG America", "searchPlaceholder": "자산태그, 시리얼, SAP 자산번호, 사용자 검색…", "openMenu": "메뉴 열기", "language": "언어", "theme": "테마", "themeSystem": "시스템", "themeLight": "라이트", "themeDark": "다크", "signOut": "로그아웃" },
+  "nav": {
+    "overview": "개요", "inventory": "자산 대장", "lifecycle": "라이프사이클", "integration": "연계",
+    "dashboard": "대시보드", "assets": "하드웨어 자산", "discovery": "Discovery", "cmdb": "CMDB·관계", "software": "소프트웨어 라이선스",
+    "procurement": "구매", "contracts": "계약·보증", "requests": "자산 요청", "inventoryCount": "실물 실사", "labels": "라벨",
+    "sap": "SAP FI-AA", "design": "디자인 시스템"
+  },
+  "common": {
+    "clear": "초기화", "clearFilters": "필터 초기화", "cancel": "취소", "confirm": "확인", "close": "닫기", "save": "저장", "retry": "다시 시도",
+    "noResults": "조건에 맞는 결과가 없습니다.", "rowsOf": "{{total}}건 중 {{shown}}건", "selectAll": "전체 선택", "selectRow": "{{id}} 선택",
+    "loading": "불러오는 중…", "comingSoon": "이 화면은 WBS {{wbs}}에서 만듭니다."
+  }
+}

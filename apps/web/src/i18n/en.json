@@ -1,0 +1,14 @@
+{
+  "app": { "name": "Asset Lifecycle", "tenant": "BSG America", "searchPlaceholder": "Search asset tag, serial, SAP asset no., owner…", "openMenu": "Open menu", "language": "Language", "theme": "Theme", "themeSystem": "System", "themeLight": "Light", "themeDark": "Dark", "signOut": "Sign out" },
+  "nav": {
+    "overview": "Overview", "inventory": "Inventory", "lifecycle": "Lifecycle", "integration": "Integration",
+    "dashboard": "Dashboard", "assets": "Hardware assets", "discovery": "Discovery", "cmdb": "CMDB & relationships", "software": "Software & licenses",
+    "procurement": "Procurement", "contracts": "Contracts & warranty", "requests": "Asset requests", "inventoryCount": "Physical inventory", "labels": "Labels & tags",
+    "sap": "SAP FI-AA", "design": "Design system"
+  },
+  "common": {
+    "clear": "Clear", "clearFilters": "Clear filters", "cancel": "Cancel", "confirm": "Confirm", "close": "Close", "save": "Save", "retry": "Retry",
+    "noResults": "No results match these filters.", "rowsOf": "{{shown}} of {{total}}", "selectAll": "Select all rows", "selectRow": "Select {{id}}",
+    "loading": "Loading…", "comingSoon": "This screen is built in WBS {{wbs}}."
+  }
+}
