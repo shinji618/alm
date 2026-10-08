@@ -52,7 +52,7 @@ def build_openapi():
         if e['op'] == 'sapToken':
             op['security'] = []
             op['requestBody'] = {'required': True, 'content': {'application/x-www-form-urlencoded': {'schema': {
-                'type': 'object', 'required': ['grant_type', 'client_id', 'client_secret'],
+                'type': 'object', 'required': ['grant_type'],
                 'properties': {'grant_type': {'type': 'string', 'enum': ['client_credentials']}, 'client_id': {'type': 'string'},
                                'client_secret': {'type': 'string'}, 'scope': {'type': 'string', 'default': 'sap.api'}}}}}}
         else:

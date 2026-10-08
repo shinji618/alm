@@ -13,7 +13,7 @@ updated: 2026-10-08
 tags: [BSGA, 자산관리시스템, ALM, API]
 ---
 
-> 목차: [[00_자산관리시스템_산출물_인덱스]] · 관련: [[02_SAP_인터페이스_명세서]] · [[05_데이터모델_테이블정의서]] · OpenAPI: `C:\\dev\\alm\\api\\openapi.yaml`
+> 목차: [[00_자산관리시스템_산출물_인덱스]] · 관련: [[08_SAP_인터페이스_명세서_v1.0]] (SAP 쪽 확정본) · [[05_데이터모델_테이블정의서]] · OpenAPI: `C:\\dev\\alm\\api\\openapi.yaml`
 
 # ALM API 명세서 — PDA · SAP
 

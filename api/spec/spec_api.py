@@ -521,7 +521,7 @@ ep(P,'POST','/pda/unregistered:batch','pdaPostUnregistered','미등록 자산 �
 
 Q = 'sap'
 ep(Q,'POST','/oauth/token','sapToken','토큰 발급(Client Credentials)','없음(client_id/secret)',None,'TokenResponse','200, 400, 401','sap_connection','공통',
-   ['요청은 application/x-www-form-urlencoded: grant_type=client_credentials, client_id, client_secret, scope=sap.api.',
+   ['요청은 application/x-www-form-urlencoded: grant_type=client_credentials, scope=sap.api. 클라이언트 인증은 HTTP Basic(client_secret_basic, 권장 — SAP SM59 로그온 정보에 저장) 또는 본문의 client_id·client_secret(client_secret_post).',
     '내부적으로 Cognito 앱 클라이언트 토큰을 발급한다. 토큰의 client_id로 sap_connection → 테넌트·회사코드를 정한다.'])
 ep(Q,'GET','/sap/ping','sapPing','연결 확인','SAP',None,'SapPing','200, 401','sap_connection','SM59 테스트',
    ['SM59 연결 테스트·배치 시작 전 확인용. 부하 없음.'])

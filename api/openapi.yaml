@@ -508,7 +508,7 @@ paths:
       description: '공통 · 테이블: sap_connection
 
 
-        - 요청은 application/x-www-form-urlencoded: grant_type=client_credentials, client_id, client_secret, scope=sap.api.
+        - 요청은 application/x-www-form-urlencoded: grant_type=client_credentials, scope=sap.api. 클라이언트 인증은 HTTP Basic(client_secret_basic, 권장 — SAP SM59 로그온 정보에 저장) 또는 본문의 client_id·client_secret(client_secret_post).
 
         - 내부적으로 Cognito 앱 클라이언트 토큰을 발급한다. 토큰의 client_id로 sap_connection → 테넌트·회사코드를 정한다.'
       parameters:
@@ -537,8 +537,6 @@ paths:
               type: object
               required:
               - grant_type
-              - client_id
-              - client_secret
               properties:
                 grant_type:
                   type: string
