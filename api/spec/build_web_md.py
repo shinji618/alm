@@ -1,9 +1,9 @@
-import gen_api
+import gen_api, perm
 from spec_api import E, ERRORS
 
 AREAS = [('공통', '앱 셸·전역 검색·첨부·내보내기'), ('대시보드', 'ALM-010'), ('자산', 'ALM-110~112'), ('Discovery', 'ALM-120'),
          ('CMDB', 'ALM-130'), ('라이선스', 'ALM-140'), ('계약', 'ALM-220'), ('구매', 'ALM-210'), ('요청·승인', 'ALM-230'),
-         ('실사', 'ALM-240'), ('라벨', 'ALM-250'), ('SAP 연계', 'ALM-310'), ('관리', '사용자·마스터·코드·설정·감사')]
+         ('실사', 'ALM-240'), ('라벨', 'ALM-250'), ('SAP 연계', 'ALM-310'), ('관리', '사용자·마스터·코드·설정·감사'), ('인증', '로그인·토큰 갱신·로그아웃')]
 web = [e for e in E if e['group'] == 'web']
 assert sum(1 for e in web if e.get('area') not in dict(AREAS)) == 0
 gen_api.SHOWN.clear()
@@ -25,12 +25,22 @@ for i, (area, screens) in enumerate(AREAS):
 errors = ['| 코드 | HTTP·위치 | 이름 | 발생 조건 |', '| --- | --- | --- | --- |'] + [f'| {a} | {b} | {c} | {d} |' for a, b, c, d in ERRORS]
 last = 4 + len(AREAS)
 
+ROLE_SHORT = {'SYS_ADMIN': '시스템 관리자', 'ASSET_MANAGER': '자산 관리자', 'DEPT_MANAGER': '부서 관리자', 'ASSET_ACCOUNTANT': '자산회계',
+              'COUNTER': '실사 담당', 'EMPLOYEE': '일반 사용자', 'AUDITOR': '감사인'}
+SCOPE_TXT = {'ALL': '●', 'CC': 'CC', 'OWN': '본인', 'TASK': '배정', '-': '●'}
+matrix = ['| 권한 키 | 내용 | ' + ' | '.join(ROLE_SHORT[r] for r, _, _ in perm.ROLES) + ' |',
+          '| --- | --- | ' + ' | '.join('---' for _ in perm.ROLES) + ' |']
+for k, (a, d) in perm.PERMS.items():
+    if k in ('auth', 'sap.api'): continue
+    matrix.append(f'| `{k}` | {d} | ' + ' | '.join(SCOPE_TXT.get(perm.scope_of(r, k), '') or '' for r, _, _ in perm.ROLES) + ' |')
+matrix = '\n'.join(matrix)
+
 md = f'''---
 title: ALM API 명세서 — 웹 화면
 project: 자산관리시스템(ALM)
 company: BSG America
 wbs: "2.6"
-version: 0.2
+version: 0.3
 updated: 2026-10-08
 tags: [BSGA, 자산관리시스템, ALM, API]
 ---
@@ -39,11 +49,11 @@ tags: [BSGA, 자산관리시스템, ALM, API]
 
 # ALM API 명세서 — 웹 화면
 
-2026-10-08 · 신지승 · v0.2 (WBS 2.6 웹 범위. PDA·SAP는 06 문서)
+2026-10-08 · 신지승 · v0.3 (WBS 2.6 웹 범위 + 2.8 권한 키·인증 API. PDA·SAP는 06 문서, 권한·보안 설계는 [[09_권한_보안_설계서]])
 
 ## 1. 개요
 
-웹 화면(React SPA)이 쓰는 API {len(web)}개를 13개 영역으로 정의한다. 화면 13개(ALM-010~310)의 기능 ID와 관리 기능을 모두 덮고, 데이터는 테이블 정의서의 61개 테이블에 맞췄다. 형식·인증 헤더·응답 코드·오류 본문·멱등성은 [[06_API_명세서_PDA_SAP]] 2장을 그대로 따르며, 이 문서는 웹에만 해당하는 규칙을 더한다. PDA {sum(1 for e in E if e['group']=='pda')}개, SAP {sum(1 for e in E if e['group']=='sap')}개와 합쳐 전체 {len(E)}개가 `openapi.yaml` 하나에 들어 있고, OpenAPI 3.1 검증기와 Redocly lint를 경고 없이 통과했다.
+웹 화면(React SPA)이 쓰는 API {len(web)}개를 {len(AREAS)}개 영역으로 정의한다. 화면 13개(ALM-010~310)의 기능 ID와 관리 기능을 모두 덮고, 데이터는 테이블 정의서의 63개 테이블에 맞췄다. 형식·인증 헤더·응답 코드·오류 본문·멱등성은 [[06_API_명세서_PDA_SAP]] 2장을 그대로 따르며, 이 문서는 웹에만 해당하는 규칙을 더한다. PDA {sum(1 for e in E if e['group']=='pda')}개, SAP {sum(1 for e in E if e['group']=='sap')}개와 합쳐 전체 {len(E)}개가 `openapi.yaml` 하나에 들어 있고, OpenAPI 3.1 검증기와 Redocly lint를 통과했다(리디렉트 전용 /auth/login·/auth/callback의 2xx 응답 없음 경고 2건은 의도된 것으로 제외 처리).
 
 {chr(10).join(overview)}
 
@@ -55,14 +65,16 @@ tags: [BSGA, 자산관리시스템, ALM, API]
 
 | 항목 | 규칙 |
 | --- | --- |
-| 로그인 | Cognito 호스티드 UI + 고객사 SSO(SAML/OIDC), Authorization Code + PKCE |
-| 토큰 | 액세스 60분, 리프레시 8시간. SPA는 액세스 토큰을 메모리에만 두고, 리프레시는 Cognito 쿠키로 갱신 |
-| 테넌트 | 토큰 → app_user → tenant. 요청 본문·경로로 테넌트를 받지 않는다 |
-| CORS | 웹 도메인 1개만 허용 |
+| 로그인 | 로그인 화면에서 이메일 입력 → `GET /auth/login`이 도메인으로 테넌트 IdP를 골라 Cognito로 보냄 → 고객사 SSO(SAML/OIDC) → `GET /auth/callback`. Authorization Code + PKCE |
+| 토큰 | 액세스 15분(SPA 메모리에만), 리프레시 8시간(서버가 암호화해 HttpOnly 쿠키 `alm_rt`에 보관, `POST /auth/refresh`로 갱신). 브라우저 저장소에 토큰을 두지 않는다 |
+| 테넌트 | 토큰의 `username`(`<IdP 이름>_<IdP 사용자 ID>`) → tenant.idp_provider_name → app_user.idp_subject. 요청 본문·경로로 테넌트를 받지 않는다 |
+| 비활성화 | 사용자 비활성·역할 만료는 다음 요청부터 401·403(서버가 사용자 상태를 60초 캐시) |
+| CORS | 웹 도메인 1개만 허용. `/auth/*`는 같은 사이트에서만(SameSite) |
 
 **권한·마스킹**
 
-- 권한은 `GET /me`의 `permissions`(예: `asset.write`, `amount.read`, `approval.acct`)로 내려주고, 서버는 API마다 같은 권한과 범위(회사코드·사이트)를 다시 확인한다.
+- 권한은 `GET /me`의 `permissions`(예: `asset.write`, `amount.read`, `approval.decide`)로 내려주고, 서버는 API마다 같은 권한과 범위(회사코드·사이트·코스트센터·본인)를 다시 확인한다. 엔드포인트별 권한 키는 아래 표의 '권한' 열과 OpenAPI의 `x-permission`·`x-scope`가 기준이다.
+- 범위 밖 단건 조회는 403이 아니라 404로 돌려준다(존재 여부를 알리지 않음).
 - 금액(취득가·누계액·NBV·단가·계약 금액)은 `amount.read`가 없으면 `null`로 내려준다. 403이 아니라 null이라 화면 구성은 같다.
 - 승인은 요청자 본인이 할 수 없다(직무 분리, ALM-E403).
 
@@ -110,20 +122,9 @@ sequenceDiagram
 
 ## 3. 권한 매트릭스
 
-조회 = R, 등록·수정 = W, 승인 = A, 범위 = 회사코드·사이트 또는 본인. 시스템 관리자는 모든 화면을 조회한다.
+권한 키 × 역할. ● = 테넌트 전체(user_role에 회사코드·사이트가 있으면 그 범위), CC = 담당 코스트센터, 본인 = 내 자산·내 요청, 배정 = 배정된 실사 룸. 기준은 `api/spec/perm.py`이고, 설계 근거와 직무 분리 규칙은 [[09_권한_보안_설계서]]에 있다. 일반 사용자 권한은 모든 활성 사용자에게 자동으로 붙는다.
 
-| 영역 | 시스템 관리자 | 자산 관리자 | 부서 관리자 | 자산회계 | 실사 담당 | 일반 사용자 |
-| --- | --- | --- | --- | --- | --- | --- |
-| 대시보드 | R | R | R(범위) | R | - | - |
-| 자산 | R | R·W | R(코스트센터) | R + 금액 | - | R(본인) |
-| Discovery·CMDB | R·W | R·W | - | - | - | - |
-| 라이선스·계약 | R | R·W | - | R + 금액 | - | - |
-| 구매 | R | R·W | R·A(1단계) | R | - | R·W(본인) |
-| 요청·승인 | R | R·W | R·A(1단계) | R·W·A(최종) | - | R·W(본인) |
-| 실사 | R | R·W | - | R + 결과 전기 | PDA만 | - |
-| 라벨 | R·W(템플릿·프린터) | R·W | - | - | - | - |
-| SAP 연계 | R·W(연결·비밀) | R(상태) | - | R·W(재전기·대사) | - | - |
-| 관리 | R·W | R·W(마스터) | - | R(감사 로그) | - | - |
+{matrix}
 
 {chr(10).join(chr(10) + b for b in body)}
 
@@ -138,7 +139,7 @@ PDA·SAP와 같은 목록이다. `HTTP·위치`가 '건별'이면 207 응답의 
 - [ ] Discovery 에이전트 수신 API(에이전트 → ALM)는 8.1 도구 선정 뒤 정의
 - [ ] ITSM 티켓 원본 조회(8.4) — 현재는 연결된 참조만 조회
 - [ ] 라벨 프린터가 사이트 내부망에만 있으면 서버 직접 출력 대신 사이트 출력 에이전트 필요(네트워크 확인)
-- [ ] 금액 마스킹 대상 역할 최종 확인(현재: 자산 관리자·자산회계·시스템 관리자만 표시)
+- [ ] 금액 마스킹 대상 역할 최종 확인(현재: 시스템 관리자·자산 관리자·자산회계·감사인만 표시, 09 설계서 결정 S-03)
 '''
 open('out/07_API_명세서_웹.md', 'w').write(md)
 print(len(web), 'web endpoints', md.count('\n'), 'lines')

@@ -5,7 +5,7 @@
 # mode: full (common cols), log (id, tenant_id, created_at), root (tenant table)
 
 ENUMS = {
- 'RoleCode': ('사용자 역할', ['SYS_ADMIN','ASSET_MANAGER','DEPT_MANAGER','ASSET_ACCOUNTANT','COUNTER','EMPLOYEE']),
+ 'RoleCode': ('사용자 역할', ['SYS_ADMIN','ASSET_MANAGER','DEPT_MANAGER','ASSET_ACCOUNTANT','COUNTER','EMPLOYEE','AUDITOR']),
  'AssetStatus': ('자산 상태', ['ON_ORDER','IN_STOCK','IN_USE','IN_REPAIR','MISSING','RETIRED','DISPOSED']),
  'AssetSource': ('자산 생성 출처', ['MANUAL','DISCOVERY','GOODS_RECEIPT','SAP','PDA_COUNT','IMPORT']),
  'AssetEventType': ('자산 이력 유형', ['CREATED','UPDATED','STATUS_CHANGED','ASSIGNED','RETURNED','TRANSFERRED','REPAIR_IN','REPAIR_OUT','COUNTED','LABEL_PRINTED','SAP_POSTED','SAP_SYNCED','RETIRED','DISPOSED']),
@@ -43,6 +43,8 @@ ENUMS = {
  'NotificationChannel': ('알림 채널', ['EMAIL','IN_APP']),
  'NotificationStatus': ('알림 상태', ['QUEUED','SENT','FAILED']),
  'AuditAction': ('감사 동작', ['INSERT','UPDATE','DELETE']),
+ 'SecurityEventType': ('보안 이벤트', ['LOGIN','LOGIN_DENIED','LOGOUT','ACCESS_DENIED','EXPORT','SECRET_ROTATED','SAP_AUTH_FAILED','DEVICE_BLOCKED','SUPPORT_ACCESS']),
+ 'IdpType': ('IdP 연동 방식', ['SAML','OIDC']),
 }
 
 DOMAINS = [
@@ -61,13 +63,20 @@ t('org','tenant','테넌트','서비스 고객사. 단일 고객이면 1행', ''
 code | vc(20) | NN UK | 테넌트 코드
 name | vc(100) | NN | 고객사 이름
 sap_system_id | vc(10) | | SAP 시스템 ID-클라이언트 (예: PRD-100)
+idp_type | E:IdpType | NN =SAML | 고객사 SSO 방식
+idp_provider_name | vc(32) | NN UK | Cognito IdP 이름 (예: T-ACME, 밑줄 금지). 토큰 username이 `<이 값>_`으로 시작하면 이 테넌트
+jit_provision | bool | NN =false | 첫 로그인 때 사용자 자동 생성(역할 EMPLOYEE만)
 time_zone | vc(40) | NN ='America/New_York' | 화면 표시 시간대
 is_active | bool | NN =true | 사용 여부
 ''', mode='root', screens='-')
+t('org','tenant_domain','테넌트 이메일 도메인','로그인 화면에서 이메일 도메인으로 테넌트 IdP를 고름(홈 렐름 판별). 도메인은 전체 테넌트에서 유일', '''
+domain | vc(253) | NN UK | 이메일 도메인(소문자, 예: acme.com)
+is_active | bool | NN =true | 사용 여부
+''', screens='관리')
 t('org','app_user','사용자','SSO 로그인 사용자', '''
 email | vc(254) | NN | 이메일(로그인 ID)
 display_name | vc(100) | NN | 이름
-idp_subject | vc(200) | | Entra ID 사용자 식별자(oid)
+idp_subject | vc(200) | | IdP 사용자 식별자. Cognito username의 `<IdP>_` 뒤 값(SAML NameID = Entra oid, OIDC sub)
 employee_no | vc(20) | | 사번
 department | vc(100) | | 부서명
 cost_center_id | ->cost_center | | 소속 코스트센터
@@ -80,7 +89,10 @@ user_id | ->app_user | NN | 사용자
 role | E:RoleCode | NN | 역할
 company_id | ->company | | 회사코드 범위
 site_id | ->site | | 사이트 범위
-''', uniques=[('user_id','role','company_id','site_id')], screens='공통')
+cost_center_id | ->cost_center | | 코스트센터 범위(DEPT_MANAGER)
+valid_from | date | | 유효 시작일(비면 즉시)
+valid_until | date | | 유효 종료일(임시 실사 담당·감사인). 지나면 권한 없음
+''', uniques=[('user_id','role','company_id','site_id','cost_center_id')], indexes=[('tenant_id','role')], screens='공통')
 t('org','company','회사코드','SAP 회사코드 (IF-MD-01 COMPANY)', '''
 company_code | vc(4) | NN | BUKRS
 name | vc(25) | NN | BUTXT
@@ -682,6 +694,7 @@ company_id | ->company | NN | 회사코드
 oauth_client_id | vc(100) | NN | OAuth 클라이언트 ID
 last_call_at | ts | | 마지막 호출
 is_active | bool | NN =true | 사용 여부
+allowed_cidrs | json | | SAP 출구 IP 대역(예: ["203.0.113.10/32"]). 비면 WAF 전역 목록만 적용
 ''', uniques=[('tenant_id','system_id','company_id'),('oauth_client_id',)], screens='ALM-310')
 
 t('sap','sap_run_request','SAP 실행 요청','화면의 수동 실행 요청(F-310-04). SAP 잡이 GET /sap/run-requests로 가져가 실행', '''
@@ -740,7 +753,7 @@ sent_at | ts | | 발송 일시
 error_message | vc(500) | | 오류
 dedupe_key | vc(120) | | 중복 발송 방지 키
 ''', uniques=[('tenant_id','dedupe_key')], indexes=[('recipient_id','status')], screens='공통')
-t('common','audit_log','감사 로그','모든 테이블의 생성·변경 전후값. 10년 보관, 월 파티션', '''
+t('common','audit_log','감사 로그','업무 테이블의 생성·변경·삭제 전후값(DB 트리거가 기록). 10년 보관, 월 파티션', '''
 table_name | vc(63) | NN | 테이블
 row_id | uuid | NN | 행 id
 action | E:AuditAction | NN | 동작
@@ -750,5 +763,29 @@ actor_id | uuid | | 사용자 id(FK 없음, 사용자 삭제 대비)
 actor_type | vc(10) | NN | USER / SYSTEM / SAP / PDA
 correlation_id | uuid | | 요청 추적 ID
 ip_address | inet | | 접속 IP
+db_user | vc(63) | NN | 실제 DB 로그인 계정(session_user). 앱 계정이 아닌 직접 수정 식별
+tx_id | bigint | NN | DB 트랜잭션 ID(같은 트랜잭션 변경 묶음)
 occurred_at | ts | NN =now | 발생 일시
 ''', indexes=[('tenant_id','table_name','row_id'),('tenant_id','occurred_at')], mode='log', screens='공통')
+t('common','security_event','보안 이벤트','로그인·권한 거부·내보내기·비밀 교체 등. 10년 보관, 월 파티션. 테넌트를 알 수 없는 로그인 실패는 CloudWatch에만', '''
+event_type | E:SecurityEventType | NN | 이벤트
+actor_id | uuid | | 사용자 id(FK 없음)
+actor_type | vc(10) | NN | USER / SYSTEM / SAP / PDA
+channel | vc(5) | NN | WEB / PDA / SAP
+client_id | vc(100) | | Cognito 앱 클라이언트 ID
+ip_address | inet | | 접속 IP
+user_agent | vc(300) | | 브라우저·앱 정보
+target | vc(200) | | 대상(API 경로, 사용자 id, 연결 id 등)
+detail | json | | 상세(거부 사유, 권한 키, 내보내기 행 수 등)
+correlation_id | uuid | | 요청 추적 ID
+occurred_at | ts | NN =now | 발생 일시
+''', indexes=[('tenant_id','occurred_at'),('tenant_id','event_type','occurred_at')], mode='log', screens='관리')
+
+
+# 감사 트리거 제외(대량·기술성 데이터. 자체가 이력이거나 IF 로그로 추적됨). log 모드 테이블은 모두 제외
+AUDIT_EXCLUDE = ['discovery_run', 'discovery_item', 'software_install', 'label_print_job',
+                 'number_sequence', 'notification']
+
+# 앱 계정(alm_app)에서 UPDATE·DELETE를 뺄 로그 테이블(추가만). sap_if_run은 종료 시각 갱신이 있어 DELETE만 뺌
+APPEND_ONLY = ['asset_event', 'count_scan', 'sap_if_message', 'recon_snapshot', 'audit_log', 'security_event']
+NO_DELETE = ['sap_if_run']

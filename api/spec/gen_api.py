@@ -1,6 +1,9 @@
 import re, yaml, json
 from spec_api import S, E, ERRORS
 import spec_web  # registers web endpoints
+import perm
+_PROBS = perm.apply(E)
+assert not _PROBS, _PROBS
 
 def tschema(t):
     t = t.strip()
@@ -44,6 +47,8 @@ def build_openapi():
         params = [{'$ref': '#/components/parameters/CorrelationId'}]
         if e['group'] == 'sap' and e['op'] != 'sapToken':
             params += [{'$ref': '#/components/parameters/SapSystem'}, {'$ref': '#/components/parameters/CompanyCode'}]
+        if e['group'] == 'pda':
+            params.append({'$ref': '#/components/parameters/DeviceId'})
         if 'Idempotency-Key' in e['idem']:
             params.append({'$ref': '#/components/parameters/IdempotencyKey'})
         for n, where, t, r, d in e['params']:
@@ -51,7 +56,22 @@ def build_openapi():
         op = {'operationId': e['op'], 'summary': e['summary'], 'tags': [e['group'].upper()],
               'description': f"{e['ref']} · 테이블: {e['tables']}\n\n" + '\n'.join('- ' + x for x in e['rules']),
               'parameters': params, 'responses': {}}
-        if e['op'] == 'sapToken':
+        if e['perm']:
+            op['x-permission'] = e['perm']
+            if isinstance(e['perm'], list):
+                op['x-scope'] = {p: {r: perm.scope_of(r, p) for r in perm.roles_with(p)} for p in e['perm']}
+            elif e['perm'] not in ('auth', 'sap.api'):
+                op['x-scope'] = {r: perm.scope_of(r, e['perm']) for r in perm.roles_with(e['perm'])}
+            for (o2, cond), p2 in perm.PARAM_PERMS.items():
+                if o2 == e['op']:
+                    op.setdefault('x-param-permission', []).append({'when': cond, 'permission': p2})
+            if e['op'] in perm.COND:
+                op['x-condition'] = perm.COND[e['op']]
+        if e['op'] in ('authLogin', 'authCallback', 'authRefresh', 'authLogout'):
+            op['security'] = []
+            if e['req']:
+                op['requestBody'] = {'required': True, 'content': {'application/json': {'schema': {'$ref': f"#/components/schemas/{e['req']}"}}}}
+        elif e['op'] == 'sapToken':
             op['security'] = []
             op['requestBody'] = {'required': True, 'content': {'application/x-www-form-urlencoded': {'schema': {
                 'type': 'object', 'required': ['grant_type'],
@@ -68,6 +88,8 @@ def build_openapi():
             elif c in ('200', '201', '202', '207'):
                 op['responses'][c] = {'description': {'200': '성공', '201': '생성', '202': '접수(비동기 처리)', '207': '일부 성공(건별 결과 확인)'}[c],
                                       'content': {'application/json': {'schema': {'$ref': f"#/components/schemas/{e['resp']}"}}}}
+            elif c == '302':
+                op['responses'][c] = {'description': '리다이렉트', 'headers': {'Location': {'schema': {'type': 'string'}, 'description': '이동할 URL'}}}
             elif c == '304':
                 op['responses'][c] = {'description': '변경 없음(ETag 일치)'}
             else:
@@ -77,14 +99,14 @@ def build_openapi():
                 '413': '파일 크기 초과', '422': '업무 규칙 위반', '502': '외부 장치 연결 실패', '429': '호출 제한', '500': '서버 오류'}
     doc = {
         'openapi': '3.1.0',
-        'info': {'title': 'ALM API — Web · PDA · SAP', 'version': '0.2.0', 'license': {'name': 'Proprietary — BSG America', 'identifier': 'LicenseRef-BSG-Proprietary'},
-                 'description': 'BSG America Asset Lifecycle Manager. WBS 2.6 — 웹 화면, PDA, SAP.'},
+        'info': {'title': 'ALM API — Web · PDA · SAP', 'version': '0.3.0', 'license': {'name': 'Proprietary — BSG America', 'identifier': 'LicenseRef-BSG-Proprietary'},
+                 'description': 'BSG America Asset Lifecycle Manager. WBS 2.6 — 웹 화면, PDA, SAP. WBS 2.8 — x-permission(권한 키)·x-scope(역할별 범위).'},
         'servers': [{'url': 'https://alm.{domain}/api/v1', 'variables': {'domain': {'default': 'example.com'}}}],
         'tags': [{'name': 'PDA', 'description': 'PDA 실사 앱 (Zebra TC58)'}, {'name': 'SAP', 'description': 'SAP S/4HANA 배치 잡(아웃바운드 호출)'}, {'name': 'WEB', 'description': '웹 화면(React SPA)'}],
         'paths': paths,
         'components': {
             'securitySchemes': {
-                'webAuth': {'type': 'oauth2', 'description': 'Cognito 호스티드 UI + 고객사 SSO(SAML/OIDC). Authorization Code + PKCE. 액세스 60분, 리프레시 8시간(근무일 기준)',
+                'webAuth': {'type': 'oauth2', 'description': 'Cognito + 고객사 SSO(SAML/OIDC), Authorization Code + PKCE를 서버(/auth/login·/auth/callback)가 처리. SPA는 /auth/refresh로 받은 액세스 토큰(15분)을 Bearer로 보냄. 리프레시 8시간은 HttpOnly 쿠키',
                             'flows': {'authorizationCode': {'authorizationUrl': 'https://auth.{domain}/oauth2/authorize',
                                                             'tokenUrl': 'https://auth.{domain}/oauth2/token', 'scopes': {'web': '웹 화면'}}}},
                 'pdaAuth': {'type': 'oauth2', 'description': 'Cognito 호스티드 UI + 고객사 SSO. Authorization Code + PKCE. 액세스 60분, 리프레시 24시간',
@@ -97,6 +119,8 @@ def build_openapi():
                               'description': 'SAP 시스템ID-클라이언트 (예: PRD-100). 로그 기록용. sap_connection과 다르면 403'},
                 'CompanyCode': {'name': 'X-Company-Code', 'in': 'header', 'required': False, 'schema': {'type': 'string', 'maxLength': 4},
                               'description': '회사코드. 토큰에 허용된 회사코드가 아니면 403'},
+                'DeviceId': {'name': 'X-Device-Id', 'in': 'header', 'required': True, 'schema': {'type': 'string', 'maxLength': 40},
+                             'description': 'PDA 기기 시리얼(MDM 앱 설정 값). 등록 안 된·비활성 기기면 403 ALM-E406'},
                 'CorrelationId': {'name': 'X-Correlation-Id', 'in': 'header', 'required': False, 'schema': {'type': 'string', 'format': 'uuid'},
                                   'description': '요청 추적 ID. 없으면 서버가 만들어 응답 헤더로 돌려줌'},
                 'IdempotencyKey': {'name': 'Idempotency-Key', 'in': 'header', 'required': True, 'schema': {'type': 'string', 'maxLength': 80},
@@ -174,4 +198,5 @@ if __name__ == '__main__':
     secs['errors'] = '\n'.join(err)
     secs['problem'] = md_fields('Problem') + '\n\n' + md_fields('FieldError')
     json.dump(secs, open('out/md_parts.json', 'w'), ensure_ascii=False, indent=1)
+    json.dump(perm.catalog(), open('out/permissions.json', 'w'), ensure_ascii=False, indent=1)
     print(len(E), 'endpoints', len(S), 'schemas')

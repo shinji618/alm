@@ -43,7 +43,8 @@ Storybook 스토리 위치: `src/components/**/*.stories.tsx`, 토큰은 `src/st
 
 | WBS | 내용 | 상태 |
 | --- | --- | --- |
-| 2.5 | 데이터 모델: 테이블 61개, ERD, 테이블 정의서 (`db/`) | 완료(v0.1) |
-| 2.6 | API 명세: 웹 130 · PDA 11 · SAP 11 (`api/openapi.yaml`, OpenAPI 3.1) | 완료(v0.2) |
+| 2.5 | 데이터 모델: 테이블 63개, ERD, 테이블 정의서 (`db/`) | 완료(v0.2, 2.8 반영) |
+| 2.6 | API 명세: 웹 137 · PDA 11 · SAP 11 (`api/openapi.yaml`, OpenAPI 3.1) | 완료(v0.3) |
+| 2.8 | 권한·보안: 권한 카탈로그 `api/spec/perm.py` → `api/permissions.json`·`x-permission`, DB 역할·감사 트리거 `db/spec/security*.sql`, 시험 `db/spec/test_security.sql` | 설계 v1.0 |
 | 3.5 | 프론트 공통: 토큰, 컴포넌트 18종, 앱 셸, 영문·한글, 라이트·다크 + Storybook(스토리 48개) | 완료(v0.1) |
 | 4.x | 웹 화면 R1 | 예정 |

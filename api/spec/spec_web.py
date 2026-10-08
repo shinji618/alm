@@ -33,9 +33,12 @@ permissions | [string] | Y | 화면·기능 권한 키 (예: asset.write, amount
 navCounts | object | Y | 메뉴 배지 수 {requests, counts, sap}
 ''')
 schema('RoleScope', '역할과 범위', '''
-role | enum(SYS_ADMIN,ASSET_MANAGER,DEPT_MANAGER,ASSET_ACCOUNTANT,COUNTER,EMPLOYEE) | Y | 역할
+role | enum(SYS_ADMIN,ASSET_MANAGER,DEPT_MANAGER,ASSET_ACCOUNTANT,COUNTER,EMPLOYEE,AUDITOR) | Y | 역할
 companyCode | string(4) | N | 회사코드 범위(비면 전체)
 siteCode | string(10) | N | 사이트 범위(비면 전체)
+costCenterCode | string(10) | N | 코스트센터 범위(DEPT_MANAGER는 필수)
+validFrom | date | N | 유효 시작일
+validUntil | date | N | 유효 종료일(AUDITOR·임시 COUNTER는 필수)
 ''')
 schema('MePatch', '내 설정 변경', '''
 locale | enum(en,ko) | N | 화면 언어
@@ -121,10 +124,12 @@ W('공통','GET','/me','getMe','로그인 사용자·권한','로그인 사용�
   ['permissions로 메뉴·버튼을 감춘다. 서버는 같은 권한을 API마다 다시 확인한다.', 'navCounts = 승인 대기, 진행 중 실사 차이, SAP 오류 수.'])
 W('공통','PATCH','/me','patchMe','내 설정 변경','로그인 사용자','MePatch','Me','200, 400','app_user','앱 셸',['locale을 바꾸면 이후 응답의 이름·메시지가 그 언어로 온다.'])
 W('공통','GET','/lookups','getLookups','드롭다운 값','로그인 사용자',None,'Lookups','200','company, site, room, cost_center, asset_class, category, model, vendor, app_user, code','전체',
-  ['types에 적은 것만 돌려준다. 응답은 5분 캐시(ETag).', '사용자 범위(회사코드·사이트) 밖의 값은 빼고 돌려준다.'],
+  ['types에 적은 것만 돌려준다. 응답은 5분 캐시(ETag).', '사용자 범위(회사코드·사이트) 밖의 값은 빼고 돌려준다.',
+   'users는 approval.decide·asset.assign·count.manage·admin.user 중 하나가 있어야 하고, 이름·이메일·부서만 돌려준다(없으면 빈 목록).'],
   params=[('types','query','string','Y','쉼표 구분 (예: sites,rooms,costCenters)'),('q','query','string','N','users 검색어'),('siteId','query','uuid','N','rooms 필터')])
 W('공통','GET','/search','search','전역 검색(Top bar)','로그인 사용자',None,'SearchResult','200','asset, asset_request, contract, license, config_item','앱 셸',
-  ['자산은 태그·시리얼·호스트명·IP·사용자 이름 부분 일치, 나머지는 번호·이름.', 'Enter 키는 /assets?q= 로 이동(자산 목록 검색).'],
+  ['자산은 태그·시리얼·호스트명·IP·사용자 이름 부분 일치, 나머지는 번호·이름.', 'Enter 키는 /assets?q= 로 이동(자산 목록 검색).',
+   '엔터티마다 그 목록 API와 같은 권한·범위를 적용한다(asset.read, request.read, contract.read, license.read, cmdb.read). 권한이 없는 엔터티는 결과에서 뺀다.'],
   params=[('q','query','string','Y','검색어(2자 이상)')])
 W('공통','GET','/notifications','listNotifications','화면 알림','로그인 사용자',None,'NotificationItemList','200','notification','앱 셸',[ '최근 90일.'],
   params=[('unread','query','bool','N','안 읽은 것만')] + PG[:2])
@@ -757,10 +762,10 @@ assets | [AssetSummary] | Y | 연결 자산
 W('구매','GET','/purchase-requests','listPurchaseRequests','구매요청 목록','로그인 사용자',None,'PurchaseRequestSummaryList','200','purchase_request','ALM-210',[ 'EMPLOYEE는 본인 요청, DEPT_MANAGER는 소속 코스트센터, 그 외 범위 전체.'],
   params=[('status','query','string','N','상태'),('mine','query','bool','N','내 요청만'),('q','query','string','N','번호·제목')]+PG)
 W('구매','POST','/purchase-requests','createPurchaseRequest','구매요청 작성','로그인 사용자','PurchaseRequestInput','PurchaseRequestDetail','201, 400','purchase_request, purchase_request_item, number_sequence','ALM-210',[ 'DRAFT로 저장. 번호는 PR-nnnnn.'],idem='Idempotency-Key',ok='201')
-W('구매','GET','/purchase-requests/{id}','getPurchaseRequest','구매요청 상세','요청자·승인자·ASSET_MANAGER',None,'PurchaseRequestDetail','200, 403, 404','purchase_request, approval, sap_posting','ALM-210',[ '-'],params=[ID()])
+W('구매','GET','/purchase-requests/{id}','getPurchaseRequest','구매요청 상세','요청자·승인자·ASSET_MANAGER',None,'PurchaseRequestDetail','200, 403, 404','purchase_request, approval, sap_posting','ALM-210',[ '범위 안이거나 요청자·승인 단계 승인자. 범위 밖이면 404.', '현재 승인 단계의 승인자에게는 amount.read가 없어도 예상 금액을 보여 준다.'],params=[ID()])
 W('구매','PATCH','/purchase-requests/{id}','patchPurchaseRequest','구매요청 수정','요청자','PurchaseRequestInput','PurchaseRequestDetail','200, 400, 409','purchase_request, purchase_request_item','ALM-210',[ 'DRAFT·REJECTED만. 품목은 전체 교체. If-Match: version.'],params=[ID(),('If-Match','header','string','Y','version')])
 W('구매','POST','/purchase-requests/{id}:submit','submitPurchaseRequest','제출','요청자',None,'PurchaseRequestDetail','200, 409, 422','purchase_request, approval','ALM-210',[ '승인 단계 생성: 1 부서 관리자. 승인되면 PO_CREATE 전기 건 생성(IF-MM-02).', '자산클래스가 있는데 자산번호가 없는 품목은 ASSET_CREATE를 먼저 전기한다.'],params=[ID()],idem='Idempotency-Key')
-W('구매','POST','/purchase-requests/{id}:cancel','cancelPurchaseRequest','취소','요청자, ASSET_MANAGER',None,'PurchaseRequestDetail','200, 409','purchase_request','ALM-210',[ 'PO_REQUESTED 이후는 취소 불가(409).'],params=[ID()])
+W('구매','POST','/purchase-requests/{id}:cancel','cancelPurchaseRequest','취소','요청자, ASSET_MANAGER',None,'PurchaseRequestDetail','200, 409','purchase_request','ALM-210',[ '요청자 본인(purchase.request) 또는 asset.write가 있는 자산 관리자(범위 안).', 'PO_REQUESTED 이후는 취소 불가(409).'],params=[ID()])
 W('구매','GET','/purchase-orders','listPoItems','PO 항목·입고 대기','ASSET_MANAGER, ASSET_ACCOUNTANT',None,'PoItemRowList','200','po_item, goods_receipt','ALM-210',[ 'openOnly=true면 미입고 수량이 있는 항목.'],params=[('openOnly','query','bool','N','입고 대기만'),('q','query','string','N','PO·품목')]+PG)
 W('구매','GET','/purchase-orders/{id}','getPoItem','PO 항목 상세','ASSET_MANAGER, ASSET_ACCOUNTANT',None,'PoItemDetail','200, 404','po_item, goods_receipt, asset','ALM-210',[ '입고는 SAP MIGO 결과만 반영(ALM에서 입고 처리 안 함).'],params=[ID()])
 
@@ -837,12 +842,22 @@ W('요청·승인','POST','/asset-requests','createAssetRequest','자산 요청 
   ['유형별 필수: NEW_ASSET(자산클래스, 코스트센터, 취득가) · CHANGE(changes 또는 룸) · TRANSFER(코스트센터, 이관일) · RETIRE(폐기 유형, 폐기일) · SALE(매각금액, 매입처).',
    '같은 자산에 진행 중인 요청이 있으면 409 ALM-E315.', 'TRANSFER는 코스트센터의 손익센터·세그먼트를 비교해 is_profit_center_change를 서버가 정한다.', 'Retired·Disposed는 이 요청으로만 바뀐다.'],
   idem='Idempotency-Key', ok='201')
-W('요청·승인','GET','/asset-requests/{id}','getAssetRequest','자산 요청 상세','요청자·승인자·ASSET_MANAGER·ASSET_ACCOUNTANT',None,'AssetRequestDetail','200, 403, 404','asset_request, approval, sap_posting, attachment','ALM-230',[ '-'],params=[ID()])
+W('요청·승인','GET','/asset-requests/{id}','getAssetRequest','자산 요청 상세','요청자·승인자·ASSET_MANAGER·ASSET_ACCOUNTANT',None,'AssetRequestDetail','200, 403, 404','asset_request, approval, sap_posting, attachment','ALM-230',[ '범위 안이거나 요청자·승인 단계 승인자. 범위 밖이면 404.', '현재 승인 단계의 승인자에게는 amount.read가 없어도 금액을 보여 준다(승인 판단용).'],params=[ID()])
 W('요청·승인','PATCH','/asset-requests/{id}','patchAssetRequest','자산 요청 수정','요청자(DRAFT), ASSET_ACCOUNTANT(POST_ERROR)','AssetRequestInput','AssetRequestDetail','200, 400, 403, 409','asset_request, sap_posting','ALM-230',
-  ['DRAFT는 요청자가, POST_ERROR는 자산회계가 값을 고친다. POST_ERROR 수정 후에는 /integration/sap/postings/{id}:retry로 재전기.', 'If-Match: version.'],
+  ['DRAFT 상태에서 요청자만 고친다. 제출 뒤에는 바꿀 수 없다(409). POST_ERROR 보정은 :fix(자산회계).', 'If-Match: version.'],
   params=[ID(),('If-Match','header','string','Y','version')])
+schema('AssetRequestFix', '전기 오류 보정', '''
+effectiveDate | date | N | 전기일·가치일(마감된 기간 오류 등)
+changes | object | N | 그 밖의 값 {field: after}
+comment | string(500) | Y | 보정 사유(감사 로그·이력에 남김)
+''')
+W('요청·승인','POST','/asset-requests/{id}:fix','fixAssetRequest','전기 오류 보정','sap.finance','AssetRequestFix','AssetRequestDetail','200, 400, 403, 409','asset_request, approval, sap_posting, asset_event','ALM-230, 310',
+  ['POST_ERROR인 요청만(그 외 409).', '기술 필드(effectiveDate, 텍스트·참조 값)만 바꾸면 sap_posting을 READY로 되돌리고 attempt를 올린다(:retry와 같음).',
+   '회계 필드(acquisitionValue, saleAmount, targetCostCenterId, assetClassId, retireType, 회사코드)가 바뀌면 요청을 SUBMITTED로 되돌리고 승인 단계를 새로 만든다(재승인, 직무 분리 H-08).',
+   '보정한 사람은 재생성된 승인 단계를 승인할 수 없다(403 ALM-E403).'],
+  params=[ID(),('If-Match','header','string','Y','version')], idem='Idempotency-Key')
 W('요청·승인','POST','/asset-requests/{id}:submit','submitAssetRequest','제출','요청자',None,'AssetRequestDetail','200, 409, 422','asset_request, approval','ALM-230',[ '승인 단계 2개 생성: 1 부서 관리자(대상 코스트센터 책임), 2 자산회계.'],params=[ID()],idem='Idempotency-Key')
-W('요청·승인','POST','/asset-requests/{id}:cancel','cancelAssetRequest','취소','요청자, ASSET_MANAGER',None,'AssetRequestDetail','200, 409','asset_request','ALM-230',[ 'ACCT_APPROVED 이후(전기 대기)는 sap_posting이 CLAIMED가 아닐 때만 취소.'],params=[ID()])
+W('요청·승인','POST','/asset-requests/{id}:cancel','cancelAssetRequest','취소','요청자, ASSET_MANAGER',None,'AssetRequestDetail','200, 409','asset_request','ALM-230',[ '요청자 본인(request.create) 또는 asset.write가 있는 자산 관리자(범위 안).', 'ACCT_APPROVED 이후(전기 대기)는 sap_posting이 CLAIMED가 아닐 때만 취소.'],params=[ID()])
 W('요청·승인','GET','/approvals/inbox','listApprovalInbox','내 승인함','DEPT_MANAGER, ASSET_ACCOUNTANT, ASSET_MANAGER',None,'ApprovalInboxRowList','200','approval, asset_request, purchase_request','ALM-230, 210',
   ['내 역할·범위에 맞는 PENDING 단계 중 앞 단계가 끝난 것만.'],params=[('kind','query','enum(ASSET_REQUEST,PURCHASE_REQUEST)','N','종류')]+PG)
 W('요청·승인','POST','/approvals/{id}:approve','approve','승인','해당 단계 역할','ApprovalDecisionInput','ApprovalStep','200, 403, 409','approval, asset_request, purchase_request, sap_posting, notification','ALM-230, 210',
@@ -1188,7 +1203,8 @@ W('SAP 연계','POST','/integration/sap/postings/{id}:retry','retryPosting','재
   ['FAILED만. 연결 요청의 현재 값으로 payload를 다시 만들고 READY, attempt는 0부터(F-310-03).', '같은 postingId를 쓰므로 SAP BKTXT·로그 확인으로 중복 전기가 막힌다.', '재시도 초과(ALM-E306) 건은 SAP에 이미 전기됐을 수 있으므로, 화면이 SAP 전표·자산 확인 체크를 받은 뒤에만 재전기한다.'],params=CI,idem='Idempotency-Key')
 W('SAP 연계','POST','/integration/sap/postings/{id}:cancel','cancelPosting','전기 취소',AC,None,'PostingSummary','200, 409','sap_posting, asset_request','ALM-310',[ 'READY·FAILED만. 연결 요청은 CANCELLED.'],params=CI)
 W('SAP 연계','POST','/integration/sap/run-requests','createRunRequest','SAP 수동 실행 요청',AC,'RunRequestInput','RunRequest','201, 409','sap_run_request','ALM-310',
-  ['ALM은 SAP을 직접 호출하지 않는다. 요청을 남기면 15분 주기 SAP 잡이 GET /sap/run-requests로 가져가 해당 수신 잡을 바로 실행한다.', '같은 IF의 PENDING이 있으면 409.'],ok='201')
+  ['ALM은 SAP을 직접 호출하지 않는다. 요청을 남기면 15분 주기 SAP 잡이 GET /sap/run-requests로 가져가 해당 수신 잡을 바로 실행한다.', '같은 IF의 PENDING이 있으면 409.',
+   'isClosing = true(IF-AA-02 마감 실행)는 sap.finance가 있어야 한다(없으면 403 ALM-E401).'],ok='201')
 W('SAP 연계','GET','/integration/sap/reconciliation/runs','listReconRuns','대사 실행 목록',AC,None,'ReconRunRowList','200','recon_run, recon_diff','ALM-310',[ '-'],params=PG)
 W('SAP 연계','GET','/integration/sap/reconciliation/runs/{id}/diffs','listReconDiffs','대사 차이',AC,None,'ReconDiffRowList','200, 404','recon_diff, asset','ALM-310',[ '-'],params=CI+[('diffType','query','string','N','유형'),('status','query','string','N','기본 OPEN')]+PG)
 W('SAP 연계','POST','/integration/sap/reconciliation/diffs:resolve','resolveReconDiffs','대사 차이 처리',AC,'ReconResolve','BulkResult','200, 207, 400','recon_diff, asset, sap_posting, asset_event','ALM-310',
@@ -1275,8 +1291,10 @@ lst('AuditRow', '감사 로그')
 MT = ('type','path','enum(sites,rooms,categories,models,vendors,printers)','Y','마스터 종류')
 W('관리','GET','/admin/users','listUsers','사용자 목록',SA,None,'UserRowList','200','app_user, user_role','관리',[ '-'],params=[('q','query','string','N','이름·이메일'),('role','query','string','N','역할')]+PG)
 W('관리','POST','/admin/users','createUser','사용자 등록',SA,'UserInput','UserRow','201, 400, 409','app_user','관리',[ 'SSO 첫 로그인 때 idp_subject를 연결한다. 이메일 중복 409.'],ok='201')
-W('관리','PATCH','/admin/users/{id}','patchUser','사용자 수정',SA,'UserInput','UserRow','200, 400, 404','app_user','관리',[ 'isActive=false면 다음 요청부터 401.'],params=CI)
-W('관리','PUT','/admin/users/{id}/roles','putUserRoles','역할·범위 지정',SA,'RoleAssign','UserRow','200, 400, 404','user_role, audit_log','관리',[ '전체 교체. 자기 자신의 SYS_ADMIN은 뺄 수 없다(409).'],params=CI)
+W('관리','PATCH','/admin/users/{id}','patchUser','사용자 수정',SA,'UserInput','UserRow','200, 400, 404','app_user','관리',[ 'isActive=false면 60초 안에 모든 요청이 403 ALM-E405(사용자 상태 캐시).', 'email은 idp_subject가 아직 연결되지 않은 사용자만 바꿀 수 있다. 역할이 있는 미연결 사용자의 이메일을 바꾸면 역할을 모두 지운다(다른 계정에 역할이 넘어가는 것을 막음).', '연결된 사용자의 idp_subject 해제·재연결은 security_event로 남긴다.'],params=CI)
+W('관리','PUT','/admin/users/{id}/roles','putUserRoles','역할·범위 지정',SA,'RoleAssign','UserRow','200, 400, 403, 404, 409','user_role, audit_log','관리',
+  ['전체 교체. 자기 자신의 역할은 바꿀 수 없다(403 ALM-E403, 다른 시스템 관리자가 처리).', '마지막 SYS_ADMIN을 빼면 409 ALM-E319.', 'AUDITOR는 다른 역할과 함께 줄 수 없다(400).',
+   'DEPT_MANAGER는 costCenterCode, AUDITOR는 validUntil(최대 1년)이 필수(400).', '직무 충돌 조합(09 설계서 5.2)은 저장하되 응답 헤더 X-SoD-Warning과 /admin/sod-conflicts에 표시.'],params=CI)
 W('관리','GET','/admin/masters/{type}','listMasters','ALM 관리 마스터 목록',SA+', ASSET_MANAGER',None,'MasterRecordList','200, 400','site, room, category, model, vendor, printer','관리',[ 'SAP 마스터(회사코드, 코스트센터 등)는 IF-MD-01로만 바뀌므로 /lookups로 조회.'],params=[MT,('q','query','string','N','검색')]+PG)
 W('관리','POST','/admin/masters/{type}','createMaster','마스터 등록',SA,'MasterRecord','MasterRecord','201, 400, 409','site, room, category, model, vendor, printer','관리',[ '룸 바코드 미입력 시 roomCode로.'],params=[MT],ok='201')
 W('관리','PATCH','/admin/masters/{type}/{id}','patchMaster','마스터 수정',SA,'MasterRecord','MasterRecord','200, 400, 404, 409','site, room, category, model, vendor, printer','관리',[ '삭제 대신 isActive=false. 사용 중인 룸 비활성은 409 ALM-E318.'],params=[MT,ID()])
@@ -1286,3 +1304,57 @@ W('관리','GET','/admin/settings','listSettings',  '설정',SA,None,'SettingLis
 W('관리','PUT','/admin/settings/{key}','putSetting','설정 저장',SA,'SettingRow','SettingRow','200, 400','setting, audit_log','관리',[ '키별 값 형식 검사.'],params=[('key','path','string(60)','Y','키')])
 W('관리','GET','/admin/audit-logs','listAuditLogs','감사 로그 조회','SYS_ADMIN, ASSET_ACCOUNTANT',None,'AuditRowList','200','audit_log','관리',[ '10년 보관. 13개월 지난 기간은 보관 저장소에서 비동기 조회(내보내기로 안내).'],
   params=[('tableName','query','string','N','테이블'),('rowId','query','uuid','N','행'),('actorId','query','uuid','N','처리자'),('from','query','date','N','시작'),('to','query','date','N','종료')]+PG)
+
+# ---------------- auth (WBS 2.8) ----------------
+schema('AccessToken', '웹 액세스 토큰', '''
+accessToken | string | Y | Cognito 액세스 토큰(JWT). SPA는 메모리에만 보관
+expiresIn | int | Y | 유효 초(900)
+tokenType | enum(Bearer) | Y | Bearer
+''')
+schema('LogoutResult', '로그아웃', '''
+logoutUrl | string | Y | Cognito·IdP 로그아웃 URL(브라우저가 이동)
+''')
+W('인증','GET','/auth/login','authLogin','로그인 시작','없음',None,'AccessToken','302, 400, 403','tenant','로그인 화면',
+  ['email의 도메인으로 auth_idp_by_domain()(tenant_domain)을 불러 해당 IdP(identity_provider = tenant.idp_provider_name)로 Cognito /oauth2/authorize에 302.',
+   'PKCE code_verifier와 state는 암호화 쿠키 alm_pkce(5분, HttpOnly, Secure, SameSite=Lax, Path=/api/v1/auth)에 둔다.',
+   '모르는 도메인도 같은 화면 문구로 안내해 고객사 여부를 드러내지 않는다(403 ALM-E405, CloudWatch에만 기록, IP당 분당 10회 제한).'],
+  params=[('email','query','string','Y','로그인 이메일'),('returnTo','query','string','N','로그인 뒤 돌아갈 화면 경로(같은 사이트 상대 경로만)')], ok='302')
+W('인증','GET','/auth/callback','authCallback','로그인 콜백','없음',None,'AccessToken','302, 400, 403','app_user, security_event','로그인 화면',
+  ['state 확인 → 코드 교환(웹 앱 클라이언트, 비밀 있음) → 액세스 토큰의 username(ID 토큰은 cognito:username)으로 auth_tenant_by_username() → 테넌트·idp_subject.',
+   'app_user를 (tenant, idp_subject)로 찾는다. 없으면 idp_subject가 비어 있고 이메일이 같은 미리 등록된 사용자에 연결(ID 토큰 email_verified가 true이거나 SAML일 때만). 그래도 없으면 tenant.jit_provision이 true일 때만 EMPLOYEE로 생성, 아니면 403 ALM-E405. 비활성 사용자·유효한 역할이 없는 감사인도 403.',
+   '이메일·이름은 ID 토큰 값으로 갱신. last_login_at 기록, security_event LOGIN(거부는 LOGIN_DENIED).',
+   '리프레시 토큰은 AES-GCM으로 암호화해 쿠키 alm_rt(HttpOnly, Secure, SameSite=Strict, Path=/api/v1/auth, 8시간)에 둔다. 서버에 세션 저장소 없음.'],
+  params=[('code','query','string','Y','인가 코드'),('state','query','string','Y','state')], ok='302')
+W('인증','POST','/auth/refresh','authRefresh','액세스 토큰 갱신','쿠키 alm_rt',None,'AccessToken','200, 401, 403','-','앱 셸',
+  ['SPA가 시작할 때와 만료 1분 전에 호출. 헤더 X-ALM-CSRF: 1과 Origin(웹 도메인) 확인, 다르면 403.',
+   '쿠키의 리프레시 토큰으로 Cognito 토큰 갱신. 리프레시 만료(8시간)·회수면 401 → 로그인 화면.'])
+W('인증','POST','/auth/logout','authLogout','로그아웃','쿠키 alm_rt',None,'LogoutResult','200','security_event','앱 셸',
+  ['액세스 토큰이 만료됐거나 사용자가 비활성이어도 동작한다(쿠키 + X-ALM-CSRF + Origin 확인).', 'Cognito RevokeToken으로 리프레시 토큰 회수, 쿠키 삭제, security_event LOGOUT.', 'logoutUrl로 이동하면 Cognito 세션도 끝난다(IdP 세션은 고객사 정책).'])
+
+schema('SecurityEventRow', '보안 이벤트', '''
+id | uuid | Y | id
+occurredAt | datetime | Y | 일시
+eventType | enum(LOGIN,LOGIN_DENIED,LOGOUT,ACCESS_DENIED,EXPORT,SECRET_ROTATED,SAP_AUTH_FAILED,DEVICE_BLOCKED,SUPPORT_ACCESS) | Y | 이벤트
+actorName | string | N | 사용자
+actorType | string | Y | USER / SYSTEM / SAP / PDA
+channel | enum(WEB,PDA,SAP) | Y | 채널
+ipAddress | string | N | IP
+target | string | N | 대상
+detail | object | N | 상세
+''')
+lst('SecurityEventRow', '보안 이벤트')
+schema('SodConflict', '직무 충돌 사용자', '''
+userId | uuid | Y | 사용자
+displayName | string | Y | 이름
+roles | [string] | Y | 충돌 역할 조합
+rule | string | Y | 충돌 규칙 ID (예: SOD-01)
+description | string | Y | 설명
+''')
+schema('SodConflictList', '직무 충돌 목록', '''
+items | [SodConflict] | Y | 행
+''')
+W('관리','GET','/admin/security-events','listSecurityEvents','보안 이벤트 조회','audit.read',None,'SecurityEventRowList','200','security_event','관리',
+  ['10년 보관. 13개월 지난 기간은 내보내기로 조회.'],
+  params=[('eventType','query','string','N','이벤트(쉼표 구분)'),('actorId','query','uuid','N','사용자'),('from','query','date','N','시작'),('to','query','date','N','종료')]+PG)
+W('관리','GET','/admin/sod-conflicts','listSodConflicts','직무 충돌 점검',SA,None,'SodConflictList','200','user_role','관리',
+  ['09 설계서 5.2의 충돌 규칙으로 현재 유효한 역할을 점검. 분기마다 내보내 SOX 증빙으로 보관.'])

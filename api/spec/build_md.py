@@ -1,5 +1,6 @@
 import json
 from spec_api import E
+import spec_web  # noqa: registers /sap/run-requests too
 P = json.load(open('out/md_parts.json'))
 npda = sum(1 for e in E if e['group'] == 'pda'); nsap = sum(1 for e in E if e['group'] == 'sap')
 
@@ -8,7 +9,7 @@ title: ALM API 명세서 — PDA · SAP
 project: 자산관리시스템(ALM)
 company: BSG America
 wbs: "2.6"
-version: 0.2
+version: 0.3
 updated: 2026-10-08
 tags: [BSGA, 자산관리시스템, ALM, API]
 ---
@@ -17,11 +18,11 @@ tags: [BSGA, 자산관리시스템, ALM, API]
 
 # ALM API 명세서 — PDA · SAP
 
-2026-10-08 · 신지승 · v0.2 (WBS 2.6 중 PDA·SAP 범위)
+2026-10-08 · 신지승 · v0.3 (WBS 2.6 중 PDA·SAP 범위, 2.8 권한·인증 반영)
 
 ## 1. 개요
 
-PDA 실사 앱용 API {npda}개와 SAP 배치 잡용 API {nsap}개를 정의한다. 두 API는 같은 서버(NestJS, `/api/v1`)에 있고, 인증 방식과 경로 접두어(`/pda`, `/sap`)로 나뉜다. 엔드포인트·필드는 기능 정의서의 PDA-01~08, SAP 인터페이스 명세서의 IF 12개, 데이터 모델(테이블 60개)에 맞췄다. 웹 화면용 API는 [[07_API_명세서_웹]]에 있다. SAP는 On-premise로 확정(2026-10-08)되어 SAP 배치 잡이 ALM을 호출하는 구조를 그대로 쓴다.
+PDA 실사 앱용 API {npda}개와 SAP 배치 잡용 API {nsap}개를 정의한다. 두 API는 같은 서버(NestJS, `/api/v1`)에 있고, 인증 방식과 경로 접두어(`/pda`, `/sap`)로 나뉜다. 엔드포인트·필드는 기능 정의서의 PDA-01~08, SAP 인터페이스 명세서 v1.0의 IF 13개, 데이터 모델(테이블 63개)에 맞췄다. 웹 화면용 API는 [[07_API_명세서_웹]]에 있다. SAP는 On-premise로 확정(2026-10-08)되어 SAP 배치 잡이 ALM을 호출하는 구조를 그대로 쓴다.
 
 | 산출물 | 위치 | 내용 |
 | --- | --- | --- |
@@ -47,10 +48,10 @@ PDA 실사 앱용 API {npda}개와 SAP 배치 잡용 API {nsap}개를 정의한�
 
 | 호출자 | 방식 | 토큰 | 테넌트·권한 결정 |
 | --- | --- | --- | --- |
-| PDA 앱 | Cognito 호스티드 UI + 고객사 SSO, Authorization Code + PKCE | 액세스 60분, 리프레시 24시간(오프라인 허용 시간) | 토큰의 사용자 → app_user → tenant, 역할 COUNTER, 배정된 룸 |
-| SAP 배치 | OAuth 2.0 Client Credentials (`POST /oauth/token`) | 60분 | client_id → sap_connection → tenant, 회사코드 |
+| PDA 앱 | Cognito 관리형 로그인 + 고객사 SSO, Authorization Code + PKCE(AppAuth, 비밀 없는 앱 클라이언트) | 액세스 60분, 리프레시 24시간(오프라인 허용 시간, Android Keystore 암호화 보관) | 토큰 `username` → tenant.idp_provider_name → app_user. 유효한 COUNTER 역할 + 활성 기기(pda_device) + 배정된 룸 |
+| SAP 배치 | OAuth 2.0 Client Credentials (`POST /oauth/token`, scope `sap.api`). SAP 연결마다 Cognito 앱 클라이언트 1개 | 60분 | client_id → sap_connection → tenant, 회사코드 |
 
-토큰을 확인한 뒤 서버는 트랜잭션마다 `SET LOCAL app.tenant_id`를 실행하므로, 모든 조회·저장에 행 단위 보안(RLS)이 적용된다.
+토큰의 앱 클라이언트가 호출한 API 그룹(웹·PDA·SAP)과 맞는지 먼저 확인한다(다르면 403 ALM-E407). 그 뒤 서버는 트랜잭션마다 `SET LOCAL app.tenant_id`(+ user_id·actor_type·correlation_id·client_ip)를 실행하므로, 모든 조회·저장에 행 단위 보안(RLS)이 적용되고 감사 트리거가 처리자를 기록한다. 엔드포인트별 권한 키(`count.scan`, `sap.api`)와 역할 정의는 [[09_권한_보안_설계서]].
 
 **헤더**
 
@@ -61,6 +62,7 @@ PDA 실사 앱용 API {npda}개와 SAP 배치 잡용 API {nsap}개를 정의한�
 | Idempotency-Key | 요청 | 변경 요청에 필수(엔드포인트 표의 '멱등성' 참고). 24시간 보관 |
 | X-SAP-System | 요청(SAP) | 시스템 ID-클라이언트 (예: PRD-100) |
 | X-App-Version | 요청(PDA) | 앱 버전. 최소 버전보다 낮으면 `/pda/me`가 업데이트를 안내 |
+| X-Device-Id | 요청(PDA) | 기기 시리얼(MDM이 앱 설정으로 넣은 값). 모든 PDA API에 필수. 등록 안 된·비활성 기기면 403 ALM-E406 |
 | ETag / If-None-Match | 응답·요청 | PDA 작업목록 캐시. 같으면 304 |
 | Retry-After | 응답 | 429·503일 때 재시도까지 초 |
 

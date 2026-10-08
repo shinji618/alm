@@ -3,7 +3,7 @@
 
 BEGIN;
 
-CREATE TYPE role_code AS ENUM ('SYS_ADMIN', 'ASSET_MANAGER', 'DEPT_MANAGER', 'ASSET_ACCOUNTANT', 'COUNTER', 'EMPLOYEE');  -- 사용자 역할
+CREATE TYPE role_code AS ENUM ('SYS_ADMIN', 'ASSET_MANAGER', 'DEPT_MANAGER', 'ASSET_ACCOUNTANT', 'COUNTER', 'EMPLOYEE', 'AUDITOR');  -- 사용자 역할
 CREATE TYPE asset_status AS ENUM ('ON_ORDER', 'IN_STOCK', 'IN_USE', 'IN_REPAIR', 'MISSING', 'RETIRED', 'DISPOSED');  -- 자산 상태
 CREATE TYPE asset_source AS ENUM ('MANUAL', 'DISCOVERY', 'GOODS_RECEIPT', 'SAP', 'PDA_COUNT', 'IMPORT');  -- 자산 생성 출처
 CREATE TYPE asset_event_type AS ENUM ('CREATED', 'UPDATED', 'STATUS_CHANGED', 'ASSIGNED', 'RETURNED', 'TRANSFERRED', 'REPAIR_IN', 'REPAIR_OUT', 'COUNTED', 'LABEL_PRINTED', 'SAP_POSTED', 'SAP_SYNCED', 'RETIRED', 'DISPOSED');  -- 자산 이력 유형
@@ -41,6 +41,8 @@ CREATE TYPE master_system AS ENUM ('SAP', 'ALM');  -- 기준 시스템
 CREATE TYPE notification_channel AS ENUM ('EMAIL', 'IN_APP');  -- 알림 채널
 CREATE TYPE notification_status AS ENUM ('QUEUED', 'SENT', 'FAILED');  -- 알림 상태
 CREATE TYPE audit_action AS ENUM ('INSERT', 'UPDATE', 'DELETE');  -- 감사 동작
+CREATE TYPE security_event_type AS ENUM ('LOGIN', 'LOGIN_DENIED', 'LOGOUT', 'ACCESS_DENIED', 'EXPORT', 'SECRET_ROTATED', 'SAP_AUTH_FAILED', 'DEVICE_BLOCKED', 'SUPPORT_ACCESS');  -- 보안 이벤트
+CREATE TYPE idp_type AS ENUM ('SAML', 'OIDC');  -- IdP 연동 방식
 
 -- 테넌트: 서비스 고객사. 단일 고객이면 1행
 CREATE TABLE tenant (
@@ -48,18 +50,25 @@ CREATE TABLE tenant (
   code varchar(20) NOT NULL UNIQUE,
   name varchar(100) NOT NULL,
   sap_system_id varchar(10),
+  idp_type idp_type NOT NULL DEFAULT 'SAML',
+  idp_provider_name varchar(32) NOT NULL UNIQUE,
+  jit_provision boolean NOT NULL DEFAULT false,
   time_zone varchar(40) NOT NULL DEFAULT 'America/New_York',
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
-  version integer NOT NULL DEFAULT 1
+  version integer NOT NULL DEFAULT 1,
+  CHECK (idp_provider_name ~ '^T-[A-Z0-9-]+$')
 );
 COMMENT ON COLUMN tenant.id IS '기본키';
 COMMENT ON COLUMN tenant.code IS '테넌트 코드';
 COMMENT ON COLUMN tenant.name IS '고객사 이름';
 COMMENT ON COLUMN tenant.sap_system_id IS 'SAP 시스템 ID-클라이언트 (예: PRD-100)';
+COMMENT ON COLUMN tenant.idp_type IS '고객사 SSO 방식';
+COMMENT ON COLUMN tenant.idp_provider_name IS 'Cognito IdP 이름 (예: T-ACME, 밑줄 금지). 토큰 username이 `<이 값>_`으로 시작하면 이 테넌트';
+COMMENT ON COLUMN tenant.jit_provision IS '첫 로그인 때 사용자 자동 생성(역할 EMPLOYEE만)';
 COMMENT ON COLUMN tenant.time_zone IS '화면 표시 시간대';
 COMMENT ON COLUMN tenant.is_active IS '사용 여부';
 COMMENT ON COLUMN tenant.created_at IS '생성 일시';
@@ -68,6 +77,29 @@ COMMENT ON COLUMN tenant.updated_at IS '변경 일시';
 COMMENT ON COLUMN tenant.updated_by IS '변경자';
 COMMENT ON COLUMN tenant.version IS '낙관적 잠금';
 COMMENT ON TABLE tenant IS '테넌트 — 서비스 고객사. 단일 고객이면 1행';
+
+-- 테넌트 이메일 도메인: 로그인 화면에서 이메일 도메인으로 테넌트 IdP를 고름(홈 렐름 판별). 도메인은 전체 테넌트에서 유일
+CREATE TABLE tenant_domain (
+  id uuid PRIMARY KEY,
+  tenant_id uuid NOT NULL,
+  domain varchar(253) NOT NULL UNIQUE,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by uuid,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by uuid,
+  version integer NOT NULL DEFAULT 1
+);
+COMMENT ON COLUMN tenant_domain.id IS '기본키';
+COMMENT ON COLUMN tenant_domain.tenant_id IS '테넌트';
+COMMENT ON COLUMN tenant_domain.domain IS '이메일 도메인(소문자, 예: acme.com)';
+COMMENT ON COLUMN tenant_domain.is_active IS '사용 여부';
+COMMENT ON COLUMN tenant_domain.created_at IS '생성 일시';
+COMMENT ON COLUMN tenant_domain.created_by IS '생성자';
+COMMENT ON COLUMN tenant_domain.updated_at IS '변경 일시';
+COMMENT ON COLUMN tenant_domain.updated_by IS '변경자';
+COMMENT ON COLUMN tenant_domain.version IS '낙관적 잠금';
+COMMENT ON TABLE tenant_domain IS '테넌트 이메일 도메인 — 로그인 화면에서 이메일 도메인으로 테넌트 IdP를 고름(홈 렐름 판별). 도메인은 전체 테넌트에서 유일';
 
 -- 사용자: SSO 로그인 사용자
 CREATE TABLE app_user (
@@ -94,7 +126,7 @@ COMMENT ON COLUMN app_user.id IS '기본키';
 COMMENT ON COLUMN app_user.tenant_id IS '테넌트';
 COMMENT ON COLUMN app_user.email IS '이메일(로그인 ID)';
 COMMENT ON COLUMN app_user.display_name IS '이름';
-COMMENT ON COLUMN app_user.idp_subject IS 'Entra ID 사용자 식별자(oid)';
+COMMENT ON COLUMN app_user.idp_subject IS 'IdP 사용자 식별자. Cognito username의 `<IdP>_` 뒤 값(SAML NameID = Entra oid, OIDC sub)';
 COMMENT ON COLUMN app_user.employee_no IS '사번';
 COMMENT ON COLUMN app_user.department IS '부서명';
 COMMENT ON COLUMN app_user.cost_center_id IS '소속 코스트센터';
@@ -116,12 +148,15 @@ CREATE TABLE user_role (
   role role_code NOT NULL,
   company_id uuid,
   site_id uuid,
+  cost_center_id uuid,
+  valid_from date,
+  valid_until date,
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   version integer NOT NULL DEFAULT 1,
-  UNIQUE (user_id, role, company_id, site_id)
+  UNIQUE NULLS NOT DISTINCT (user_id, role, company_id, site_id, cost_center_id)
 );
 COMMENT ON COLUMN user_role.id IS '기본키';
 COMMENT ON COLUMN user_role.tenant_id IS '테넌트';
@@ -129,12 +164,16 @@ COMMENT ON COLUMN user_role.user_id IS '사용자';
 COMMENT ON COLUMN user_role.role IS '역할';
 COMMENT ON COLUMN user_role.company_id IS '회사코드 범위';
 COMMENT ON COLUMN user_role.site_id IS '사이트 범위';
+COMMENT ON COLUMN user_role.cost_center_id IS '코스트센터 범위(DEPT_MANAGER)';
+COMMENT ON COLUMN user_role.valid_from IS '유효 시작일(비면 즉시)';
+COMMENT ON COLUMN user_role.valid_until IS '유효 종료일(임시 실사 담당·감사인). 지나면 권한 없음';
 COMMENT ON COLUMN user_role.created_at IS '생성 일시';
 COMMENT ON COLUMN user_role.created_by IS '생성자';
 COMMENT ON COLUMN user_role.updated_at IS '변경 일시';
 COMMENT ON COLUMN user_role.updated_by IS '변경자';
 COMMENT ON COLUMN user_role.version IS '낙관적 잠금';
 COMMENT ON TABLE user_role IS '사용자 역할 — 역할 부여와 범위(회사코드·사이트). 범위가 비면 전체';
+CREATE INDEX ix_user_role_tenant_id_role ON user_role (tenant_id, role);
 
 -- 회사코드: SAP 회사코드 (IF-MD-01 COMPANY)
 CREATE TABLE company (
@@ -2079,6 +2118,7 @@ CREATE TABLE sap_connection (
   oauth_client_id varchar(100) NOT NULL,
   last_call_at timestamptz,
   is_active boolean NOT NULL DEFAULT true,
+  allowed_cidrs jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -2094,6 +2134,7 @@ COMMENT ON COLUMN sap_connection.company_id IS '회사코드';
 COMMENT ON COLUMN sap_connection.oauth_client_id IS 'OAuth 클라이언트 ID';
 COMMENT ON COLUMN sap_connection.last_call_at IS '마지막 호출';
 COMMENT ON COLUMN sap_connection.is_active IS '사용 여부';
+COMMENT ON COLUMN sap_connection.allowed_cidrs IS 'SAP 출구 IP 대역(예: ["203.0.113.10/32"]). 비면 WAF 전역 목록만 적용';
 COMMENT ON COLUMN sap_connection.created_at IS '생성 일시';
 COMMENT ON COLUMN sap_connection.created_by IS '생성자';
 COMMENT ON COLUMN sap_connection.updated_at IS '변경 일시';
@@ -2306,7 +2347,7 @@ COMMENT ON COLUMN notification.version IS '낙관적 잠금';
 COMMENT ON TABLE notification IS '알림 — 이메일·화면 알림 발송 기록';
 CREATE INDEX ix_notification_recipient_id_status ON notification (recipient_id, status);
 
--- 감사 로그: 모든 테이블의 생성·변경 전후값. 10년 보관, 월 파티션
+-- 감사 로그: 업무 테이블의 생성·변경·삭제 전후값(DB 트리거가 기록). 10년 보관, 월 파티션
 CREATE TABLE audit_log (
   id uuid PRIMARY KEY,
   tenant_id uuid NOT NULL,
@@ -2319,6 +2360,8 @@ CREATE TABLE audit_log (
   actor_type varchar(10) NOT NULL,
   correlation_id uuid,
   ip_address inet,
+  db_user varchar(63) NOT NULL,
+  tx_id bigint NOT NULL,
   occurred_at timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -2333,18 +2376,57 @@ COMMENT ON COLUMN audit_log.actor_id IS '사용자 id(FK 없음, 사용자 삭�
 COMMENT ON COLUMN audit_log.actor_type IS 'USER / SYSTEM / SAP / PDA';
 COMMENT ON COLUMN audit_log.correlation_id IS '요청 추적 ID';
 COMMENT ON COLUMN audit_log.ip_address IS '접속 IP';
+COMMENT ON COLUMN audit_log.db_user IS '실제 DB 로그인 계정(session_user). 앱 계정이 아닌 직접 수정 식별';
+COMMENT ON COLUMN audit_log.tx_id IS 'DB 트랜잭션 ID(같은 트랜잭션 변경 묶음)';
 COMMENT ON COLUMN audit_log.occurred_at IS '발생 일시';
 COMMENT ON COLUMN audit_log.created_at IS '생성 일시';
-COMMENT ON TABLE audit_log IS '감사 로그 — 모든 테이블의 생성·변경 전후값. 10년 보관, 월 파티션';
+COMMENT ON TABLE audit_log IS '감사 로그 — 업무 테이블의 생성·변경·삭제 전후값(DB 트리거가 기록). 10년 보관, 월 파티션';
 CREATE INDEX ix_audit_log_tenant_id_table_name_row_id ON audit_log (tenant_id, table_name, row_id);
 CREATE INDEX ix_audit_log_tenant_id_occurred_at ON audit_log (tenant_id, occurred_at);
 
+-- 보안 이벤트: 로그인·권한 거부·내보내기·비밀 교체 등. 10년 보관, 월 파티션. 테넌트를 알 수 없는 로그인 실패는 CloudWatch에만
+CREATE TABLE security_event (
+  id uuid PRIMARY KEY,
+  tenant_id uuid NOT NULL,
+  event_type security_event_type NOT NULL,
+  actor_id uuid,
+  actor_type varchar(10) NOT NULL,
+  channel varchar(5) NOT NULL,
+  client_id varchar(100),
+  ip_address inet,
+  user_agent varchar(300),
+  target varchar(200),
+  detail jsonb,
+  correlation_id uuid,
+  occurred_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+COMMENT ON COLUMN security_event.id IS '기본키';
+COMMENT ON COLUMN security_event.tenant_id IS '테넌트';
+COMMENT ON COLUMN security_event.event_type IS '이벤트';
+COMMENT ON COLUMN security_event.actor_id IS '사용자 id(FK 없음)';
+COMMENT ON COLUMN security_event.actor_type IS 'USER / SYSTEM / SAP / PDA';
+COMMENT ON COLUMN security_event.channel IS 'WEB / PDA / SAP';
+COMMENT ON COLUMN security_event.client_id IS 'Cognito 앱 클라이언트 ID';
+COMMENT ON COLUMN security_event.ip_address IS '접속 IP';
+COMMENT ON COLUMN security_event.user_agent IS '브라우저·앱 정보';
+COMMENT ON COLUMN security_event.target IS '대상(API 경로, 사용자 id, 연결 id 등)';
+COMMENT ON COLUMN security_event.detail IS '상세(거부 사유, 권한 키, 내보내기 행 수 등)';
+COMMENT ON COLUMN security_event.correlation_id IS '요청 추적 ID';
+COMMENT ON COLUMN security_event.occurred_at IS '발생 일시';
+COMMENT ON COLUMN security_event.created_at IS '생성 일시';
+COMMENT ON TABLE security_event IS '보안 이벤트 — 로그인·권한 거부·내보내기·비밀 교체 등. 10년 보관, 월 파티션. 테넌트를 알 수 없는 로그인 실패는 CloudWatch에만';
+CREATE INDEX ix_security_event_tenant_id_occurred_at ON security_event (tenant_id, occurred_at);
+CREATE INDEX ix_security_event_tenant_id_event_type_occurred_at ON security_event (tenant_id, event_type, occurred_at);
+
+ALTER TABLE tenant_domain ADD CONSTRAINT fk_tenant_domain_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE app_user ADD CONSTRAINT fk_app_user_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE app_user ADD CONSTRAINT fk_app_user_cost_center_id FOREIGN KEY (cost_center_id) REFERENCES cost_center(id);
 ALTER TABLE user_role ADD CONSTRAINT fk_user_role_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE user_role ADD CONSTRAINT fk_user_role_user_id FOREIGN KEY (user_id) REFERENCES app_user(id);
 ALTER TABLE user_role ADD CONSTRAINT fk_user_role_company_id FOREIGN KEY (company_id) REFERENCES company(id);
 ALTER TABLE user_role ADD CONSTRAINT fk_user_role_site_id FOREIGN KEY (site_id) REFERENCES site(id);
+ALTER TABLE user_role ADD CONSTRAINT fk_user_role_cost_center_id FOREIGN KEY (cost_center_id) REFERENCES cost_center(id);
 ALTER TABLE company ADD CONSTRAINT fk_company_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE plant ADD CONSTRAINT fk_plant_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE plant ADD CONSTRAINT fk_plant_company_id FOREIGN KEY (company_id) REFERENCES company(id);
@@ -2528,8 +2610,13 @@ ALTER TABLE attachment ADD CONSTRAINT fk_attachment_tenant_id FOREIGN KEY (tenan
 ALTER TABLE notification ADD CONSTRAINT fk_notification_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE notification ADD CONSTRAINT fk_notification_recipient_id FOREIGN KEY (recipient_id) REFERENCES app_user(id);
 ALTER TABLE audit_log ADD CONSTRAINT fk_audit_log_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
+ALTER TABLE security_event ADD CONSTRAINT fk_security_event_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 
 -- Row level security: 앱은 트랜잭션마다 SET LOCAL app.tenant_id = <테넌트 id> 를 실행한다
+ALTER TABLE tenant ENABLE ROW LEVEL SECURITY;
+CREATE POLICY p_tenant_tenant ON tenant USING (id = current_setting('app.tenant_id')::uuid);
+ALTER TABLE tenant_domain ENABLE ROW LEVEL SECURITY;
+CREATE POLICY p_tenant_domain_tenant ON tenant_domain USING (tenant_id = current_setting('app.tenant_id')::uuid);
 ALTER TABLE app_user ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p_app_user_tenant ON app_user USING (tenant_id = current_setting('app.tenant_id')::uuid);
 ALTER TABLE user_role ENABLE ROW LEVEL SECURITY;
@@ -2650,6 +2737,8 @@ ALTER TABLE notification ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p_notification_tenant ON notification USING (tenant_id = current_setting('app.tenant_id')::uuid);
 ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p_audit_log_tenant ON audit_log USING (tenant_id = current_setting('app.tenant_id')::uuid);
+ALTER TABLE security_event ENABLE ROW LEVEL SECURITY;
+CREATE POLICY p_security_event_tenant ON security_event USING (tenant_id = current_setting('app.tenant_id')::uuid);
 
 -- Views ------------------------------------------------------------------
 
@@ -2707,5 +2796,206 @@ SELECT l.tenant_id, l.id AS license_id, l.product_id, l.license_model, l.owned_q
                      WHERE s.tenant_id = l.tenant_id AND s.key = 'license.over_threshold'), 0.8) THEN 'OVER'
             ELSE 'COMPLIANT' END AS compliance
   FROM license l JOIN used u ON u.license_id = l.id;
+
+-- Security (WBS 2.8) ------------------------------------------------------
+-- DB 역할
+--   (소유자)        : 마이그레이션 계정. 업무 테이블 소유. 배포 파이프라인만 사용
+--   alm_audit_owner : audit_log·audit_row()·보호 함수 소유. 로그인 없음, 파이프라인 계정은 멤버 아님(최초 1회 DBA가 부트스트랩)
+--   alm_app         : NestJS 서버. 소유자 아님, BYPASSRLS 없음 → 모든 테이블에 RLS 적용
+--   alm_readonly    : 운영 조회·리포트(읽기 전용, RLS 적용)
+-- 로그인 사용자(예: alm_app_login, IAM DB 인증)는 인프라(CDK)가 만들고 위 역할을 부여한다.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'alm_app') THEN
+    CREATE ROLE alm_app NOLOGIN NOBYPASSRLS;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'alm_readonly') THEN
+    CREATE ROLE alm_readonly NOLOGIN NOBYPASSRLS;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'alm_audit_owner') THEN
+    CREATE ROLE alm_audit_owner NOLOGIN;
+  END IF;
+END $$;
+
+GRANT USAGE ON SCHEMA public TO alm_app, alm_readonly;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO alm_app;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO alm_readonly;
+-- 테넌트·도메인 행은 플랫폼 운영(소유자)만 바꾼다. 앱은 RLS로 자기 테넌트 행만 조회
+REVOKE INSERT, UPDATE, DELETE ON tenant, tenant_domain FROM alm_app;
+-- 감사 로그는 트리거만 쓴다(앱은 조회만)
+REVOKE INSERT ON audit_log FROM alm_app;
+
+-- 감사 트리거 ---------------------------------------------------------------
+-- 앱은 트랜잭션마다 SET LOCAL 로 다음 값을 넣는다:
+--   app.tenant_id, app.user_id, app.actor_type(USER/SYSTEM/SAP/PDA), app.correlation_id, app.client_ip
+-- UPDATE는 바뀐 컬럼만 before/after에 남기고, 바뀐 값이 없으면 기록하지 않는다.
+-- 앱 계정(alm_app 멤버)으로 접속했는데 actor_type이 비어 있으면 변경 자체를 거부한다(처리자 누락 방지).
+-- 앱이 넣는 처리자 값은 '앱이 주장한 값'이므로 실제 DB 계정(session_user)과 트랜잭션 ID를 함께 남긴다.
+-- 형식이 틀린 correlation_id·client_ip는 NULL로 남긴다(업무 트랜잭션을 실패시키지 않음).
+CREATE FUNCTION audit_row() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  skip   text[] := ARRAY['created_at', 'created_by', 'updated_at', 'updated_by', 'version'];
+  o      jsonb := CASE WHEN TG_OP <> 'INSERT' THEN to_jsonb(OLD) END;
+  n      jsonb := CASE WHEN TG_OP <> 'DELETE' THEN to_jsonb(NEW) END;
+  b      jsonb;
+  a      jsonb;
+  k      text;
+  actor  text := NULLIF(current_setting('app.actor_type', true), '');
+  uid    text := NULLIF(current_setting('app.user_id', true), '');
+  cid    text := NULLIF(current_setting('app.correlation_id', true), '');
+  cip    text := NULLIF(current_setting('app.client_ip', true), '');
+  tid    uuid;
+  v_uid  uuid;
+  v_cid  uuid;
+  v_cip  inet;
+BEGIN
+  -- 슈퍼유저는 모든 역할의 멤버로 판정되므로 pg_has_role 대신 직접 멤버십을 본다
+  IF actor IS NULL AND EXISTS (SELECT 1 FROM pg_auth_members m
+                                 JOIN pg_roles r ON r.oid = m.roleid
+                                 JOIN pg_roles u ON u.oid = m.member
+                                WHERE r.rolname = 'alm_app' AND u.rolname = session_user) THEN
+    RAISE EXCEPTION 'audit: app.actor_type is not set for application session %', session_user;
+  END IF;
+  IF TG_OP = 'UPDATE' THEN
+    b := '{}'; a := '{}';
+    FOR k IN SELECT jsonb_object_keys(n - skip) LOOP
+      IF (n -> k) IS DISTINCT FROM (o -> k) THEN
+        b := b || jsonb_build_object(k, o -> k);
+        a := a || jsonb_build_object(k, n -> k);
+      END IF;
+    END LOOP;
+    IF a = '{}'::jsonb THEN
+      RETURN NULL;
+    END IF;
+  ELSE
+    b := o - skip;
+    a := n - skip;
+  END IF;
+  -- 캐스트는 IF로 분기(CASE 안의 캐스트는 상수 접기로 먼저 실행될 수 있음)
+  IF pg_input_is_valid(uid, 'uuid') THEN v_uid := uid::uuid; END IF;
+  IF pg_input_is_valid(cid, 'uuid') THEN v_cid := cid::uuid; END IF;
+  IF pg_input_is_valid(cip, 'inet') THEN v_cip := cip::inet; END IF;
+  tid := CASE WHEN TG_TABLE_NAME = 'tenant' THEN (COALESCE(n, o) ->> 'id')::uuid
+              ELSE (COALESCE(n, o) ->> 'tenant_id')::uuid END;
+  INSERT INTO audit_log (id, tenant_id, table_name, row_id, action, before, after,
+                         actor_id, actor_type, correlation_id, ip_address, db_user, tx_id)
+  VALUES (gen_random_uuid(), tid, TG_TABLE_NAME, (COALESCE(n, o) ->> 'id')::uuid, TG_OP::audit_action, b, a,
+          v_uid, COALESCE(actor, 'SYSTEM'), v_cid, v_cip,
+          session_user, txid_current());
+  RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION audit_row() FROM PUBLIC;
+
+-- 인증 전 조회 ----------------------------------------------------------------
+-- 테넌트를 아직 모르는 단계만 SECURITY DEFINER 함수로 연다. RLS 우회 역할은 두지 않는다.
+-- 웹 로그인 화면: 이메일 도메인 → IdP 이름(활성 테넌트만)
+CREATE FUNCTION auth_idp_by_domain(p_domain text)
+RETURNS varchar LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT t.idp_provider_name
+    FROM tenant_domain d JOIN tenant t ON t.id = d.tenant_id
+   WHERE d.domain = lower(p_domain) AND d.is_active AND t.is_active
+$$;
+-- 토큰 확인: username → 테넌트(활성만). username = '<idp_provider_name>_<IdP 사용자 ID>'
+CREATE FUNCTION auth_tenant_by_username(p_username text)
+RETURNS TABLE (tenant_id uuid, idp_subject text, jit_provision boolean)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT t.id, substr(p_username, length(t.idp_provider_name) + 2), t.jit_provision
+    FROM tenant t
+   WHERE t.is_active AND p_username LIKE t.idp_provider_name || '\_%'
+$$;
+-- SAP: client_id → 연결(활성 연결·활성 테넌트만)
+CREATE FUNCTION auth_sap_client(p_client_id text)
+RETURNS TABLE (tenant_id uuid, connection_id uuid, company_id uuid, system_id varchar, allowed_cidrs jsonb)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT c.tenant_id, c.id, c.company_id, c.system_id, c.allowed_cidrs
+    FROM sap_connection c JOIN tenant t ON t.id = c.tenant_id
+   WHERE c.oauth_client_id = p_client_id AND c.is_active AND t.is_active
+$$;
+REVOKE ALL ON FUNCTION auth_idp_by_domain(text), auth_tenant_by_username(text), auth_sap_client(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION auth_idp_by_domain(text), auth_tenant_by_username(text), auth_sap_client(text) TO alm_app;
+
+-- 추가만 되는 로그 테이블(앱 계정에서 수정·삭제 회수)
+REVOKE UPDATE, DELETE, TRUNCATE ON asset_event FROM alm_app;
+REVOKE UPDATE, DELETE, TRUNCATE ON count_scan FROM alm_app;
+REVOKE UPDATE, DELETE, TRUNCATE ON sap_if_message FROM alm_app;
+REVOKE UPDATE, DELETE, TRUNCATE ON recon_snapshot FROM alm_app;
+REVOKE UPDATE, DELETE, TRUNCATE ON audit_log FROM alm_app;
+REVOKE UPDATE, DELETE, TRUNCATE ON security_event FROM alm_app;
+REVOKE DELETE, TRUNCATE ON sap_if_run FROM alm_app;
+
+CREATE TRIGGER tr_tenant_audit AFTER INSERT OR UPDATE OR DELETE ON tenant FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_tenant_domain_audit AFTER INSERT OR UPDATE OR DELETE ON tenant_domain FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_app_user_audit AFTER INSERT OR UPDATE OR DELETE ON app_user FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_user_role_audit AFTER INSERT OR UPDATE OR DELETE ON user_role FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_company_audit AFTER INSERT OR UPDATE OR DELETE ON company FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_plant_audit AFTER INSERT OR UPDATE OR DELETE ON plant FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_profit_center_audit AFTER INSERT OR UPDATE OR DELETE ON profit_center FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_cost_center_audit AFTER INSERT OR UPDATE OR DELETE ON cost_center FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_asset_class_audit AFTER INSERT OR UPDATE OR DELETE ON asset_class FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_site_audit AFTER INSERT OR UPDATE OR DELETE ON site FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_room_audit AFTER INSERT OR UPDATE OR DELETE ON room FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_category_audit AFTER INSERT OR UPDATE OR DELETE ON category FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_model_audit AFTER INSERT OR UPDATE OR DELETE ON model FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_vendor_audit AFTER INSERT OR UPDATE OR DELETE ON vendor FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_asset_audit AFTER INSERT OR UPDATE OR DELETE ON asset FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_asset_value_audit AFTER INSERT OR UPDATE OR DELETE ON asset_value FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_asset_assignment_audit AFTER INSERT OR UPDATE OR DELETE ON asset_assignment FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_discovery_job_audit AFTER INSERT OR UPDATE OR DELETE ON discovery_job FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_config_item_audit AFTER INSERT OR UPDATE OR DELETE ON config_item FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_ci_relation_audit AFTER INSERT OR UPDATE OR DELETE ON ci_relation FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_ticket_link_audit AFTER INSERT OR UPDATE OR DELETE ON ticket_link FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_software_product_audit AFTER INSERT OR UPDATE OR DELETE ON software_product FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_license_audit AFTER INSERT OR UPDATE OR DELETE ON license FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_license_assignment_audit AFTER INSERT OR UPDATE OR DELETE ON license_assignment FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_contract_audit AFTER INSERT OR UPDATE OR DELETE ON contract FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_contract_asset_audit AFTER INSERT OR UPDATE OR DELETE ON contract_asset FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_purchase_request_audit AFTER INSERT OR UPDATE OR DELETE ON purchase_request FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_purchase_request_item_audit AFTER INSERT OR UPDATE OR DELETE ON purchase_request_item FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_po_item_audit AFTER INSERT OR UPDATE OR DELETE ON po_item FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_po_item_asset_audit AFTER INSERT OR UPDATE OR DELETE ON po_item_asset FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_goods_receipt_audit AFTER INSERT OR UPDATE OR DELETE ON goods_receipt FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_asset_request_audit AFTER INSERT OR UPDATE OR DELETE ON asset_request FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_approval_audit AFTER INSERT OR UPDATE OR DELETE ON approval FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_count_campaign_audit AFTER INSERT OR UPDATE OR DELETE ON count_campaign FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_count_task_audit AFTER INSERT OR UPDATE OR DELETE ON count_task FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_count_item_audit AFTER INSERT OR UPDATE OR DELETE ON count_item FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_count_unregistered_audit AFTER INSERT OR UPDATE OR DELETE ON count_unregistered FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_pda_device_audit AFTER INSERT OR UPDATE OR DELETE ON pda_device FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_label_template_audit AFTER INSERT OR UPDATE OR DELETE ON label_template FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_printer_audit AFTER INSERT OR UPDATE OR DELETE ON printer FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_sap_posting_audit AFTER INSERT OR UPDATE OR DELETE ON sap_posting FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_recon_run_audit AFTER INSERT OR UPDATE OR DELETE ON recon_run FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_recon_diff_audit AFTER INSERT OR UPDATE OR DELETE ON recon_diff FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_field_mapping_audit AFTER INSERT OR UPDATE OR DELETE ON field_mapping FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_sap_connection_audit AFTER INSERT OR UPDATE OR DELETE ON sap_connection FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_sap_run_request_audit AFTER INSERT OR UPDATE OR DELETE ON sap_run_request FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_code_audit AFTER INSERT OR UPDATE OR DELETE ON code FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_setting_audit AFTER INSERT OR UPDATE OR DELETE ON setting FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_attachment_audit AFTER INSERT OR UPDATE OR DELETE ON attachment FOR EACH ROW EXECUTE FUNCTION audit_row();
+
+-- 감사 보호 ------------------------------------------------------------------
+-- 감사 객체는 alm_audit_owner가 소유해 업무 테이블 소유자(파이프라인)도 지우거나 바꾸지 못하게 한다.
+ALTER TABLE audit_log OWNER TO alm_audit_owner;
+ALTER FUNCTION audit_row() OWNER TO alm_audit_owner;
+-- 감사 트리거를 끄거나 지우는 DDL은 거부한다(이벤트 트리거는 rds_superuser가 만들고 소유).
+CREATE FUNCTION guard_audit_ddl() RETURNS event_trigger
+LANGUAGE plpgsql SET search_path = public AS $$
+DECLARE
+  r record;
+BEGIN
+  IF TG_EVENT = 'sql_drop' THEN
+    FOR r IN SELECT * FROM pg_event_trigger_dropped_objects() LOOP
+      IF (r.object_type = 'trigger' AND r.object_identity LIKE 'tr\_%\_audit on %')
+         OR (r.object_type IN ('table', 'function') AND r.object_identity IN ('public.audit_log', 'public.audit_row()')) THEN
+        RAISE EXCEPTION 'audit: dropping % is not allowed', r.object_identity;
+      END IF;
+    END LOOP;
+  ELSIF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname LIKE 'tr\_%\_audit' AND tgenabled <> 'O') THEN
+    RAISE EXCEPTION 'audit: audit triggers must stay enabled';
+  END IF;
+END $$;
+CREATE EVENT TRIGGER et_guard_audit_ddl ON ddl_command_end EXECUTE FUNCTION guard_audit_ddl();
+CREATE EVENT TRIGGER et_guard_audit_drop ON sql_drop EXECUTE FUNCTION guard_audit_ddl();
 
 COMMIT;

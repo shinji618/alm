@@ -482,7 +482,7 @@ P = 'pda'
 ep(P,'GET','/pda/me','pdaGetMe','로그인 사용자·앱 설정','PDA',None,'PdaMe','200, 401, 403','app_user, user_role','PDA-01',
    ['COUNTER 역할이 없으면 403 ALM-E401.', '앱은 serverTime으로 기기 시계 차이를 기록하고 scannedAt 보정에 쓴다.'])
 ep(P,'PUT','/pda/devices/{deviceSerial}','pdaRegisterDevice','기기 등록·갱신','PDA','DeviceRegister','Device','200, 400, 401','pda_device','PDA-01',
-   ['같은 시리얼이면 갱신(멱등). last_user_id·app_version·last_sync_at 기록.'],
+   ['같은 시리얼이면 갱신(멱등). last_user_id·app_version·last_sync_at 기록.', '처음 보는 시리얼은 설정 pda.device_approval이 true면 비활성(관리자 승인 대기)으로 등록하고 403 ALM-E406, false(기본, 파일럿)면 바로 활성.', '비활성 기기는 이 API를 포함한 모든 PDA API가 403 ALM-E406(security_event DEVICE_BLOCKED).'],
    params=[('deviceSerial','path','string(40)','Y','기기 시리얼')])
 ep(P,'GET','/pda/tasks','pdaListTasks','내 실사 작업 목록','PDA',None,'PdaTaskList','200, 401','count_task, count_campaign, room','PDA-02',
    ['assignee = 로그인 사용자이고 캠페인 단계가 COUNTING인 작업만.'],
@@ -586,9 +586,13 @@ ERRORS = [
  ('ALM-E316','422','담당 미배정','실사 시작 전 담당이 없는 룸'),
  ('ALM-E317','409','미처리 차이','처리 안 된 실사 차이가 남음'),
  ('ALM-E318','409','사용 중 마스터','자산이 있는 룸·카테고리 등을 비활성화'),
+ ('ALM-E319','409','마지막 관리자','마지막 SYS_ADMIN 역할은 뺄 수 없음'),
  ('ALM-E401','403','권한 없음','역할·회사코드·사이트 권한 없음'),
  ('ALM-E403','403','직무 분리','요청자 본인이 승인'),
  ('ALM-E402','401','토큰 만료·무효','토큰 다시 발급'),
+ ('ALM-E405','403','로그인 불가','모르는 이메일 도메인, 미등록·비활성 사용자, 유효한 역할 없음'),
+ ('ALM-E406','403','차단된 기기','비활성화된 PDA 기기(pda_device.is_active = false)'),
+ ('ALM-E407','403','채널 불일치','토큰의 앱 클라이언트가 이 API 그룹(웹·PDA·SAP)에 허용되지 않음'),
  ('ALM-E429','429','호출 제한','잠시 뒤 재시도(Retry-After)'),
  ('ALM-E500','500','서버 오류','correlationId로 문의'),
  ('ALM-E501','502','프린터 연결 실패','라벨 프린터 9100 포트 연결 실패'),

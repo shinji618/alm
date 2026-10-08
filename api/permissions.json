@@ -1,0 +1,505 @@
+{
+ "roles": [
+  {
+   "code": "SYS_ADMIN",
+   "name": "시스템 관리자",
+   "summary": "사용자·역할, 코드·설정, SAP 연결, Discovery 설정. 업무 데이터는 조회만"
+  },
+  {
+   "code": "ASSET_MANAGER",
+   "name": "자산 관리자",
+   "summary": "자산 대장, 할당, 라이선스·계약, 실사 기획, 라벨, ALM 마스터"
+  },
+  {
+   "code": "DEPT_MANAGER",
+   "name": "부서 관리자",
+   "summary": "담당 코스트센터의 자산·요청 조회와 승인"
+  },
+  {
+   "code": "ASSET_ACCOUNTANT",
+   "name": "자산회계",
+   "summary": "금액, 최종 승인, SAP 전기·재처리·대사, 감사 로그"
+  },
+  {
+   "code": "COUNTER",
+   "name": "실사 담당",
+   "summary": "PDA 실사(배정된 룸만). 웹 화면 없음"
+  },
+  {
+   "code": "EMPLOYEE",
+   "name": "일반 사용자",
+   "summary": "내 자산 조회, 요청 제출. 감사인을 뺀 모든 활성 사용자에게 자동 부여"
+  },
+  {
+   "code": "AUDITOR",
+   "name": "감사인",
+   "summary": "전체 조회(금액·감사 로그 포함), 변경 불가. 유효기간 필수, 다른 역할과 함께 가질 수 없음"
+  }
+ ],
+ "permissions": [
+  {
+   "key": "auth",
+   "area": "공통",
+   "description": "로그인한 활성 사용자(역할 무관)"
+  },
+  {
+   "key": "dashboard.read",
+   "area": "대시보드",
+   "description": "대시보드 조회"
+  },
+  {
+   "key": "asset.read",
+   "area": "자산",
+   "description": "자산·이력·할당·연결 정보 조회"
+  },
+  {
+   "key": "asset.write",
+   "area": "자산",
+   "description": "자산 등록·수정"
+  },
+  {
+   "key": "asset.assign",
+   "area": "자산",
+   "description": "할당·반납·수리 이동"
+  },
+  {
+   "key": "amount.read",
+   "area": "자산",
+   "description": "금액 필드(취득가·누계액·NBV·단가·계약 금액) 보기. 없으면 null"
+  },
+  {
+   "key": "discovery.read",
+   "area": "Discovery",
+   "description": "수집 작업·결과 조회"
+  },
+  {
+   "key": "discovery.write",
+   "area": "Discovery",
+   "description": "수집 작업 설정·실행"
+  },
+  {
+   "key": "discovery.resolve",
+   "area": "Discovery",
+   "description": "수집 결과 처리(자산 등록·갱신으로 이어짐)"
+  },
+  {
+   "key": "cmdb.read",
+   "area": "CMDB",
+   "description": "CI·관계 조회"
+  },
+  {
+   "key": "cmdb.write",
+   "area": "CMDB",
+   "description": "CI·관계 등록·수정"
+  },
+  {
+   "key": "license.read",
+   "area": "라이선스",
+   "description": "라이선스·설치 소프트웨어 조회"
+  },
+  {
+   "key": "license.write",
+   "area": "라이선스",
+   "description": "라이선스 등록·좌석 할당·회수"
+  },
+  {
+   "key": "contract.read",
+   "area": "계약",
+   "description": "계약 조회"
+  },
+  {
+   "key": "contract.write",
+   "area": "계약",
+   "description": "계약 등록·수정·갱신"
+  },
+  {
+   "key": "po.read",
+   "area": "구매",
+   "description": "PO·입고 조회"
+  },
+  {
+   "key": "purchase.read",
+   "area": "구매",
+   "description": "구매요청 조회"
+  },
+  {
+   "key": "purchase.request",
+   "area": "구매",
+   "description": "구매요청 작성·제출·취소(본인)"
+  },
+  {
+   "key": "request.read",
+   "area": "요청·승인",
+   "description": "자산 요청 조회"
+  },
+  {
+   "key": "request.create",
+   "area": "요청·승인",
+   "description": "자산 요청 작성·제출·취소(본인)"
+  },
+  {
+   "key": "approval.decide",
+   "area": "요청·승인",
+   "description": "승인·반려. 승인 단계의 역할과 범위가 맞아야 함. 승인 대상의 금액은 승인자에게 보임"
+  },
+  {
+   "key": "count.read",
+   "area": "실사",
+   "description": "캠페인·결과 조회"
+  },
+  {
+   "key": "count.manage",
+   "area": "실사",
+   "description": "캠페인 기획·배정·차이 처리·종료"
+  },
+  {
+   "key": "count.post",
+   "area": "실사",
+   "description": "실사 결과 SAP 전기"
+  },
+  {
+   "key": "count.scan",
+   "area": "실사",
+   "description": "PDA 실사(스캔·미등록·작업 완료)"
+  },
+  {
+   "key": "label.read",
+   "area": "라벨",
+   "description": "템플릿·프린터·출력 이력 조회"
+  },
+  {
+   "key": "label.print",
+   "area": "라벨",
+   "description": "라벨 출력"
+  },
+  {
+   "key": "label.config",
+   "area": "라벨",
+   "description": "템플릿·프린터 설정"
+  },
+  {
+   "key": "sap.status",
+   "area": "SAP 연계",
+   "description": "연계 상태 요약"
+  },
+  {
+   "key": "sap.monitor",
+   "area": "SAP 연계",
+   "description": "실행 로그·전기 큐·대사 결과 조회"
+  },
+  {
+   "key": "sap.operate",
+   "area": "SAP 연계",
+   "description": "전기 재처리, 수동 실행 요청"
+  },
+  {
+   "key": "sap.finance",
+   "area": "SAP 연계",
+   "description": "전기 취소, 대사 차이 처리, 전기 오류 요청 보정, 마감 실행(isClosing)"
+  },
+  {
+   "key": "sap.config",
+   "area": "SAP 연계",
+   "description": "SAP 연결·비밀 교체·필드 매핑"
+  },
+  {
+   "key": "master.read",
+   "area": "관리",
+   "description": "ALM 마스터 조회"
+  },
+  {
+   "key": "master.write",
+   "area": "관리",
+   "description": "ALM 마스터(사이트·룸·카테고리·모델·공급사) 등록·수정"
+  },
+  {
+   "key": "admin.user",
+   "area": "관리",
+   "description": "사용자·역할 관리, 직무 충돌 점검"
+  },
+  {
+   "key": "admin.config",
+   "area": "관리",
+   "description": "공통 코드·설정"
+  },
+  {
+   "key": "audit.read",
+   "area": "관리",
+   "description": "감사 로그·보안 이벤트 조회"
+  },
+  {
+   "key": "sap.api",
+   "area": "SAP 머신",
+   "description": "SAP 배치 잡 전용(Client Credentials). 사람 역할에는 없음"
+  }
+ ],
+ "grants": {
+  "SYS_ADMIN": {
+   "dashboard.read": "ALL",
+   "asset.read": "ALL",
+   "amount.read": "ALL",
+   "discovery.read": "ALL",
+   "cmdb.read": "ALL",
+   "license.read": "ALL",
+   "contract.read": "ALL",
+   "po.read": "ALL",
+   "purchase.read": "ALL",
+   "request.read": "ALL",
+   "count.read": "ALL",
+   "label.read": "ALL",
+   "sap.status": "ALL",
+   "sap.monitor": "ALL",
+   "master.read": "ALL",
+   "discovery.write": "ALL",
+   "cmdb.write": "ALL",
+   "label.config": "-",
+   "sap.operate": "ALL",
+   "sap.config": "-",
+   "master.write": "ALL",
+   "admin.user": "-",
+   "admin.config": "-",
+   "audit.read": "ALL"
+  },
+  "ASSET_MANAGER": {
+   "dashboard.read": "ALL",
+   "asset.read": "ALL",
+   "amount.read": "ALL",
+   "discovery.read": "ALL",
+   "cmdb.read": "ALL",
+   "license.read": "ALL",
+   "contract.read": "ALL",
+   "po.read": "ALL",
+   "purchase.read": "ALL",
+   "request.read": "ALL",
+   "count.read": "ALL",
+   "label.read": "ALL",
+   "sap.status": "ALL",
+   "master.read": "ALL",
+   "asset.write": "ALL",
+   "asset.assign": "ALL",
+   "discovery.write": "ALL",
+   "discovery.resolve": "ALL",
+   "cmdb.write": "ALL",
+   "license.write": "ALL",
+   "contract.write": "ALL",
+   "count.manage": "ALL",
+   "label.print": "ALL",
+   "master.write": "ALL"
+  },
+  "DEPT_MANAGER": {
+   "dashboard.read": "CC",
+   "asset.read": "CC",
+   "purchase.read": "CC",
+   "request.read": "CC",
+   "approval.decide": "CC"
+  },
+  "ASSET_ACCOUNTANT": {
+   "dashboard.read": "ALL",
+   "asset.read": "ALL",
+   "amount.read": "ALL",
+   "license.read": "ALL",
+   "contract.read": "ALL",
+   "po.read": "ALL",
+   "purchase.read": "ALL",
+   "request.read": "ALL",
+   "count.read": "ALL",
+   "sap.status": "ALL",
+   "sap.monitor": "ALL",
+   "master.read": "ALL",
+   "approval.decide": "ALL",
+   "count.post": "ALL",
+   "sap.operate": "ALL",
+   "sap.finance": "ALL",
+   "audit.read": "ALL"
+  },
+  "COUNTER": {
+   "count.scan": "TASK"
+  },
+  "EMPLOYEE": {
+   "asset.read": "OWN",
+   "purchase.read": "OWN",
+   "purchase.request": "OWN",
+   "request.read": "OWN",
+   "request.create": "OWN"
+  },
+  "AUDITOR": {
+   "dashboard.read": "ALL",
+   "asset.read": "ALL",
+   "amount.read": "ALL",
+   "discovery.read": "ALL",
+   "cmdb.read": "ALL",
+   "license.read": "ALL",
+   "contract.read": "ALL",
+   "po.read": "ALL",
+   "purchase.read": "ALL",
+   "request.read": "ALL",
+   "count.read": "ALL",
+   "label.read": "ALL",
+   "sap.status": "ALL",
+   "sap.monitor": "ALL",
+   "master.read": "ALL",
+   "audit.read": "ALL"
+  }
+ },
+ "operations": {
+  "authLogin": null,
+  "authCallback": null,
+  "authRefresh": null,
+  "authLogout": null,
+  "getMe": "auth",
+  "patchMe": "auth",
+  "getLookups": "auth",
+  "search": "auth",
+  "listNotifications": "auth",
+  "readNotification": "auth",
+  "presignAttachment": "auth",
+  "downloadAttachment": "auth",
+  "createExport": "auth",
+  "getExport": "auth",
+  "getDashboard": "dashboard.read",
+  "listAssets": "asset.read",
+  "getAsset": "asset.read",
+  "listAssetHistory": "asset.read",
+  "listAssetAssignments": "asset.read",
+  "listAssetContracts": "asset.read",
+  "listAssetSoftware": "asset.read",
+  "listAssetTickets": "asset.read",
+  "listAssetAttachments": "asset.read",
+  "listAssetValues": "amount.read",
+  "createAsset": "asset.write",
+  "patchAsset": "asset.write",
+  "checkOutAsset": "asset.assign",
+  "checkInAsset": "asset.assign",
+  "moveRepair": "asset.assign",
+  "listDiscoveryJobs": "discovery.read",
+  "listDiscoveryRuns": "discovery.read",
+  "listDiscoveryItems": "discovery.read",
+  "createDiscoveryJob": "discovery.write",
+  "patchDiscoveryJob": "discovery.write",
+  "runDiscoveryJob": "discovery.write",
+  "resolveDiscoveryItems": "discovery.resolve",
+  "listCis": "cmdb.read",
+  "getCiGraph": "cmdb.read",
+  "listTickets": "asset.read",
+  "createCi": "cmdb.write",
+  "patchCi": "cmdb.write",
+  "createCiRelation": "cmdb.write",
+  "deleteCiRelation": "cmdb.write",
+  "listSoftwareProducts": "license.read",
+  "listLicenses": "license.read",
+  "getLicenseUsage": "license.read",
+  "listUnauthorized": "license.read",
+  "createSoftwareProduct": "license.write",
+  "patchSoftwareProduct": "license.write",
+  "createLicense": "license.write",
+  "patchLicense": "license.write",
+  "assignSeat": "license.write",
+  "releaseSeat": "license.write",
+  "reclaimSeats": "license.write",
+  "requestLicensePurchase": "license.write",
+  "listContracts": "contract.read",
+  "getContract": "contract.read",
+  "getRenewalCalendar": "contract.read",
+  "createContract": "contract.write",
+  "patchContract": "contract.write",
+  "addContractAssets": "contract.write",
+  "removeContractAsset": "contract.write",
+  "renewContract": "contract.write",
+  "listPurchaseRequests": "purchase.read",
+  "getPurchaseRequest": "purchase.read",
+  "createPurchaseRequest": "purchase.request",
+  "patchPurchaseRequest": "purchase.request",
+  "submitPurchaseRequest": "purchase.request",
+  "cancelPurchaseRequest": [
+   "purchase.request",
+   "asset.write"
+  ],
+  "listPoItems": "po.read",
+  "getPoItem": "po.read",
+  "listAssetRequests": "request.read",
+  "getAssetRequest": "request.read",
+  "createAssetRequest": "request.create",
+  "patchAssetRequest": "request.create",
+  "submitAssetRequest": "request.create",
+  "cancelAssetRequest": [
+   "request.create",
+   "asset.write"
+  ],
+  "fixAssetRequest": "sap.finance",
+  "listApprovalInbox": "approval.decide",
+  "approve": "approval.decide",
+  "reject": "approval.decide",
+  "listCampaigns": "count.read",
+  "getCampaign": "count.read",
+  "listCampaignTasks": "count.read",
+  "listCountItems": "count.read",
+  "listUnregistered": "count.read",
+  "createCampaign": "count.manage",
+  "patchCampaign": "count.manage",
+  "previewScope": "count.manage",
+  "startCampaign": "count.manage",
+  "assignCountTask": "count.manage",
+  "closeCounting": "count.manage",
+  "resolveVariances": "count.manage",
+  "resolveUnregistered": "count.manage",
+  "closeCampaign": "count.manage",
+  "postCountResults": "count.post",
+  "listLabelTemplates": "label.read",
+  "listPrinters": "label.read",
+  "listLabelJobs": "label.read",
+  "previewZpl": "label.read",
+  "createLabelTemplate": "label.config",
+  "patchLabelTemplate": "label.config",
+  "createPrinter": "label.config",
+  "patchPrinter": "label.config",
+  "testPrinter": "label.print",
+  "createLabelJobs": "label.print",
+  "printLabelJobs": "label.print",
+  "getSapStatus": "sap.status",
+  "listSapRuns": "sap.monitor",
+  "listSapRunMessages": "sap.monitor",
+  "listPostings": "sap.monitor",
+  "getPosting": "sap.monitor",
+  "listReconRuns": "sap.monitor",
+  "listReconDiffs": "sap.monitor",
+  "listFieldMappings": "sap.monitor",
+  "retryPosting": "sap.operate",
+  "createRunRequest": "sap.operate",
+  "cancelPosting": "sap.finance",
+  "resolveReconDiffs": "sap.finance",
+  "patchFieldMapping": "sap.config",
+  "listSapConnections": "sap.config",
+  "createSapConnection": "sap.config",
+  "rotateSapSecret": "sap.config",
+  "listUsers": "admin.user",
+  "createUser": "admin.user",
+  "patchUser": "admin.user",
+  "putUserRoles": "admin.user",
+  "listSodConflicts": "admin.user",
+  "listMasters": "master.read",
+  "createMaster": "master.write",
+  "patchMaster": "master.write",
+  "listCodes": "admin.config",
+  "putCodeGroup": "admin.config",
+  "listSettings": "admin.config",
+  "putSetting": "admin.config",
+  "listAuditLogs": "audit.read",
+  "listSecurityEvents": "audit.read"
+ },
+ "implicit": {
+  "role": "EMPLOYEE",
+  "excludedIf": [
+   "AUDITOR"
+  ]
+ },
+ "exclusiveRoles": [
+  "AUDITOR"
+ ],
+ "paramPermissions": [
+  {
+   "operation": "createRunRequest",
+   "when": "isClosing = true",
+   "permission": "sap.finance"
+  }
+ ]
+}

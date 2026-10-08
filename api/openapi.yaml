@@ -1,11 +1,11 @@
 openapi: 3.1.0
 info:
   title: ALM API — Web · PDA · SAP
-  version: 0.2.0
+  version: 0.3.0
   license:
     name: Proprietary — BSG America
     identifier: LicenseRef-BSG-Proprietary
-  description: BSG America Asset Lifecycle Manager. WBS 2.6 — 웹 화면, PDA, SAP.
+  description: BSG America Asset Lifecycle Manager. WBS 2.6 — 웹 화면, PDA, SAP. WBS 2.8 — x-permission(권한 키)·x-scope(역할별 범위).
 servers:
 - url: https://alm.{domain}/api/v1
   variables:
@@ -33,6 +33,7 @@ paths:
         - 앱은 serverTime으로 기기 시계 차이를 기록하고 scannedAt 보정에 쓴다.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/DeviceId'
       responses:
         '200':
           description: 성공
@@ -48,6 +49,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.scan
+      x-scope:
+        COUNTER: TASK
       security:
       - pdaAuth:
         - pda
@@ -60,9 +64,14 @@ paths:
       description: 'PDA-01 · 테이블: pda_device
 
 
-        - 같은 시리얼이면 갱신(멱등). last_user_id·app_version·last_sync_at 기록.'
+        - 같은 시리얼이면 갱신(멱등). last_user_id·app_version·last_sync_at 기록.
+
+        - 처음 보는 시리얼은 설정 pda.device_approval이 true면 비활성(관리자 승인 대기)으로 등록하고 403 ALM-E406, false(기본, 파일럿)면 바로 활성.
+
+        - 비활성 기기는 이 API를 포함한 모든 PDA API가 403 ALM-E406(security_event DEVICE_BLOCKED).'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/DeviceId'
       - name: deviceSerial
         in: path
         required: true
@@ -85,6 +94,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.scan
+      x-scope:
+        COUNTER: TASK
       security:
       - pdaAuth:
         - pda
@@ -106,6 +118,7 @@ paths:
         - assignee = 로그인 사용자이고 캠페인 단계가 COUNTING인 작업만.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/DeviceId'
       - name: status
         in: query
         required: false
@@ -129,6 +142,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.scan
+      x-scope:
+        COUNTER: TASK
       security:
       - pdaAuth:
         - pda
@@ -150,6 +166,7 @@ paths:
         - 응답은 gzip. If-None-Match(ETag)가 같으면 304.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/DeviceId'
       - name: campaignId
         in: path
         required: true
@@ -194,6 +211,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.scan
+      x-scope:
+        COUNTER: TASK
       security:
       - pdaAuth:
         - pda
@@ -211,6 +231,7 @@ paths:
         - 같은 테넌트의 다른 자산 태그와 상태만(개인정보 없음). 델타·페이지 규칙은 worklist와 같다.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/DeviceId'
       - name: campaignId
         in: path
         required: true
@@ -245,6 +266,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.scan
+      x-scope:
+        COUNTER: TASK
       security:
       - pdaAuth:
         - pda
@@ -260,6 +284,7 @@ paths:
         - 캠페인 범위의 사이트에 있는 활성 룸 전체(다른 룸에서 발견한 자산 기록용).'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/DeviceId'
       - name: campaignId
         in: query
         required: true
@@ -280,6 +305,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.scan
+      x-scope:
+        COUNTER: TASK
       security:
       - pdaAuth:
         - pda
@@ -295,6 +323,7 @@ paths:
         - 사용자 locale로 이름을 내려준다.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/DeviceId'
       responses:
         '200':
           description: 성공
@@ -308,6 +337,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.scan
+      x-scope:
+        COUNTER: TASK
       security:
       - pdaAuth:
         - pda
@@ -325,6 +357,7 @@ paths:
         - 완료한 룸에 스캔이 더 들어오면 작업을 IN_PROGRESS로 되돌린다.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/DeviceId'
       - $ref: '#/components/parameters/IdempotencyKey'
       - name: taskId
         in: path
@@ -352,6 +385,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.scan
+      x-scope:
+        COUNTER: TASK
       security:
       - pdaAuth:
         - pda
@@ -377,6 +413,7 @@ paths:
         - 최대 5 MB, JPEG·PNG. 기기에서 긴 변 1,600px로 줄여 올린다.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/DeviceId'
       responses:
         '200':
           description: 성공
@@ -394,6 +431,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.scan
+      x-scope:
+        COUNTER: TASK
       security:
       - pdaAuth:
         - pda
@@ -423,6 +463,7 @@ paths:
         - MISSING 자산을 스캔하면 status_before_missing으로 복원하고 asset_event를 남긴다.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/DeviceId'
       responses:
         '200':
           description: 성공
@@ -446,6 +487,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.scan
+      x-scope:
+        COUNTER: TASK
       security:
       - pdaAuth:
         - pda
@@ -469,6 +513,7 @@ paths:
         - 사진이 없으면 REJECTED ALM-E110.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/DeviceId'
       responses:
         '200':
           description: 성공
@@ -490,6 +535,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.scan
+      x-scope:
+        COUNTER: TASK
       security:
       - pdaAuth:
         - pda
@@ -576,6 +624,7 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.api
       security:
       - sapAuth:
         - sap.api
@@ -619,6 +668,7 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.api
       security:
       - sapAuth:
         - sap.api
@@ -670,6 +720,7 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.api
       security:
       - sapAuth:
         - sap.api
@@ -717,6 +768,7 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.api
       security:
       - sapAuth:
         - sap.api
@@ -762,6 +814,7 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.api
       security:
       - sapAuth:
         - sap.api
@@ -820,6 +873,7 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.api
       security:
       - sapAuth:
         - sap.api
@@ -867,6 +921,7 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.api
       security:
       - sapAuth:
         - sap.api
@@ -918,6 +973,7 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.api
       security:
       - sapAuth:
         - sap.api
@@ -967,6 +1023,7 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.api
       security:
       - sapAuth:
         - sap.api
@@ -1003,6 +1060,7 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: auth
       security:
       - webAuth:
         - web
@@ -1030,6 +1088,7 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: auth
       security:
       - webAuth:
         - web
@@ -1050,7 +1109,9 @@ paths:
 
         - types에 적은 것만 돌려준다. 응답은 5분 캐시(ETag).
 
-        - 사용자 범위(회사코드·사이트) 밖의 값은 빼고 돌려준다.'
+        - 사용자 범위(회사코드·사이트) 밖의 값은 빼고 돌려준다.
+
+        - users는 approval.decide·asset.assign·count.manage·admin.user 중 하나가 있어야 하고, 이름·이메일·부서만 돌려준다(없으면 빈 목록).'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       - name: types
@@ -1083,6 +1144,8 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: auth
+      x-condition: users는 approval.decide·asset.assign·count.manage·admin.user 중 하나
       security:
       - webAuth:
         - web
@@ -1097,7 +1160,9 @@ paths:
 
         - 자산은 태그·시리얼·호스트명·IP·사용자 이름 부분 일치, 나머지는 번호·이름.
 
-        - Enter 키는 /assets?q= 로 이동(자산 목록 검색).'
+        - Enter 키는 /assets?q= 로 이동(자산 목록 검색).
+
+        - 엔터티마다 그 목록 API와 같은 권한·범위를 적용한다(asset.read, request.read, contract.read, license.read, cmdb.read). 권한이 없는 엔터티는 결과에서 뺀다.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       - name: q
@@ -1117,6 +1182,8 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: auth
+      x-condition: 엔터티별 조회 권한·범위로 거른 결과만
       security:
       - webAuth:
         - web
@@ -1161,6 +1228,7 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: auth
       security:
       - webAuth:
         - web
@@ -1196,6 +1264,7 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: auth
       security:
       - webAuth:
         - web
@@ -1230,6 +1299,8 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: auth
+      x-condition: 대상 화면의 쓰기 권한
       security:
       - webAuth:
         - web
@@ -1273,6 +1344,8 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: auth
+      x-condition: 대상 화면의 조회 권한
       security:
       - webAuth:
         - web
@@ -1303,6 +1376,8 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: auth
+      x-condition: 대상 목록의 조회 권한. 금액 열은 amount.read
       security:
       - webAuth:
         - web
@@ -1344,6 +1419,8 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: auth
+      x-condition: 요청자 본인
       security:
       - webAuth:
         - web
@@ -1387,6 +1464,13 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: dashboard.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        DEPT_MANAGER: CC
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -1501,6 +1585,14 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: asset.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        DEPT_MANAGER: CC
+        ASSET_ACCOUNTANT: ALL
+        EMPLOYEE: OWN
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -1537,6 +1629,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: asset.write
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -1580,6 +1675,14 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: asset.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        DEPT_MANAGER: CC
+        ASSET_ACCOUNTANT: ALL
+        EMPLOYEE: OWN
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -1630,6 +1733,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: asset.write
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -1678,6 +1784,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: asset.assign
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -1724,6 +1833,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: asset.assign
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -1770,6 +1882,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: asset.assign
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -1823,6 +1938,14 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: asset.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        DEPT_MANAGER: CC
+        ASSET_ACCOUNTANT: ALL
+        EMPLOYEE: OWN
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -1860,6 +1983,12 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: amount.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -1895,6 +2024,14 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: asset.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        DEPT_MANAGER: CC
+        ASSET_ACCOUNTANT: ALL
+        EMPLOYEE: OWN
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -1930,6 +2067,14 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: asset.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        DEPT_MANAGER: CC
+        ASSET_ACCOUNTANT: ALL
+        EMPLOYEE: OWN
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -1965,6 +2110,14 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: asset.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        DEPT_MANAGER: CC
+        ASSET_ACCOUNTANT: ALL
+        EMPLOYEE: OWN
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -2000,6 +2153,14 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: asset.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        DEPT_MANAGER: CC
+        ASSET_ACCOUNTANT: ALL
+        EMPLOYEE: OWN
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -2035,6 +2196,14 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: asset.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        DEPT_MANAGER: CC
+        ASSET_ACCOUNTANT: ALL
+        EMPLOYEE: OWN
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -2079,6 +2248,11 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: discovery.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -2107,6 +2281,10 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: discovery.write
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -2150,6 +2328,10 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: discovery.write
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -2193,6 +2375,10 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: discovery.write
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -2244,6 +2430,11 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: discovery.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -2307,6 +2498,11 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: discovery.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -2342,6 +2538,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: discovery.resolve
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -2404,6 +2603,11 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: cmdb.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -2434,6 +2638,10 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: cmdb.write
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -2477,6 +2685,10 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: cmdb.write
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -2536,6 +2748,11 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: cmdb.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -2566,6 +2783,10 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: cmdb.write
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -2603,6 +2824,10 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: cmdb.write
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -2643,6 +2868,15 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: asset.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        DEPT_MANAGER: CC
+        ASSET_ACCOUNTANT: ALL
+        EMPLOYEE: OWN
+        AUDITOR: ALL
+      x-condition: 연결된 자산 조회 범위
       security:
       - webAuth:
         - web
@@ -2693,6 +2927,12 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: license.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -2723,6 +2963,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: license.write
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -2766,6 +3009,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: license.write
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -2828,6 +3074,12 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: license.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -2856,6 +3108,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: license.write
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -2899,6 +3154,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: license.write
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -2940,6 +3198,12 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: license.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -2977,6 +3241,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: license.write
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -3025,6 +3292,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: license.write
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -3060,6 +3330,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: license.write
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -3101,6 +3374,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: license.write
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -3151,6 +3427,12 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: license.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -3220,6 +3502,12 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: contract.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -3250,6 +3538,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: contract.write
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -3291,6 +3582,12 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: contract.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -3335,6 +3632,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: contract.write
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -3378,6 +3678,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: contract.write
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -3422,6 +3725,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: contract.write
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -3454,6 +3760,12 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: contract.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -3491,6 +3803,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: contract.write
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -3559,6 +3874,14 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: purchase.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        DEPT_MANAGER: CC
+        ASSET_ACCOUNTANT: ALL
+        EMPLOYEE: OWN
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -3587,6 +3910,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: purchase.request
+      x-scope:
+        EMPLOYEE: OWN
       security:
       - webAuth:
         - web
@@ -3605,7 +3931,9 @@ paths:
       description: 'ALM-210 · 테이블: purchase_request, approval, sap_posting
 
 
-        - -'
+        - 범위 안이거나 요청자·승인 단계 승인자. 범위 밖이면 404.
+
+        - 현재 승인 단계의 승인자에게는 amount.read가 없어도 예상 금액을 보여 준다.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       - name: id
@@ -3630,6 +3958,15 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: purchase.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        DEPT_MANAGER: CC
+        ASSET_ACCOUNTANT: ALL
+        EMPLOYEE: OWN
+        AUDITOR: ALL
+      x-condition: 범위 + 요청자·승인자
       security:
       - webAuth:
         - web
@@ -3672,6 +4009,10 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: purchase.request
+      x-scope:
+        EMPLOYEE: OWN
+      x-condition: 요청자 본인, DRAFT
       security:
       - webAuth:
         - web
@@ -3718,6 +4059,10 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: purchase.request
+      x-scope:
+        EMPLOYEE: OWN
+      x-condition: 요청자 본인
       security:
       - webAuth:
         - web
@@ -3729,6 +4074,8 @@ paths:
       - WEB
       description: 'ALM-210 · 테이블: purchase_request
 
+
+        - 요청자 본인(purchase.request) 또는 asset.write가 있는 자산 관리자(범위 안).
 
         - PO_REQUESTED 이후는 취소 불가(409).'
       parameters:
@@ -3753,6 +4100,15 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission:
+      - purchase.request
+      - asset.write
+      x-scope:
+        purchase.request:
+          EMPLOYEE: OWN
+        asset.write:
+          ASSET_MANAGER: ALL
+      x-condition: 요청자 본인 또는 asset.write
       security:
       - webAuth:
         - web
@@ -3809,6 +4165,12 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: po.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -3844,6 +4206,12 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: po.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -3919,6 +4287,14 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: request.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        DEPT_MANAGER: CC
+        ASSET_ACCOUNTANT: ALL
+        EMPLOYEE: OWN
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -3957,6 +4333,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: request.create
+      x-scope:
+        EMPLOYEE: OWN
       security:
       - webAuth:
         - web
@@ -3975,7 +4354,9 @@ paths:
       description: 'ALM-230 · 테이블: asset_request, approval, sap_posting, attachment
 
 
-        - -'
+        - 범위 안이거나 요청자·승인 단계 승인자. 범위 밖이면 404.
+
+        - 현재 승인 단계의 승인자에게는 amount.read가 없어도 금액을 보여 준다(승인 판단용).'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       - name: id
@@ -4000,6 +4381,15 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: request.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        DEPT_MANAGER: CC
+        ASSET_ACCOUNTANT: ALL
+        EMPLOYEE: OWN
+        AUDITOR: ALL
+      x-condition: 범위 + 요청자·승인자
       security:
       - webAuth:
         - web
@@ -4011,7 +4401,7 @@ paths:
       description: 'ALM-230 · 테이블: asset_request, sap_posting
 
 
-        - DRAFT는 요청자가, POST_ERROR는 자산회계가 값을 고친다. POST_ERROR 수정 후에는 /integration/sap/postings/{id}:retry로 재전기.
+        - DRAFT 상태에서 요청자만 고친다. 제출 뒤에는 바꿀 수 없다(409). POST_ERROR 보정은 :fix(자산회계).
 
         - If-Match: version.'
       parameters:
@@ -4046,6 +4436,10 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: request.create
+      x-scope:
+        EMPLOYEE: OWN
+      x-condition: 요청자 본인, DRAFT
       security:
       - webAuth:
         - web
@@ -4055,6 +4449,68 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/AssetRequestInput'
+  /asset-requests/{id}:fix:
+    post:
+      operationId: fixAssetRequest
+      summary: 전기 오류 보정
+      tags:
+      - WEB
+      description: 'ALM-230, 310 · 테이블: asset_request, approval, sap_posting, asset_event
+
+
+        - POST_ERROR인 요청만(그 외 409).
+
+        - 기술 필드(effectiveDate, 텍스트·참조 값)만 바꾸면 sap_posting을 READY로 되돌리고 attempt를 올린다(:retry와 같음).
+
+        - 회계 필드(acquisitionValue, saleAmount, targetCostCenterId, assetClassId, retireType, 회사코드)가 바뀌면 요청을 SUBMITTED로 되돌리고 승인 단계를 새로 만든다(재승인, 직무 분리 H-08).
+
+        - 보정한 사람은 재생성된 승인 단계를 승인할 수 없다(403 ALM-E403).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      - name: If-Match
+        in: header
+        required: true
+        description: version
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetRequestDetail'
+        '400':
+          $ref: '#/components/responses/E400'
+        '403':
+          $ref: '#/components/responses/E403'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: sap.finance
+      x-scope:
+        ASSET_ACCOUNTANT: ALL
+      x-condition: POST_ERROR, 기술 필드만(회계 필드는 재승인)
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssetRequestFix'
   /asset-requests/{id}:submit:
     post:
       operationId: submitAssetRequest
@@ -4090,6 +4546,10 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: request.create
+      x-scope:
+        EMPLOYEE: OWN
+      x-condition: 요청자 본인
       security:
       - webAuth:
         - web
@@ -4101,6 +4561,8 @@ paths:
       - WEB
       description: 'ALM-230 · 테이블: asset_request
 
+
+        - 요청자 본인(request.create) 또는 asset.write가 있는 자산 관리자(범위 안).
 
         - ACCT_APPROVED 이후(전기 대기)는 sap_posting이 CLAIMED가 아닐 때만 취소.'
       parameters:
@@ -4125,6 +4587,15 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission:
+      - request.create
+      - asset.write
+      x-scope:
+        request.create:
+          EMPLOYEE: OWN
+        asset.write:
+          ASSET_MANAGER: ALL
+      x-condition: 요청자 본인 또는 asset.write
       security:
       - webAuth:
         - web
@@ -4178,6 +4649,10 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: approval.decide
+      x-scope:
+        DEPT_MANAGER: CC
+        ASSET_ACCOUNTANT: ALL
       security:
       - webAuth:
         - web
@@ -4220,6 +4695,11 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: approval.decide
+      x-scope:
+        DEPT_MANAGER: CC
+        ASSET_ACCOUNTANT: ALL
+      x-condition: 승인 단계의 역할·범위, 요청자 본인 아님, 같은 요청의 앞 단계 승인자 아님
       security:
       - webAuth:
         - web
@@ -4266,6 +4746,11 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: approval.decide
+      x-scope:
+        DEPT_MANAGER: CC
+        ASSET_ACCOUNTANT: ALL
+      x-condition: 승인 단계의 역할·범위
       security:
       - webAuth:
         - web
@@ -4322,6 +4807,12 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -4352,6 +4843,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.manage
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -4393,6 +4887,12 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -4435,6 +4935,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.manage
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -4476,6 +4979,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.manage
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -4518,6 +5024,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.manage
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -4553,6 +5062,12 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -4590,6 +5105,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.manage
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -4674,6 +5192,12 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -4710,6 +5234,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.manage
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -4745,6 +5272,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.manage
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -4804,6 +5334,12 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -4842,6 +5378,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.manage
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -4886,6 +5425,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.post
+      x-scope:
+        ASSET_ACCOUNTANT: ALL
       security:
       - webAuth:
         - web
@@ -4921,6 +5463,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: count.manage
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -4947,6 +5492,11 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: label.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -4974,6 +5524,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: label.config
+      x-scope:
+        SYS_ADMIN: '-'
       security:
       - webAuth:
         - web
@@ -5017,6 +5570,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: label.config
+      x-scope:
+        SYS_ADMIN: '-'
       security:
       - webAuth:
         - web
@@ -5056,6 +5612,11 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: label.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -5083,6 +5644,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: label.config
+      x-scope:
+        SYS_ADMIN: '-'
       security:
       - webAuth:
         - web
@@ -5126,6 +5690,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: label.config
+      x-scope:
+        SYS_ADMIN: '-'
       security:
       - webAuth:
         - web
@@ -5169,6 +5736,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: label.print
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -5225,6 +5795,11 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: label.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -5253,6 +5828,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: label.print
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -5298,6 +5876,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: label.print
+      x-scope:
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -5339,6 +5920,11 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: label.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -5365,6 +5951,12 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.status
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -5435,6 +6027,11 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.monitor
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -5494,6 +6091,11 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.monitor
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -5556,6 +6158,11 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.monitor
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -5591,6 +6198,11 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.monitor
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -5631,6 +6243,10 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.operate
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_ACCOUNTANT: ALL
       security:
       - webAuth:
         - web
@@ -5666,6 +6282,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.finance
+      x-scope:
+        ASSET_ACCOUNTANT: ALL
       security:
       - webAuth:
         - web
@@ -5680,7 +6299,9 @@ paths:
 
         - ALM은 SAP을 직접 호출하지 않는다. 요청을 남기면 15분 주기 SAP 잡이 GET /sap/run-requests로 가져가 해당 수신 잡을 바로 실행한다.
 
-        - 같은 IF의 PENDING이 있으면 409.'
+        - 같은 IF의 PENDING이 있으면 409.
+
+        - isClosing = true(IF-AA-02 마감 실행)는 sap.finance가 있어야 한다(없으면 403 ALM-E401).'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       responses:
@@ -5696,6 +6317,14 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.operate
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_ACCOUNTANT: ALL
+      x-param-permission:
+      - when: isClosing = true
+        permission: sap.finance
+      x-condition: isClosing = true는 sap.finance
       security:
       - webAuth:
         - web
@@ -5746,6 +6375,11 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.monitor
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -5811,6 +6445,11 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.monitor
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -5846,6 +6485,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.finance
+      x-scope:
+        ASSET_ACCOUNTANT: ALL
       security:
       - webAuth:
         - web
@@ -5878,6 +6520,11 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.monitor
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -5913,6 +6560,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.config
+      x-scope:
+        SYS_ADMIN: '-'
       security:
       - webAuth:
         - web
@@ -5945,6 +6595,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.config
+      x-scope:
+        SYS_ADMIN: '-'
       security:
       - webAuth:
         - web
@@ -5974,6 +6627,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.config
+      x-scope:
+        SYS_ADMIN: '-'
       security:
       - webAuth:
         - web
@@ -6015,6 +6671,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.config
+      x-scope:
+        SYS_ADMIN: '-'
       security:
       - webAuth:
         - web
@@ -6045,6 +6704,7 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: sap.api
       security:
       - sapAuth:
         - sap.api
@@ -6101,6 +6761,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: admin.user
+      x-scope:
+        SYS_ADMIN: '-'
       security:
       - webAuth:
         - web
@@ -6130,6 +6793,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: admin.user
+      x-scope:
+        SYS_ADMIN: '-'
       security:
       - webAuth:
         - web
@@ -6148,7 +6814,11 @@ paths:
       description: '관리 · 테이블: app_user
 
 
-        - isActive=false면 다음 요청부터 401.'
+        - isActive=false면 60초 안에 모든 요청이 403 ALM-E405(사용자 상태 캐시).
+
+        - email은 idp_subject가 아직 연결되지 않은 사용자만 바꿀 수 있다. 역할이 있는 미연결 사용자의 이메일을 바꾸면 역할을 모두 지운다(다른 계정에 역할이 넘어가는 것을 막음).
+
+        - 연결된 사용자의 idp_subject 해제·재연결은 security_event로 남긴다.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       - name: id
@@ -6173,6 +6843,10 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: admin.user
+      x-scope:
+        SYS_ADMIN: '-'
+      x-condition: 이메일은 IdP 미연결 사용자만
       security:
       - webAuth:
         - web
@@ -6191,7 +6865,15 @@ paths:
       description: '관리 · 테이블: user_role, audit_log
 
 
-        - 전체 교체. 자기 자신의 SYS_ADMIN은 뺄 수 없다(409).'
+        - 전체 교체. 자기 자신의 역할은 바꿀 수 없다(403 ALM-E403, 다른 시스템 관리자가 처리).
+
+        - 마지막 SYS_ADMIN을 빼면 409 ALM-E319.
+
+        - AUDITOR는 다른 역할과 함께 줄 수 없다(400).
+
+        - DEPT_MANAGER는 costCenterCode, AUDITOR는 validUntil(최대 1년)이 필수(400).
+
+        - 직무 충돌 조합(09 설계서 5.2)은 저장하되 응답 헤더 X-SoD-Warning과 /admin/sod-conflicts에 표시.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       - name: id
@@ -6210,12 +6892,20 @@ paths:
                 $ref: '#/components/schemas/UserRow'
         '400':
           $ref: '#/components/responses/E400'
+        '403':
+          $ref: '#/components/responses/E403'
         '404':
           $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
         '429':
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: admin.user
+      x-scope:
+        SYS_ADMIN: '-'
+      x-condition: 자기 자신 제외
       security:
       - webAuth:
         - web
@@ -6287,6 +6977,12 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: master.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
       security:
       - webAuth:
         - web
@@ -6329,6 +7025,10 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: master.write
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -6387,6 +7087,10 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: master.write
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -6419,6 +7123,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: admin.config
+      x-scope:
+        SYS_ADMIN: '-'
       security:
       - webAuth:
         - web
@@ -6454,6 +7161,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: admin.config
+      x-scope:
+        SYS_ADMIN: '-'
       security:
       - webAuth:
         - web
@@ -6486,6 +7196,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: admin.config
+      x-scope:
+        SYS_ADMIN: '-'
       security:
       - webAuth:
         - web
@@ -6521,6 +7234,9 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: admin.config
+      x-scope:
+        SYS_ADMIN: '-'
       security:
       - webAuth:
         - web
@@ -6605,6 +7321,267 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
+      x-permission: audit.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
+      security:
+      - webAuth:
+        - web
+  /auth/login:
+    get:
+      operationId: authLogin
+      summary: 로그인 시작
+      tags:
+      - WEB
+      description: '로그인 화면 · 테이블: tenant
+
+
+        - email의 도메인으로 auth_idp_by_domain()(tenant_domain)을 불러 해당 IdP(identity_provider = tenant.idp_provider_name)로 Cognito /oauth2/authorize에 302.
+
+        - PKCE code_verifier와 state는 암호화 쿠키 alm_pkce(5분, HttpOnly, Secure, SameSite=Lax, Path=/api/v1/auth)에 둔다.
+
+        - 모르는 도메인도 같은 화면 문구로 안내해 고객사 여부를 드러내지 않는다(403 ALM-E405, CloudWatch에만 기록, IP당 분당 10회 제한).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: email
+        in: query
+        required: true
+        description: 로그인 이메일
+        schema:
+          type: string
+      - name: returnTo
+        in: query
+        required: false
+        description: 로그인 뒤 돌아갈 화면 경로(같은 사이트 상대 경로만)
+        schema:
+          type: string
+      responses:
+        '302':
+          description: 리다이렉트
+          headers:
+            Location:
+              schema:
+                type: string
+              description: 이동할 URL
+        '400':
+          $ref: '#/components/responses/E400'
+        '403':
+          $ref: '#/components/responses/E403'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security: []
+  /auth/callback:
+    get:
+      operationId: authCallback
+      summary: 로그인 콜백
+      tags:
+      - WEB
+      description: '로그인 화면 · 테이블: app_user, security_event
+
+
+        - state 확인 → 코드 교환(웹 앱 클라이언트, 비밀 있음) → 액세스 토큰의 username(ID 토큰은 cognito:username)으로 auth_tenant_by_username() → 테넌트·idp_subject.
+
+        - app_user를 (tenant, idp_subject)로 찾는다. 없으면 idp_subject가 비어 있고 이메일이 같은 미리 등록된 사용자에 연결(ID 토큰 email_verified가 true이거나 SAML일 때만). 그래도 없으면 tenant.jit_provision이 true일 때만 EMPLOYEE로 생성, 아니면 403 ALM-E405.
+        비활성 사용자·유효한 역할이 없는 감사인도 403.
+
+        - 이메일·이름은 ID 토큰 값으로 갱신. last_login_at 기록, security_event LOGIN(거부는 LOGIN_DENIED).
+
+        - 리프레시 토큰은 AES-GCM으로 암호화해 쿠키 alm_rt(HttpOnly, Secure, SameSite=Strict, Path=/api/v1/auth, 8시간)에 둔다. 서버에 세션 저장소 없음.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: code
+        in: query
+        required: true
+        description: 인가 코드
+        schema:
+          type: string
+      - name: state
+        in: query
+        required: true
+        description: state
+        schema:
+          type: string
+      responses:
+        '302':
+          description: 리다이렉트
+          headers:
+            Location:
+              schema:
+                type: string
+              description: 이동할 URL
+        '400':
+          $ref: '#/components/responses/E400'
+        '403':
+          $ref: '#/components/responses/E403'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security: []
+  /auth/refresh:
+    post:
+      operationId: authRefresh
+      summary: 액세스 토큰 갱신
+      tags:
+      - WEB
+      description: '앱 셸 · 테이블: -
+
+
+        - SPA가 시작할 때와 만료 1분 전에 호출. 헤더 X-ALM-CSRF: 1과 Origin(웹 도메인) 확인, 다르면 403.
+
+        - 쿠키의 리프레시 토큰으로 Cognito 토큰 갱신. 리프레시 만료(8시간)·회수면 401 → 로그인 화면.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessToken'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security: []
+  /auth/logout:
+    post:
+      operationId: authLogout
+      summary: 로그아웃
+      tags:
+      - WEB
+      description: '앱 셸 · 테이블: security_event
+
+
+        - 액세스 토큰이 만료됐거나 사용자가 비활성이어도 동작한다(쿠키 + X-ALM-CSRF + Origin 확인).
+
+        - Cognito RevokeToken으로 리프레시 토큰 회수, 쿠키 삭제, security_event LOGOUT.
+
+        - logoutUrl로 이동하면 Cognito 세션도 끝난다(IdP 세션은 고객사 정책).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResult'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security: []
+  /admin/security-events:
+    get:
+      operationId: listSecurityEvents
+      summary: 보안 이벤트 조회
+      tags:
+      - WEB
+      description: '관리 · 테이블: security_event
+
+
+        - 10년 보관. 13개월 지난 기간은 내보내기로 조회.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: eventType
+        in: query
+        required: false
+        description: 이벤트(쉼표 구분)
+        schema:
+          type: string
+      - name: actorId
+        in: query
+        required: false
+        description: 사용자
+        schema:
+          type: string
+          format: uuid
+      - name: from
+        in: query
+        required: false
+        description: 시작
+        schema:
+          type: string
+          format: date
+      - name: to
+        in: query
+        required: false
+        description: 종료
+        schema:
+          type: string
+          format: date
+      - name: page
+        in: query
+        required: false
+        description: 페이지(기본 1)
+        schema:
+          type: integer
+      - name: pageSize
+        in: query
+        required: false
+        description: 페이지 크기(기본 50, 최대 500)
+        schema:
+          type: integer
+      - name: sort
+        in: query
+        required: false
+        description: '정렬. 필드명, 내림차순은 - (예: -updatedAt,assetTag)'
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityEventRowList'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: audit.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
+      security:
+      - webAuth:
+        - web
+  /admin/sod-conflicts:
+    get:
+      operationId: listSodConflicts
+      summary: 직무 충돌 점검
+      tags:
+      - WEB
+      description: '관리 · 테이블: user_role
+
+
+        - 09 설계서 5.2의 충돌 규칙으로 현재 유효한 역할을 점검. 분기마다 내보내 SOX 증빙으로 보관.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SodConflictList'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: admin.user
+      x-scope:
+        SYS_ADMIN: '-'
       security:
       - webAuth:
         - web
@@ -6612,7 +7589,7 @@ components:
   securitySchemes:
     webAuth:
       type: oauth2
-      description: Cognito 호스티드 UI + 고객사 SSO(SAML/OIDC). Authorization Code + PKCE. 액세스 60분, 리프레시 8시간(근무일 기준)
+      description: Cognito + 고객사 SSO(SAML/OIDC), Authorization Code + PKCE를 서버(/auth/login·/auth/callback)가 처리. SPA는 /auth/refresh로 받은 액세스 토큰(15분)을 Bearer로 보냄. 리프레시 8시간은 HttpOnly 쿠키
       flows:
         authorizationCode:
           authorizationUrl: https://auth.{domain}/oauth2/authorize
@@ -6653,6 +7630,14 @@ components:
         type: string
         maxLength: 4
       description: 회사코드. 토큰에 허용된 회사코드가 아니면 403
+    DeviceId:
+      name: X-Device-Id
+      in: header
+      required: true
+      schema:
+        type: string
+        maxLength: 40
+      description: PDA 기기 시리얼(MDM 앱 설정 값). 등록 안 된·비활성 기기면 403 ALM-E406
     CorrelationId:
       name: X-Correlation-Id
       in: header
@@ -8730,6 +9715,7 @@ components:
           - ASSET_ACCOUNTANT
           - COUNTER
           - EMPLOYEE
+          - AUDITOR
           description: 역할
         companyCode:
           type: string
@@ -8739,6 +9725,18 @@ components:
           type: string
           maxLength: 10
           description: 사이트 범위(비면 전체)
+        costCenterCode:
+          type: string
+          maxLength: 10
+          description: 코스트센터 범위(DEPT_MANAGER는 필수)
+        validFrom:
+          type: string
+          format: date
+          description: 유효 시작일
+        validUntil:
+          type: string
+          format: date
+          description: 유효 종료일(AUDITOR·임시 COUNTER는 필수)
       required:
       - role
     MePatch:
@@ -11800,6 +12798,24 @@ components:
           type: string
           maxLength: 500
           description: 의견(반려는 필수)
+    AssetRequestFix:
+      type: object
+      description: 전기 오류 보정
+      properties:
+        effectiveDate:
+          type: string
+          format: date
+          description: 전기일·가치일(마감된 기간 오류 등)
+        changes:
+          type: object
+          additionalProperties: true
+          description: '그 밖의 값 {field: after}'
+        comment:
+          type: string
+          maxLength: 500
+          description: 보정 사유(감사 로그·이력에 남김)
+      required:
+      - comment
     CampaignSummary:
       type: object
       description: 실사 캠페인 목록 행
@@ -13433,3 +14449,147 @@ components:
       - page
       - pageSize
       - total
+    AccessToken:
+      type: object
+      description: 웹 액세스 토큰
+      properties:
+        accessToken:
+          type: string
+          description: Cognito 액세스 토큰(JWT). SPA는 메모리에만 보관
+        expiresIn:
+          type: integer
+          description: 유효 초(900)
+        tokenType:
+          type: string
+          enum:
+          - Bearer
+          description: Bearer
+      required:
+      - accessToken
+      - expiresIn
+      - tokenType
+    LogoutResult:
+      type: object
+      description: 로그아웃
+      properties:
+        logoutUrl:
+          type: string
+          description: Cognito·IdP 로그아웃 URL(브라우저가 이동)
+      required:
+      - logoutUrl
+    SecurityEventRow:
+      type: object
+      description: 보안 이벤트
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: id
+        occurredAt:
+          type: string
+          format: date-time
+          description: 일시
+        eventType:
+          type: string
+          enum:
+          - LOGIN
+          - LOGIN_DENIED
+          - LOGOUT
+          - ACCESS_DENIED
+          - EXPORT
+          - SECRET_ROTATED
+          - SAP_AUTH_FAILED
+          - DEVICE_BLOCKED
+          - SUPPORT_ACCESS
+          description: 이벤트
+        actorName:
+          type: string
+          description: 사용자
+        actorType:
+          type: string
+          description: USER / SYSTEM / SAP / PDA
+        channel:
+          type: string
+          enum:
+          - WEB
+          - PDA
+          - SAP
+          description: 채널
+        ipAddress:
+          type: string
+          description: IP
+        target:
+          type: string
+          description: 대상
+        detail:
+          type: object
+          additionalProperties: true
+          description: 상세
+      required:
+      - id
+      - occurredAt
+      - eventType
+      - actorType
+      - channel
+    SecurityEventRowList:
+      type: object
+      description: 보안 이벤트
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SecurityEventRow'
+          description: 행
+        page:
+          type: integer
+          description: 페이지(1부터)
+        pageSize:
+          type: integer
+          description: 페이지 크기
+        total:
+          type: integer
+          description: 전체 건수
+      required:
+      - items
+      - page
+      - pageSize
+      - total
+    SodConflict:
+      type: object
+      description: 직무 충돌 사용자
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: 사용자
+        displayName:
+          type: string
+          description: 이름
+        roles:
+          type: array
+          items:
+            type: string
+          description: 충돌 역할 조합
+        rule:
+          type: string
+          description: '충돌 규칙 ID (예: SOD-01)'
+        description:
+          type: string
+          description: 설명
+      required:
+      - userId
+      - displayName
+      - roles
+      - rule
+      - description
+    SodConflictList:
+      type: object
+      description: 직무 충돌 목록
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SodConflict'
+          description: 행
+      required:
+      - items

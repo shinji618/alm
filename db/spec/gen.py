@@ -1,5 +1,5 @@
 import re, json, sys
-from spec import ENUMS, DOMAINS, T
+from spec import ENUMS, DOMAINS, T, AUDIT_EXCLUDE, APPEND_ONLY, NO_DELETE
 
 def camel(s):
     p = s.split('_'); return p[0] + ''.join(x[:1].upper() + x[1:] for x in p[1:])
@@ -177,7 +177,11 @@ def build_ddl():
             defs.append(s)
             if c.get('ref'): fks.append((t['name'], c['name'], c['ref']))
         for u in t['uniques']:
-            defs.append(f'  UNIQUE ({", ".join(u)})')
+            # user_role: 범위 컬럼이 NULL(=전체)인 같은 역할이 중복되지 않게 NULLS NOT DISTINCT (PG15+, Prisma 표현 불가)
+            nnd = ' NULLS NOT DISTINCT' if t['name'] == 'user_role' and len(u) > 1 else ''
+            defs.append(f'  UNIQUE{nnd} ({", ".join(u)})')
+        if t['name'] == 'tenant':
+            defs.append("  CHECK (idp_provider_name ~ '^T-[A-Z0-9-]+$')")
         if t['name'] == 'approval':
             defs.append('  CHECK (num_nonnulls(asset_request_id, purchase_request_id) = 1)')
         o.append(',\n'.join(defs))
@@ -194,11 +198,23 @@ def build_ddl():
     o.append('')
     o.append('-- Row level security: 앱은 트랜잭션마다 SET LOCAL app.tenant_id = <테넌트 id> 를 실행한다')
     for t in T:
-        if t['mode'] != 'root':
-            o.append(f"ALTER TABLE {t['name']} ENABLE ROW LEVEL SECURITY;")
-            o.append(f"CREATE POLICY p_{t['name']}_tenant ON {t['name']} USING (tenant_id = current_setting('app.tenant_id')::uuid);")
+        o.append(f"ALTER TABLE {t['name']} ENABLE ROW LEVEL SECURITY;")
+        col = 'id' if t['mode'] == 'root' else 'tenant_id'
+        o.append(f"CREATE POLICY p_{t['name']}_tenant ON {t['name']} USING ({col} = current_setting('app.tenant_id')::uuid);")
     o.append('')
     o.append(open('views.sql').read())
+    o.append(open('security.sql').read())
+    o.append('-- 추가만 되는 로그 테이블(앱 계정에서 수정·삭제 회수)')
+    for n in APPEND_ONLY:
+        o.append(f'REVOKE UPDATE, DELETE, TRUNCATE ON {n} FROM alm_app;')
+    for n in NO_DELETE:
+        o.append(f'REVOKE DELETE, TRUNCATE ON {n} FROM alm_app;')
+    o.append('')
+    for t in T:
+        if t['mode'] != 'log' and t['name'] not in AUDIT_EXCLUDE:
+            o.append(f"CREATE TRIGGER tr_{t['name']}_audit AFTER INSERT OR UPDATE OR DELETE ON {t['name']} FOR EACH ROW EXECUTE FUNCTION audit_row();")
+    o.append('')
+    o.append(open('security_end.sql').read())
     o.append('COMMIT;')
     return '\n'.join(o)
 
@@ -226,6 +242,9 @@ def doc_table(t):
     if multi: extra.append('UNIQUE ' + ' · '.join('(' + ', '.join(u) + ')' for u in multi))
     if t['indexes']: extra.append('INDEX ' + ' · '.join('(' + ', '.join(i) + ')' for i in t['indexes']))
     if t['name'] == 'approval': extra.append('CHECK asset_request_id·purchase_request_id 중 정확히 하나')
+    if t['name'] == 'tenant': extra.append("CHECK idp_provider_name은 T-로 시작하는 대문자·숫자·하이픈(밑줄 금지)")
+    if t['name'] == 'user_role': extra.append('UNIQUE는 NULLS NOT DISTINCT(범위가 빈 같은 역할 중복 방지)')
+    if t['name'] in APPEND_ONLY: extra.append('앱 계정은 추가만(수정·삭제 불가)')
     if t['mode'] == 'log': extra.append('로그 테이블: 공통 컬럼 중 id·tenant_id·created_at만')
     if t['mode'] == 'root': extra.append('tenant_id 없음')
     if extra:
