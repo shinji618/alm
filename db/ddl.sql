@@ -1838,7 +1838,7 @@ COMMENT ON COLUMN sap_posting.version IS '낙관적 잠금';
 COMMENT ON TABLE sap_posting IS 'SAP 전기 큐 — 승인 완료 건의 전기 대기열 (IF-AA-03~07, IF-MM-02). claim 시 15분 잠금';
 CREATE INDEX ix_sap_posting_tenant_id_status_lease_until ON sap_posting (tenant_id, status, lease_until);
 
--- IF 실행 로그: SAP 호출 1회(배치 1건) 로그. 7년 보관
+-- IF 실행 로그: SAP 호출 1회(배치 1건) 로그. 10년 보관
 CREATE TABLE sap_if_run (
   id uuid PRIMARY KEY,
   tenant_id uuid NOT NULL,
@@ -1871,7 +1871,7 @@ COMMENT ON COLUMN sap_if_run.status IS '결과';
 COMMENT ON COLUMN sap_if_run.started_at IS '시작';
 COMMENT ON COLUMN sap_if_run.finished_at IS '종료';
 COMMENT ON COLUMN sap_if_run.created_at IS '생성 일시';
-COMMENT ON TABLE sap_if_run IS 'IF 실행 로그 — SAP 호출 1회(배치 1건) 로그. 7년 보관';
+COMMENT ON TABLE sap_if_run IS 'IF 실행 로그 — SAP 호출 1회(배치 1건) 로그. 10년 보관';
 CREATE INDEX ix_sap_if_run_tenant_id_interface_id_started_at ON sap_if_run (tenant_id, interface_id, started_at);
 
 -- IF 건별 결과: IF 실행의 건별 결과. 오류 건은 원본 레코드 보관
@@ -2099,6 +2099,40 @@ COMMENT ON COLUMN sap_connection.updated_by IS '변경자';
 COMMENT ON COLUMN sap_connection.version IS '낙관적 잠금';
 COMMENT ON TABLE sap_connection IS 'SAP 연결 — SAP 시스템과 API 클라이언트. 비밀은 Secrets Manager';
 
+-- SAP 실행 요청: 화면의 수동 실행 요청(F-310-04). SAP 잡이 GET /sap/run-requests로 가져가 실행
+CREATE TABLE sap_run_request (
+  id uuid PRIMARY KEY,
+  tenant_id uuid NOT NULL,
+  interface_id varchar(10) NOT NULL,
+  status varchar(10) NOT NULL DEFAULT 'PENDING',
+  requested_by uuid NOT NULL,
+  requested_at timestamptz NOT NULL DEFAULT now(),
+  picked_at timestamptz,
+  sap_if_run_id uuid,
+  done_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by uuid,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by uuid,
+  version integer NOT NULL DEFAULT 1
+);
+COMMENT ON COLUMN sap_run_request.id IS '기본키';
+COMMENT ON COLUMN sap_run_request.tenant_id IS '테넌트';
+COMMENT ON COLUMN sap_run_request.interface_id IS '실행할 수신 IF (IF-MD-01, IF-AA-01, IF-AA-02, IF-MM-01, IF-RC-01)';
+COMMENT ON COLUMN sap_run_request.status IS 'PENDING / PICKED / DONE / CANCELLED';
+COMMENT ON COLUMN sap_run_request.requested_by IS '요청자';
+COMMENT ON COLUMN sap_run_request.requested_at IS '요청 일시';
+COMMENT ON COLUMN sap_run_request.picked_at IS 'SAP이 가져간 일시';
+COMMENT ON COLUMN sap_run_request.sap_if_run_id IS '실행 결과 로그';
+COMMENT ON COLUMN sap_run_request.done_at IS '완료 일시';
+COMMENT ON COLUMN sap_run_request.created_at IS '생성 일시';
+COMMENT ON COLUMN sap_run_request.created_by IS '생성자';
+COMMENT ON COLUMN sap_run_request.updated_at IS '변경 일시';
+COMMENT ON COLUMN sap_run_request.updated_by IS '변경자';
+COMMENT ON COLUMN sap_run_request.version IS '낙관적 잠금';
+COMMENT ON TABLE sap_run_request IS 'SAP 실행 요청 — 화면의 수동 실행 요청(F-310-04). SAP 잡이 GET /sap/run-requests로 가져가 실행';
+CREATE INDEX ix_sap_run_request_tenant_id_status ON sap_run_request (tenant_id, status);
+
 -- 공통 코드: 고객이 바꾸는 코드값(폐기 사유, 실사 비고 등)
 CREATE TABLE code (
   id uuid PRIMARY KEY,
@@ -2268,7 +2302,7 @@ COMMENT ON COLUMN notification.version IS '낙관적 잠금';
 COMMENT ON TABLE notification IS '알림 — 이메일·화면 알림 발송 기록';
 CREATE INDEX ix_notification_recipient_id_status ON notification (recipient_id, status);
 
--- 감사 로그: 모든 테이블의 생성·변경 전후값. 7년 보관, 월 파티션
+-- 감사 로그: 모든 테이블의 생성·변경 전후값. 10년 보관, 월 파티션
 CREATE TABLE audit_log (
   id uuid PRIMARY KEY,
   tenant_id uuid NOT NULL,
@@ -2297,7 +2331,7 @@ COMMENT ON COLUMN audit_log.correlation_id IS '요청 추적 ID';
 COMMENT ON COLUMN audit_log.ip_address IS '접속 IP';
 COMMENT ON COLUMN audit_log.occurred_at IS '발생 일시';
 COMMENT ON COLUMN audit_log.created_at IS '생성 일시';
-COMMENT ON TABLE audit_log IS '감사 로그 — 모든 테이블의 생성·변경 전후값. 7년 보관, 월 파티션';
+COMMENT ON TABLE audit_log IS '감사 로그 — 모든 테이블의 생성·변경 전후값. 10년 보관, 월 파티션';
 CREATE INDEX ix_audit_log_tenant_id_table_name_row_id ON audit_log (tenant_id, table_name, row_id);
 CREATE INDEX ix_audit_log_tenant_id_occurred_at ON audit_log (tenant_id, occurred_at);
 
@@ -2480,6 +2514,9 @@ ALTER TABLE recon_diff ADD CONSTRAINT fk_recon_diff_resolved_by FOREIGN KEY (res
 ALTER TABLE field_mapping ADD CONSTRAINT fk_field_mapping_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE sap_connection ADD CONSTRAINT fk_sap_connection_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE sap_connection ADD CONSTRAINT fk_sap_connection_company_id FOREIGN KEY (company_id) REFERENCES company(id);
+ALTER TABLE sap_run_request ADD CONSTRAINT fk_sap_run_request_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
+ALTER TABLE sap_run_request ADD CONSTRAINT fk_sap_run_request_requested_by FOREIGN KEY (requested_by) REFERENCES app_user(id);
+ALTER TABLE sap_run_request ADD CONSTRAINT fk_sap_run_request_sap_if_run_id FOREIGN KEY (sap_if_run_id) REFERENCES sap_if_run(id);
 ALTER TABLE code ADD CONSTRAINT fk_code_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE setting ADD CONSTRAINT fk_setting_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE number_sequence ADD CONSTRAINT fk_number_sequence_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
@@ -2595,6 +2632,8 @@ ALTER TABLE field_mapping ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p_field_mapping_tenant ON field_mapping USING (tenant_id = current_setting('app.tenant_id')::uuid);
 ALTER TABLE sap_connection ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p_sap_connection_tenant ON sap_connection USING (tenant_id = current_setting('app.tenant_id')::uuid);
+ALTER TABLE sap_run_request ENABLE ROW LEVEL SECURITY;
+CREATE POLICY p_sap_run_request_tenant ON sap_run_request USING (tenant_id = current_setting('app.tenant_id')::uuid);
 ALTER TABLE code ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p_code_tenant ON code USING (tenant_id = current_setting('app.tenant_id')::uuid);
 ALTER TABLE setting ENABLE ROW LEVEL SECURITY;

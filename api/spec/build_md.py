@@ -8,7 +8,7 @@ title: ALM API 명세서 — PDA · SAP
 project: 자산관리시스템(ALM)
 company: BSG America
 wbs: "2.6"
-version: 0.1
+version: 0.2
 updated: 2026-10-08
 tags: [BSGA, 자산관리시스템, ALM, API]
 ---
@@ -17,11 +17,11 @@ tags: [BSGA, 자산관리시스템, ALM, API]
 
 # ALM API 명세서 — PDA · SAP
 
-2026-10-08 · 신지승 · v0.1 (WBS 2.6 중 PDA·SAP 범위)
+2026-10-08 · 신지승 · v0.2 (WBS 2.6 중 PDA·SAP 범위)
 
 ## 1. 개요
 
-PDA 실사 앱용 API {npda}개와 SAP 배치 잡용 API {nsap}개를 정의한다. 두 API는 같은 서버(NestJS, `/api/v1`)에 있고, 인증 방식과 경로 접두어(`/pda`, `/sap`)로 나뉜다. 엔드포인트·필드는 기능 정의서의 PDA-01~08, SAP 인터페이스 명세서의 IF 12개, 데이터 모델(테이블 60개)에 맞췄다. 웹 화면용 API는 WBS 2.6의 나머지 범위로 4.x 화면 개발과 함께 추가한다.
+PDA 실사 앱용 API {npda}개와 SAP 배치 잡용 API {nsap}개를 정의한다. 두 API는 같은 서버(NestJS, `/api/v1`)에 있고, 인증 방식과 경로 접두어(`/pda`, `/sap`)로 나뉜다. 엔드포인트·필드는 기능 정의서의 PDA-01~08, SAP 인터페이스 명세서의 IF 12개, 데이터 모델(테이블 60개)에 맞췄다. 웹 화면용 API는 [[07_API_명세서_웹]]에 있다. SAP는 On-premise로 확정(2026-10-08)되어 SAP 배치 잡이 ALM을 호출하는 구조를 그대로 쓴다.
 
 | 산출물 | 위치 | 내용 |
 | --- | --- | --- |
@@ -160,6 +160,7 @@ sequenceDiagram
 | 매일 06:15 | 구매오더 송신 | `/sap/purchase-orders` |
 | 15분마다 | 전기 처리 | `/sap/postings:claim` → BAPI → `/sap/postings/{{id}}/result` (건마다) |
 | 15분마다 | 입고 송신 | `/sap/goods-receipts` |
+| 15분마다(전기 잡 시작 시) | 수동 실행 요청 확인 | `/sap/run-requests` → 요청된 수신 잡 즉시 실행 |
 | 주 1회(월 07:00), 실사 종료 시 | 대사 추출 | `/sap/reconciliation` (분할, 마지막 isLast=true) |
 
 **SAP 잡의 재시도**: 통신·5xx는 1·2·4분 간격 3회, 그래도 실패하면 다음 주기에 다시 실행하고 운영 메일을 보낸다. 207의 ERROR 건은 SAP에서 다시 보내지 않는다(ALM이 자동 재처리하거나 화면에서 처리).
@@ -170,7 +171,7 @@ sequenceDiagram
 
 {P['sap_body']}
 
-### 4.13 유형별 레코드
+### 4.14 유형별 레코드
 
 {P['sap_extra']}
 
@@ -182,10 +183,10 @@ sequenceDiagram
 
 ## 6. 미결 사항
 
-- [ ] SAP 배포 형태 — Public Cloud면 SAP이 ALM을 부르는 대신 ALM이 표준 고정자산 API를 호출하도록 SAP 쪽 6개 엔드포인트를 다시 설계
+- [x] SAP 배포 형태 — On-premise 확정(2026-10-08). SAP이 ALM을 호출하는 현재 구조 유지
 - [ ] 금액 JSON 타입 — number(현재)와 문자열 중 SAP ABAP JSON 직렬화(/ui2/cl_json) 방식에 맞춰 확정
 - [ ] 태그 색인 크기 — 자산 5만 건이면 약 2 MB(gzip 전). 사이트 단위로 줄일지 파일럿에서 확인
-- [ ] 웹 화면 API — 4.1~4.6 화면 개발 때 같은 규격으로 추가(WBS 2.6 나머지)
+- [x] 웹 화면 API — [[07_API_명세서_웹]]에 정의
 - [ ] 매각 고객번호(`customer`) 사용 여부 — SAP 인터페이스 명세서 미결 사항과 함께 결정
 '''
 open('out/06_API_명세서_PDA_SAP.md', 'w').write(md)

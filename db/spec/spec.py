@@ -601,7 +601,7 @@ sap_sub_no | vc(4) | | 보조번호
 sap_po_no | vc(10) | | 생성된 PO 번호
 messages | json | | BAPI RETURN 메시지
 ''', uniques=[('tenant_id','posting_id')], indexes=[('tenant_id','status','lease_until')], screens='ALM-230, 310')
-t('sap','sap_if_run','IF 실행 로그','SAP 호출 1회(배치 1건) 로그. 7년 보관', '''
+t('sap','sap_if_run','IF 실행 로그','SAP 호출 1회(배치 1건) 로그. 10년 보관', '''
 interface_id | vc(10) | NN | IF ID (예: IF-AA-01)
 direction | E:IfDirection | NN | 데이터 방향
 batch_id | vc(40) | NN | 배치 ID
@@ -683,6 +683,16 @@ last_call_at | ts | | 마지막 호출
 is_active | bool | NN =true | 사용 여부
 ''', uniques=[('tenant_id','system_id','company_id'),('oauth_client_id',)], screens='ALM-310')
 
+t('sap','sap_run_request','SAP 실행 요청','화면의 수동 실행 요청(F-310-04). SAP 잡이 GET /sap/run-requests로 가져가 실행', '''
+interface_id | vc(10) | NN | 실행할 수신 IF (IF-MD-01, IF-AA-01, IF-AA-02, IF-MM-01, IF-RC-01)
+status | vc(10) | NN ='PENDING' | PENDING / PICKED / DONE / CANCELLED
+requested_by | ->app_user | NN | 요청자
+requested_at | ts | NN =now | 요청 일시
+picked_at | ts | | SAP이 가져간 일시
+sap_if_run_id | ->sap_if_run | | 실행 결과 로그
+done_at | ts | | 완료 일시
+''', indexes=[('tenant_id','status')], screens='ALM-310')
+
 # ---------------- common ----------------
 t('common','code','공통 코드','고객이 바꾸는 코드값(폐기 사유, 실사 비고 등)', '''
 code_group | vc(30) | NN | 코드 그룹
@@ -728,7 +738,7 @@ sent_at | ts | | 발송 일시
 error_message | vc(500) | | 오류
 dedupe_key | vc(120) | | 중복 발송 방지 키
 ''', uniques=[('tenant_id','dedupe_key')], indexes=[('recipient_id','status')], screens='공통')
-t('common','audit_log','감사 로그','모든 테이블의 생성·변경 전후값. 7년 보관, 월 파티션', '''
+t('common','audit_log','감사 로그','모든 테이블의 생성·변경 전후값. 10년 보관, 월 파티션', '''
 table_name | vc(63) | NN | 테이블
 row_id | uuid | NN | 행 id
 action | E:AuditAction | NN | 동작

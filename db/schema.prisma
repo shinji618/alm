@@ -86,6 +86,7 @@ model Tenant {
   reconDiffs ReconDiff[] @relation("recon_diff_tenant_id")
   fieldMappings FieldMapping[] @relation("field_mapping_tenant_id")
   sapConnections SapConnection[] @relation("sap_connection_tenant_id")
+  sapRunRequests SapRunRequest[] @relation("sap_run_request_tenant_id")
   codes Code[] @relation("code_tenant_id")
   settings Setting[] @relation("setting_tenant_id")
   numberSequences NumberSequence[] @relation("number_sequence_tenant_id")
@@ -152,6 +153,7 @@ model AppUser {
   labelPrintJobs LabelPrintJob[] @relation("label_print_job_requested_by")
   sapPostings SapPosting[] @relation("sap_posting_approved_by")
   reconDiffs ReconDiff[] @relation("recon_diff_resolved_by")
+  sapRunRequests SapRunRequest[] @relation("sap_run_request_requested_by")
   notifications Notification[] @relation("notification_recipient_id")
   @@unique([tenantId, email])
   @@unique([tenantId, idpSubject])
@@ -2104,7 +2106,7 @@ model SapPosting {
   @@map("sap_posting")
 }
 
-/// IF 실행 로그 — SAP 호출 1회(배치 1건) 로그. 7년 보관
+/// IF 실행 로그 — SAP 호출 1회(배치 1건) 로그. 10년 보관
 model SapIfRun {
   id String @id @default(uuid(7)) @db.Uuid
   /// 테넌트
@@ -2137,6 +2139,7 @@ model SapIfRun {
   /// 생성 일시
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   sapIfMessages SapIfMessage[] @relation("sap_if_message_run_id")
+  sapRunRequests SapRunRequest[] @relation("sap_run_request_sap_if_run_id")
   @@index([tenantId, interfaceId, startedAt])
   @@map("sap_if_run")
 }
@@ -2377,6 +2380,42 @@ model SapConnection {
   @@map("sap_connection")
 }
 
+/// SAP 실행 요청 — 화면의 수동 실행 요청(F-310-04). SAP 잡이 GET /sap/run-requests로 가져가 실행
+model SapRunRequest {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("sap_run_request_tenant_id", fields: [tenantId], references: [id])
+  /// 실행할 수신 IF (IF-MD-01, IF-AA-01, IF-AA-02, IF-MM-01, IF-RC-01)
+  interfaceId String @map("interface_id") @db.VarChar(10)
+  /// PENDING / PICKED / DONE / CANCELLED
+  status String @default("PENDING") @db.VarChar(10)
+  /// 요청자
+  requestedBy String @map("requested_by") @db.Uuid
+  requested AppUser @relation("sap_run_request_requested_by", fields: [requestedBy], references: [id])
+  /// 요청 일시
+  requestedAt DateTime @default(now()) @map("requested_at") @db.Timestamptz(6)
+  /// SAP이 가져간 일시
+  pickedAt DateTime? @map("picked_at") @db.Timestamptz(6)
+  /// 실행 결과 로그
+  sapIfRunId String? @map("sap_if_run_id") @db.Uuid
+  sapIfRun SapIfRun? @relation("sap_run_request_sap_if_run_id", fields: [sapIfRunId], references: [id])
+  /// 완료 일시
+  doneAt DateTime? @map("done_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@index([tenantId, status])
+  @@map("sap_run_request")
+}
+
 /// 공통 코드 — 고객이 바꾸는 코드값(폐기 사유, 실사 비고 등)
 model Code {
   id String @id @default(uuid(7)) @db.Uuid
@@ -2547,7 +2586,7 @@ model Notification {
   @@map("notification")
 }
 
-/// 감사 로그 — 모든 테이블의 생성·변경 전후값. 7년 보관, 월 파티션
+/// 감사 로그 — 모든 테이블의 생성·변경 전후값. 10년 보관, 월 파티션
 model AuditLog {
   id String @id @default(uuid(7)) @db.Uuid
   /// 테넌트

@@ -1,5 +1,6 @@
 import re, yaml, json
 from spec_api import S, E, ERRORS
+import spec_web  # registers web endpoints
 
 def tschema(t):
     t = t.strip()
@@ -55,13 +56,15 @@ def build_openapi():
                 'properties': {'grant_type': {'type': 'string', 'enum': ['client_credentials']}, 'client_id': {'type': 'string'},
                                'client_secret': {'type': 'string'}, 'scope': {'type': 'string', 'default': 'sap.api'}}}}}}
         else:
-            op['security'] = [{'pdaAuth': ['pda']}] if e['group'] == 'pda' else [{'sapAuth': ['sap.api']}]
+            op['security'] = {'pda': [{'pdaAuth': ['pda']}], 'sap': [{'sapAuth': ['sap.api']}], 'web': [{'webAuth': ['web']}]}[e['group']]
             if e['req']:
                 op['requestBody'] = {'required': True, 'content': {'application/json': {'schema': {'$ref': f"#/components/schemas/{e['req']}"}}}}
         codes = [c.strip() for c in e['codes'].split(',')] + ['429', '500']
         for c in codes:
-            if c in ('200', '202', '207'):
-                op['responses'][c] = {'description': {'200': '성공', '202': '접수(비동기 처리)', '207': '일부 성공(건별 결과 확인)'}[c],
+            if c == '204':
+                op['responses'][c] = {'description': '성공(본문 없음)'}
+            elif c in ('200', '201', '202', '207'):
+                op['responses'][c] = {'description': {'200': '성공', '201': '생성', '202': '접수(비동기 처리)', '207': '일부 성공(건별 결과 확인)'}[c],
                                       'content': {'application/json': {'schema': {'$ref': f"#/components/schemas/{e['resp']}"}}}}
             elif c == '304':
                 op['responses'][c] = {'description': '변경 없음(ETag 일치)'}
@@ -69,16 +72,19 @@ def build_openapi():
                 op['responses'][c] = {'$ref': f'#/components/responses/E{c}'}
         paths.setdefault(e['path'], {})[e['method'].lower()] = op
     err_desc = {'400': '형식 오류', '401': '인증 실패', '403': '권한 없음', '404': '대상 없음', '409': '충돌', '410': '동기화 토큰 만료',
-                '413': '파일 크기 초과', '429': '호출 제한', '500': '서버 오류'}
+                '413': '파일 크기 초과', '422': '업무 규칙 위반', '502': '외부 장치 연결 실패', '429': '호출 제한', '500': '서버 오류'}
     doc = {
         'openapi': '3.1.0',
-        'info': {'title': 'ALM API — PDA · SAP', 'version': '0.1.0', 'license': {'name': 'Proprietary — BSG America', 'identifier': 'LicenseRef-BSG-Proprietary'},
-                 'description': 'BSG America Asset Lifecycle Manager. WBS 2.6 (PDA, SAP). 웹 화면 API는 별도 추가 예정.'},
+        'info': {'title': 'ALM API — Web · PDA · SAP', 'version': '0.2.0', 'license': {'name': 'Proprietary — BSG America', 'identifier': 'LicenseRef-BSG-Proprietary'},
+                 'description': 'BSG America Asset Lifecycle Manager. WBS 2.6 — 웹 화면, PDA, SAP.'},
         'servers': [{'url': 'https://alm.{domain}/api/v1', 'variables': {'domain': {'default': 'example.com'}}}],
-        'tags': [{'name': 'PDA', 'description': 'PDA 실사 앱 (Zebra TC58)'}, {'name': 'SAP', 'description': 'SAP S/4HANA 배치 잡(아웃바운드 호출)'}],
+        'tags': [{'name': 'PDA', 'description': 'PDA 실사 앱 (Zebra TC58)'}, {'name': 'SAP', 'description': 'SAP S/4HANA 배치 잡(아웃바운드 호출)'}, {'name': 'WEB', 'description': '웹 화면(React SPA)'}],
         'paths': paths,
         'components': {
             'securitySchemes': {
+                'webAuth': {'type': 'oauth2', 'description': 'Cognito 호스티드 UI + 고객사 SSO(SAML/OIDC). Authorization Code + PKCE. 액세스 60분, 리프레시 8시간(근무일 기준)',
+                            'flows': {'authorizationCode': {'authorizationUrl': 'https://auth.{domain}/oauth2/authorize',
+                                                            'tokenUrl': 'https://auth.{domain}/oauth2/token', 'scopes': {'web': '웹 화면'}}}},
                 'pdaAuth': {'type': 'oauth2', 'description': 'Cognito 호스티드 UI + 고객사 SSO. Authorization Code + PKCE. 액세스 60분, 리프레시 24시간',
                             'flows': {'authorizationCode': {'authorizationUrl': 'https://auth.{domain}/oauth2/authorize',
                                                             'tokenUrl': 'https://auth.{domain}/oauth2/token', 'scopes': {'pda': 'PDA 실사'}}}},
