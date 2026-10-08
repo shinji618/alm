@@ -1,0 +1,2954 @@
+// ALM data model — generated from db spec (WBS 2.5). Do not hand-edit table/column names;
+// change the spec and regenerate so that the table definition doc stays in sync.
+// Prisma 7: connection URL lives in prisma.config.ts (DATABASE_URL).
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// 테넌트 — 서비스 고객사. 단일 고객이면 1행
+model Tenant {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트 코드
+  code String @unique @db.VarChar(20)
+  /// 고객사 이름
+  name String @db.VarChar(100)
+  /// SAP 시스템 ID-클라이언트 (예: PRD-100)
+  sapSystemId String? @map("sap_system_id") @db.VarChar(10)
+  /// 화면 표시 시간대
+  timeZone String @default("America/New_York") @map("time_zone") @db.VarChar(40)
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  appUsers AppUser[] @relation("app_user_tenant_id")
+  userRoles UserRole[] @relation("user_role_tenant_id")
+  companies Company[] @relation("company_tenant_id")
+  plants Plant[] @relation("plant_tenant_id")
+  profitCenters ProfitCenter[] @relation("profit_center_tenant_id")
+  costCenters CostCenter[] @relation("cost_center_tenant_id")
+  assetClasses AssetClass[] @relation("asset_class_tenant_id")
+  sites Site[] @relation("site_tenant_id")
+  rooms Room[] @relation("room_tenant_id")
+  categories Category[] @relation("category_tenant_id")
+  models Model[] @relation("model_tenant_id")
+  vendors Vendor[] @relation("vendor_tenant_id")
+  assets Asset[] @relation("asset_tenant_id")
+  assetValues AssetValue[] @relation("asset_value_tenant_id")
+  assetAssignments AssetAssignment[] @relation("asset_assignment_tenant_id")
+  assetEvents AssetEvent[] @relation("asset_event_tenant_id")
+  discoveryJobs DiscoveryJob[] @relation("discovery_job_tenant_id")
+  discoveryRuns DiscoveryRun[] @relation("discovery_run_tenant_id")
+  discoveryItems DiscoveryItem[] @relation("discovery_item_tenant_id")
+  configItems ConfigItem[] @relation("config_item_tenant_id")
+  ciRelations CiRelation[] @relation("ci_relation_tenant_id")
+  ticketLinks TicketLink[] @relation("ticket_link_tenant_id")
+  softwareProducts SoftwareProduct[] @relation("software_product_tenant_id")
+  licenses License[] @relation("license_tenant_id")
+  licenseAssignments LicenseAssignment[] @relation("license_assignment_tenant_id")
+  softwareInstalls SoftwareInstall[] @relation("software_install_tenant_id")
+  contracts Contract[] @relation("contract_tenant_id")
+  contractAssets ContractAsset[] @relation("contract_asset_tenant_id")
+  purchaseRequests PurchaseRequest[] @relation("purchase_request_tenant_id")
+  purchaseRequestItems PurchaseRequestItem[] @relation("purchase_request_item_tenant_id")
+  poItems PoItem[] @relation("po_item_tenant_id")
+  poItemAssets PoItemAsset[] @relation("po_item_asset_tenant_id")
+  goodsReceipts GoodsReceipt[] @relation("goods_receipt_tenant_id")
+  assetRequests AssetRequest[] @relation("asset_request_tenant_id")
+  approvals Approval[] @relation("approval_tenant_id")
+  countCampaigns CountCampaign[] @relation("count_campaign_tenant_id")
+  countTasks CountTask[] @relation("count_task_tenant_id")
+  countItems CountItem[] @relation("count_item_tenant_id")
+  countScans CountScan[] @relation("count_scan_tenant_id")
+  countUnregistereds CountUnregistered[] @relation("count_unregistered_tenant_id")
+  pdaDevices PdaDevice[] @relation("pda_device_tenant_id")
+  labelTemplates LabelTemplate[] @relation("label_template_tenant_id")
+  printers Printer[] @relation("printer_tenant_id")
+  labelPrintJobs LabelPrintJob[] @relation("label_print_job_tenant_id")
+  sapPostings SapPosting[] @relation("sap_posting_tenant_id")
+  sapIfRuns SapIfRun[] @relation("sap_if_run_tenant_id")
+  sapIfMessages SapIfMessage[] @relation("sap_if_message_tenant_id")
+  idempotencyKeys IdempotencyKey[] @relation("idempotency_key_tenant_id")
+  reconRuns ReconRun[] @relation("recon_run_tenant_id")
+  reconSnapshots ReconSnapshot[] @relation("recon_snapshot_tenant_id")
+  reconDiffs ReconDiff[] @relation("recon_diff_tenant_id")
+  fieldMappings FieldMapping[] @relation("field_mapping_tenant_id")
+  sapConnections SapConnection[] @relation("sap_connection_tenant_id")
+  codes Code[] @relation("code_tenant_id")
+  settings Setting[] @relation("setting_tenant_id")
+  numberSequences NumberSequence[] @relation("number_sequence_tenant_id")
+  attachments Attachment[] @relation("attachment_tenant_id")
+  notifications Notification[] @relation("notification_tenant_id")
+  auditLogs AuditLog[] @relation("audit_log_tenant_id")
+  @@map("tenant")
+}
+
+/// 사용자 — SSO 로그인 사용자
+model AppUser {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("app_user_tenant_id", fields: [tenantId], references: [id])
+  /// 이메일(로그인 ID)
+  email String @db.VarChar(254)
+  /// 이름
+  displayName String @map("display_name") @db.VarChar(100)
+  /// Entra ID 사용자 식별자(oid)
+  idpSubject String? @map("idp_subject") @db.VarChar(200)
+  /// 사번
+  employeeNo String? @map("employee_no") @db.VarChar(20)
+  /// 부서명
+  department String? @db.VarChar(100)
+  /// 소속 코스트센터
+  costCenterId String? @map("cost_center_id") @db.Uuid
+  costCenter CostCenter? @relation("app_user_cost_center_id", fields: [costCenterId], references: [id])
+  /// 화면 언어 en/ko
+  locale String @default("en") @db.VarChar(5)
+  /// 마지막 로그인
+  lastLoginAt DateTime? @map("last_login_at") @db.Timestamptz(6)
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  userRoles UserRole[] @relation("user_role_user_id")
+  assets Asset[] @relation("asset_assigned_user_id")
+  assetAssignments AssetAssignment[] @relation("asset_assignment_user_id")
+  assetEvents AssetEvent[] @relation("asset_event_actor_id")
+  discoveryItems DiscoveryItem[] @relation("discovery_item_resolved_by")
+  configItems ConfigItem[] @relation("config_item_owner_user_id")
+  licenseAssignments LicenseAssignment[] @relation("license_assignment_user_id")
+  contracts Contract[] @relation("contract_owner_user_id")
+  purchaseRequests PurchaseRequest[] @relation("purchase_request_requester_id")
+  assetRequests AssetRequest[] @relation("asset_request_requester_id")
+  approvals Approval[] @relation("approval_approver_id")
+  countCampaigns CountCampaign[] @relation("count_campaign_owner_id")
+  countTasks CountTask[] @relation("count_task_assignee_id")
+  countItemsCounted CountItem[] @relation("count_item_counted_by")
+  countItemsResolved CountItem[] @relation("count_item_resolved_by")
+  countScans CountScan[] @relation("count_scan_scanned_by")
+  countUnregisteredsReported CountUnregistered[] @relation("count_unregistered_reported_by")
+  countUnregisteredsResolved CountUnregistered[] @relation("count_unregistered_resolved_by")
+  pdaDevices PdaDevice[] @relation("pda_device_last_user_id")
+  labelPrintJobs LabelPrintJob[] @relation("label_print_job_requested_by")
+  sapPostings SapPosting[] @relation("sap_posting_approved_by")
+  reconDiffs ReconDiff[] @relation("recon_diff_resolved_by")
+  notifications Notification[] @relation("notification_recipient_id")
+  @@unique([tenantId, email])
+  @@unique([tenantId, idpSubject])
+  @@map("app_user")
+}
+
+/// 사용자 역할 — 역할 부여와 범위(회사코드·사이트). 범위가 비면 전체
+model UserRole {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("user_role_tenant_id", fields: [tenantId], references: [id])
+  /// 사용자
+  userId String @map("user_id") @db.Uuid
+  user AppUser @relation("user_role_user_id", fields: [userId], references: [id])
+  /// 역할
+  role RoleCode
+  /// 회사코드 범위
+  companyId String? @map("company_id") @db.Uuid
+  company Company? @relation("user_role_company_id", fields: [companyId], references: [id])
+  /// 사이트 범위
+  siteId String? @map("site_id") @db.Uuid
+  site Site? @relation("user_role_site_id", fields: [siteId], references: [id])
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([userId, role, companyId, siteId])
+  @@map("user_role")
+}
+
+/// 회사코드 — SAP 회사코드 (IF-MD-01 COMPANY)
+model Company {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("company_tenant_id", fields: [tenantId], references: [id])
+  /// BUKRS
+  companyCode String @map("company_code") @db.VarChar(4)
+  /// BUTXT
+  name String @db.VarChar(25)
+  /// WAERS
+  currency String @default("USD") @db.VarChar(5)
+  /// 마지막 SAP 수신
+  sapSyncedAt DateTime? @map("sap_synced_at") @db.Timestamptz(6)
+  /// 수신 목록에 없으면 false
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  userRoles UserRole[] @relation("user_role_company_id")
+  plants Plant[] @relation("plant_company_id")
+  costCenters CostCenter[] @relation("cost_center_company_id")
+  assets Asset[] @relation("asset_company_id")
+  purchaseRequests PurchaseRequest[] @relation("purchase_request_company_id")
+  poItems PoItem[] @relation("po_item_company_id")
+  countCampaigns CountCampaign[] @relation("count_campaign_company_id")
+  sapPostings SapPosting[] @relation("sap_posting_company_id")
+  sapConnections SapConnection[] @relation("sap_connection_company_id")
+  @@unique([tenantId, companyCode])
+  @@map("company")
+}
+
+/// 플랜트 — SAP 플랜트 (IF-MD-01 PLANT)
+model Plant {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("plant_tenant_id", fields: [tenantId], references: [id])
+  /// 회사코드
+  companyId String @map("company_id") @db.Uuid
+  company Company @relation("plant_company_id", fields: [companyId], references: [id])
+  /// WERKS
+  plantCode String @map("plant_code") @db.VarChar(4)
+  /// NAME1
+  name String @db.VarChar(30)
+  /// 주소
+  address String? @db.VarChar(200)
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  sites Site[] @relation("site_plant_id")
+  @@unique([tenantId, plantCode])
+  @@map("plant")
+}
+
+/// 손익센터 — SAP 손익센터 (IF-MD-01 PROFIT_CENTER)
+model ProfitCenter {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("profit_center_tenant_id", fields: [tenantId], references: [id])
+  /// KOKRS
+  controllingArea String @map("controlling_area") @db.VarChar(4)
+  /// PRCTR
+  profitCenterCode String @map("profit_center_code") @db.VarChar(10)
+  /// KTEXT
+  name String @db.VarChar(20)
+  /// SEGMENT. 이관 시 ABUMN 판단에 사용
+  segment String? @db.VarChar(10)
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  costCenters CostCenter[] @relation("cost_center_profit_center_id")
+  @@unique([tenantId, controllingArea, profitCenterCode])
+  @@map("profit_center")
+}
+
+/// 코스트센터 — SAP 코스트센터 (IF-MD-01 COST_CENTER). 기준일 현재 유효한 1행만 보관
+model CostCenter {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("cost_center_tenant_id", fields: [tenantId], references: [id])
+  /// KOKRS
+  controllingArea String @map("controlling_area") @db.VarChar(4)
+  /// KOSTL
+  costCenterCode String @map("cost_center_code") @db.VarChar(10)
+  /// KTEXT
+  name String @db.VarChar(20)
+  /// BUKRS
+  companyId String @map("company_id") @db.Uuid
+  company Company @relation("cost_center_company_id", fields: [companyId], references: [id])
+  /// PRCTR. 이관 판단(AS02/ABUMN)
+  profitCenterId String? @map("profit_center_id") @db.Uuid
+  profitCenter ProfitCenter? @relation("cost_center_profit_center_id", fields: [profitCenterId], references: [id])
+  /// VERAK 책임자
+  responsible String? @db.VarChar(20)
+  /// DATAB
+  validFrom DateTime? @map("valid_from") @db.Date
+  /// DATBI
+  validTo DateTime? @map("valid_to") @db.Date
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  appUsers AppUser[] @relation("app_user_cost_center_id")
+  assets Asset[] @relation("asset_cost_center_id")
+  assetAssignments AssetAssignment[] @relation("asset_assignment_cost_center_id")
+  purchaseRequests PurchaseRequest[] @relation("purchase_request_cost_center_id")
+  poItems PoItem[] @relation("po_item_cost_center_id")
+  assetRequests AssetRequest[] @relation("asset_request_target_cost_center_id")
+  @@unique([tenantId, controllingArea, costCenterCode])
+  @@map("cost_center")
+}
+
+/// 자산클래스 — SAP 자산클래스 (IF-MD-01 ASSET_CLASS)
+model AssetClass {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("asset_class_tenant_id", fields: [tenantId], references: [id])
+  /// ANLKL
+  classCode String @map("class_code") @db.VarChar(8)
+  /// TXK50
+  name String @db.VarChar(50)
+  /// 저가자산 여부
+  isLowValue Boolean @default(false) @map("is_low_value")
+  /// 자본화 대상. true면 등록 시 SAP 생성 요청
+  isCapitalized Boolean @default(true) @map("is_capitalized")
+  /// 내용연수 기본값(년)
+  defaultUsefulLifeYears Int? @map("default_useful_life_years")
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  categories Category[] @relation("category_default_asset_class_id")
+  assets Asset[] @relation("asset_asset_class_id")
+  purchaseRequestItems PurchaseRequestItem[] @relation("purchase_request_item_asset_class_id")
+  assetRequests AssetRequest[] @relation("asset_request_asset_class_id")
+  @@unique([tenantId, classCode])
+  @@map("asset_class")
+}
+
+/// 사이트 — ALM 사이트(건물·거점). SAP 위치(T499S)와 연결
+model Site {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("site_tenant_id", fields: [tenantId], references: [id])
+  /// 사이트 코드 (예: ATL1)
+  siteCode String @map("site_code") @db.VarChar(10)
+  /// 이름
+  name String @db.VarChar(60)
+  /// SAP 플랜트
+  plantId String? @map("plant_id") @db.Uuid
+  plant Plant? @relation("site_plant_id", fields: [plantId], references: [id])
+  /// T499S STAND
+  sapLocation String? @map("sap_location") @db.VarChar(10)
+  /// 주소
+  address String? @db.VarChar(200)
+  /// 시간대(비면 테넌트 기본)
+  timeZone String? @map("time_zone") @db.VarChar(40)
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  userRoles UserRole[] @relation("user_role_site_id")
+  rooms Room[] @relation("room_site_id")
+  assets Asset[] @relation("asset_site_id")
+  discoveryJobs DiscoveryJob[] @relation("discovery_job_site_id")
+  printers Printer[] @relation("printer_site_id")
+  @@unique([tenantId, siteCode])
+  @@map("site")
+}
+
+/// 룸 — 실사·위치의 최소 단위. room_code를 SAP STORT에 전송
+model Room {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("room_tenant_id", fields: [tenantId], references: [id])
+  /// 사이트
+  siteId String @map("site_id") @db.Uuid
+  site Site @relation("room_site_id", fields: [siteId], references: [id])
+  /// 룸 코드 (예: ATL1-2F-IT) = SAP STORT
+  roomCode String @map("room_code") @db.VarChar(10)
+  /// 이름
+  name String @db.VarChar(60)
+  /// 층
+  floor String? @db.VarChar(10)
+  /// SAP RAUMNR 8자 약어(ZALM_MAP)
+  sapRoomNo String? @map("sap_room_no") @db.VarChar(8)
+  /// 룸 바코드 값. 기본 = room_code
+  barcode String @db.VarChar(30)
+  /// IT 창고 여부(반납 시 기본 위치)
+  isStorage Boolean @default(false) @map("is_storage")
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  assets Asset[] @relation("asset_room_id")
+  assetAssignments AssetAssignment[] @relation("asset_assignment_room_id")
+  assetRequests AssetRequest[] @relation("asset_request_target_room_id")
+  countTasks CountTask[] @relation("count_task_room_id")
+  countItemsExpectedRoom CountItem[] @relation("count_item_expected_room_id")
+  countItemsFoundRoom CountItem[] @relation("count_item_found_room_id")
+  countScans CountScan[] @relation("count_scan_room_id")
+  countUnregistereds CountUnregistered[] @relation("count_unregistered_room_id")
+  @@unique([tenantId, roomCode])
+  @@unique([tenantId, barcode])
+  @@map("room")
+}
+
+/// 카테고리 — 자산 분류(노트북, 서버 등). 계층 구조
+model Category {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("category_tenant_id", fields: [tenantId], references: [id])
+  /// 코드
+  categoryCode String @map("category_code") @db.VarChar(20)
+  /// 이름
+  name String @db.VarChar(60)
+  /// 상위 카테고리
+  parentId String? @map("parent_id") @db.Uuid
+  parent Category? @relation("category_parent_id", fields: [parentId], references: [id])
+  /// 등록 시 기본 자산클래스
+  defaultAssetClassId String? @map("default_asset_class_id") @db.Uuid
+  defaultAssetClass AssetClass? @relation("category_default_asset_class_id", fields: [defaultAssetClassId], references: [id])
+  /// 내용연수 경과 판정 기준(년)
+  usefulLifeYears Int? @map("useful_life_years")
+  /// 등록 시 CMDB CI 자동 생성
+  isCi Boolean @default(false) @map("is_ci")
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  categoriesParent Category[] @relation("category_parent_id")
+  models Model[] @relation("model_category_id")
+  assets Asset[] @relation("asset_category_id")
+  purchaseRequestItems PurchaseRequestItem[] @relation("purchase_request_item_category_id")
+  countUnregistereds CountUnregistered[] @relation("count_unregistered_category_id")
+  @@unique([tenantId, categoryCode])
+  @@map("category")
+}
+
+/// 모델 — 제조사·모델 마스터
+model Model {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("model_tenant_id", fields: [tenantId], references: [id])
+  /// 카테고리
+  categoryId String @map("category_id") @db.Uuid
+  category Category @relation("model_category_id", fields: [categoryId], references: [id])
+  /// 제조사
+  manufacturer String @db.VarChar(60)
+  /// 모델명
+  modelName String @map("model_name") @db.VarChar(100)
+  /// 제조사 부품번호
+  partNo String? @map("part_no") @db.VarChar(40)
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  assets Asset[] @relation("asset_model_id")
+  purchaseRequestItems PurchaseRequestItem[] @relation("purchase_request_item_model_id")
+  @@unique([tenantId, manufacturer, modelName])
+  @@map("model")
+}
+
+/// 공급사 — 공급사. SAP 공급사 번호와 연결
+model Vendor {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("vendor_tenant_id", fields: [tenantId], references: [id])
+  /// LIFNR. SAP에 없는 공급사는 비움
+  vendorNo String? @map("vendor_no") @db.VarChar(10)
+  /// 이름
+  name String @db.VarChar(80)
+  /// 대표 이메일
+  email String? @db.VarChar(254)
+  /// 전화
+  phone String? @db.VarChar(30)
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  contracts Contract[] @relation("contract_vendor_id")
+  purchaseRequests PurchaseRequest[] @relation("purchase_request_vendor_id")
+  poItems PoItem[] @relation("po_item_vendor_id")
+  @@unique([tenantId, vendorNo])
+  @@map("vendor")
+}
+
+/// 자산 — 자산 대장. 하드웨어·설비·집기 1건 = 1행
+model Asset {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("asset_tenant_id", fields: [tenantId], references: [id])
+  /// 자산태그 AT-nnnnnn = SAP INVNR, 라벨 바코드 값
+  assetTag String @map("asset_tag") @db.VarChar(25)
+  /// 자산명 = SAP TXT50
+  description String @db.VarChar(50)
+  /// 카테고리
+  categoryId String @map("category_id") @db.Uuid
+  category Category @relation("asset_category_id", fields: [categoryId], references: [id])
+  /// 모델
+  modelId String? @map("model_id") @db.Uuid
+  model Model? @relation("asset_model_id", fields: [modelId], references: [id])
+  /// 시리얼. SAP SERNR(18자) 초과 시 전송 검증 오류
+  serialNo String? @map("serial_no") @db.VarChar(40)
+  /// 상태 7종
+  status AssetStatus @default(IN_STOCK)
+  /// Missing 전 상태. 다음 스캔 시 복원
+  statusBeforeMissing AssetStatus? @map("status_before_missing")
+  /// 생성 출처
+  source AssetSource
+  /// 회사코드
+  companyId String @map("company_id") @db.Uuid
+  company Company @relation("asset_company_id", fields: [companyId], references: [id])
+  /// 사이트
+  siteId String? @map("site_id") @db.Uuid
+  site Site? @relation("asset_site_id", fields: [siteId], references: [id])
+  /// 룸
+  roomId String? @map("room_id") @db.Uuid
+  room Room? @relation("asset_room_id", fields: [roomId], references: [id])
+  /// 코스트센터. 자본화 자산은 SAP 기준
+  costCenterId String? @map("cost_center_id") @db.Uuid
+  costCenter CostCenter? @relation("asset_cost_center_id", fields: [costCenterId], references: [id])
+  /// 사용자(할당)
+  assignedUserId String? @map("assigned_user_id") @db.Uuid
+  assignedUser AppUser? @relation("asset_assigned_user_id", fields: [assignedUserId], references: [id])
+  /// 할당 일시
+  assignedAt DateTime? @map("assigned_at") @db.Timestamptz(6)
+  /// 반납 예정일
+  dueBackDate DateTime? @map("due_back_date") @db.Date
+  /// 자산클래스
+  assetClassId String? @map("asset_class_id") @db.Uuid
+  assetClass AssetClass? @relation("asset_asset_class_id", fields: [assetClassId], references: [id])
+  /// SAP 자본화 자산 여부
+  isCapitalized Boolean @default(false) @map("is_capitalized")
+  /// ANLN1
+  sapAssetNo String? @map("sap_asset_no") @db.VarChar(12)
+  /// ANLN2
+  sapSubNo String? @map("sap_sub_no") @db.VarChar(4)
+  /// AKTIV 취득일
+  sapCapDate DateTime? @map("sap_cap_date") @db.Date
+  /// DEAKT 비활성일
+  sapDeactDate DateTime? @map("sap_deact_date") @db.Date
+  /// IVDAT 마지막 실사일. ALM 기준
+  lastCountDate DateTime? @map("last_count_date") @db.Date
+  /// INVZU 실사 비고
+  lastCountNote String? @map("last_count_note") @db.VarChar(15)
+  /// 호스트명
+  hostname String? @db.VarChar(63)
+  /// IP
+  ipAddress String? @map("ip_address") @db.Inet
+  /// MAC
+  macAddress String? @map("mac_address") @db.VarChar(17)
+  /// BIOS 자산태그
+  biosAssetTag String? @map("bios_asset_tag") @db.VarChar(40)
+  /// OS
+  osName String? @map("os_name") @db.VarChar(60)
+  /// 구매일(비자본화 자산 참고용)
+  purchaseDate DateTime? @map("purchase_date") @db.Date
+  /// 구매가(비자본화 자산 참고용). 회계 금액은 asset_value
+  purchaseCost Decimal? @map("purchase_cost") @db.Decimal(15, 2)
+  /// 제조사 보증 종료일
+  warrantyEndDate DateTime? @map("warranty_end_date") @db.Date
+  /// 구매오더 항목
+  poItemId String? @map("po_item_id") @db.Uuid
+  poItem PoItem? @relation("asset_po_item_id", fields: [poItemId], references: [id])
+  /// 입고 문서(입고로 생성된 경우)
+  goodsReceiptId String? @map("goods_receipt_id") @db.Uuid
+  goodsReceipt GoodsReceipt? @relation("asset_goods_receipt_id", fields: [goodsReceiptId], references: [id])
+  /// 입고 취소(102) 표시
+  isGrCancelled Boolean @default(false) @map("is_gr_cancelled")
+  /// 상위 자산(구성품)
+  parentAssetId String? @map("parent_asset_id") @db.Uuid
+  parentAsset Asset? @relation("asset_parent_asset_id", fields: [parentAssetId], references: [id])
+  /// Discovery 마지막 확인
+  lastSeenAt DateTime? @map("last_seen_at") @db.Timestamptz(6)
+  /// 마지막 SAP 수신
+  sapSyncedAt DateTime? @map("sap_synced_at") @db.Timestamptz(6)
+  /// 메모
+  notes String?
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  assetsParentAsset Asset[] @relation("asset_parent_asset_id")
+  assetValues AssetValue[] @relation("asset_value_asset_id")
+  assetAssignments AssetAssignment[] @relation("asset_assignment_asset_id")
+  assetEvents AssetEvent[] @relation("asset_event_asset_id")
+  discoveryItems DiscoveryItem[] @relation("discovery_item_matched_asset_id")
+  configItems ConfigItem? @relation("config_item_asset_id")
+  licenseAssignments LicenseAssignment[] @relation("license_assignment_asset_id")
+  softwareInstalls SoftwareInstall[] @relation("software_install_asset_id")
+  contractAssets ContractAsset[] @relation("contract_asset_asset_id")
+  poItemAssets PoItemAsset[] @relation("po_item_asset_asset_id")
+  assetRequests AssetRequest[] @relation("asset_request_asset_id")
+  countItems CountItem[] @relation("count_item_asset_id")
+  countScans CountScan[] @relation("count_scan_asset_id")
+  countUnregistereds CountUnregistered[] @relation("count_unregistered_created_asset_id")
+  labelPrintJobs LabelPrintJob[] @relation("label_print_job_asset_id")
+  sapPostings SapPosting[] @relation("sap_posting_asset_id")
+  reconDiffs ReconDiff[] @relation("recon_diff_asset_id")
+  @@unique([tenantId, assetTag])
+  @@unique([tenantId, companyId, sapAssetNo, sapSubNo])
+  @@index([tenantId, status])
+  @@index([tenantId, serialNo])
+  @@index([tenantId, roomId])
+  @@index([tenantId, costCenterId])
+  @@index([tenantId, assignedUserId])
+  @@index([tenantId, hostname])
+  @@index([tenantId, macAddress])
+  @@map("asset")
+}
+
+/// 자산 금액 — SAP 기간별 누적 금액 (IF-AA-02). 최신 값은 뷰 v_asset_value_latest
+model AssetValue {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("asset_value_tenant_id", fields: [tenantId], references: [id])
+  /// 자산
+  assetId String @map("asset_id") @db.Uuid
+  asset Asset @relation("asset_value_asset_id", fields: [assetId], references: [id])
+  /// GJAHR
+  fiscalYear Int @map("fiscal_year")
+  /// 기간 1~16
+  period Int
+  /// AFABE 상각영역
+  depArea String @default("01") @map("dep_area") @db.VarChar(2)
+  /// 취득가(APC) 누계
+  acquisitionValue Decimal @map("acquisition_value") @db.Decimal(15, 2)
+  /// 감가상각누계액(음수)
+  accumDepreciation Decimal @map("accum_depreciation") @db.Decimal(15, 2)
+  /// 장부가액(NBV)
+  netBookValue Decimal @map("net_book_value") @db.Decimal(15, 2)
+  /// NDJAR
+  usefulLifeYears Int? @map("useful_life_years")
+  /// NDPER
+  usefulLifePeriods Int? @map("useful_life_periods")
+  /// AFASL
+  depKey String? @map("dep_key") @db.VarChar(4)
+  /// 수신 일시
+  receivedAt DateTime @map("received_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([assetId, fiscalYear, period, depArea])
+  @@map("asset_value")
+}
+
+/// 자산 할당 — Check-out·반납 이력. 반납 전 행이 현재 할당
+model AssetAssignment {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("asset_assignment_tenant_id", fields: [tenantId], references: [id])
+  /// 자산
+  assetId String @map("asset_id") @db.Uuid
+  asset Asset @relation("asset_assignment_asset_id", fields: [assetId], references: [id])
+  /// 사용자
+  userId String? @map("user_id") @db.Uuid
+  user AppUser? @relation("asset_assignment_user_id", fields: [userId], references: [id])
+  /// 코스트센터
+  costCenterId String? @map("cost_center_id") @db.Uuid
+  costCenter CostCenter? @relation("asset_assignment_cost_center_id", fields: [costCenterId], references: [id])
+  /// 룸
+  roomId String? @map("room_id") @db.Uuid
+  room Room? @relation("asset_assignment_room_id", fields: [roomId], references: [id])
+  /// 할당 일시
+  checkedOutAt DateTime @map("checked_out_at") @db.Timestamptz(6)
+  /// 반납 예정일
+  dueBackDate DateTime? @map("due_back_date") @db.Date
+  /// 반납 일시
+  returnedAt DateTime? @map("returned_at") @db.Timestamptz(6)
+  /// 메모
+  note String? @db.VarChar(200)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@index([assetId, checkedOutAt])
+  @@map("asset_assignment")
+}
+
+/// 자산 이력 — 자산의 업무 이력(History 탭). 변경 전후값 포함
+model AssetEvent {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("asset_event_tenant_id", fields: [tenantId], references: [id])
+  /// 자산
+  assetId String @map("asset_id") @db.Uuid
+  asset Asset @relation("asset_event_asset_id", fields: [assetId], references: [id])
+  /// 이력 유형
+  eventType AssetEventType @map("event_type")
+  /// 발생 일시
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  /// 처리자(비면 시스템)
+  actorId String? @map("actor_id") @db.Uuid
+  actor AppUser? @relation("asset_event_actor_id", fields: [actorId], references: [id])
+  /// UI / API / SAP / PDA / DISCOVERY
+  channel String @db.VarChar(20)
+  /// 필드별 {before, after}
+  changes Json?
+  /// 사유
+  reason String? @db.VarChar(200)
+  /// 관련 자산 요청
+  assetRequestId String? @map("asset_request_id") @db.Uuid
+  assetRequest AssetRequest? @relation("asset_event_asset_request_id", fields: [assetRequestId], references: [id])
+  /// 관련 실사 캠페인
+  countCampaignId String? @map("count_campaign_id") @db.Uuid
+  countCampaign CountCampaign? @relation("asset_event_count_campaign_id", fields: [countCampaignId], references: [id])
+  /// SAP 전표번호 BELNR
+  sapDocumentNo String? @map("sap_document_no") @db.VarChar(10)
+  /// GJAHR
+  sapFiscalYear Int? @map("sap_fiscal_year")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([assetId, occurredAt])
+  @@map("asset_event")
+}
+
+/// 수집 작업 — Discovery 스캔 작업 설정
+model DiscoveryJob {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("discovery_job_tenant_id", fields: [tenantId], references: [id])
+  /// 작업명
+  name String @db.VarChar(100)
+  /// 에이전트 / 네트워크 스캔 / vCenter
+  method DiscoveryMethod
+  /// IP 대역, vCenter URL 목록
+  targets Json
+  /// 실행 주기(cron). 비면 수동
+  scheduleCron String? @map("schedule_cron") @db.VarChar(50)
+  /// AWS Secrets Manager ARN. 자격증명은 저장하지 않음
+  credentialRef String? @map("credential_ref") @db.VarChar(200)
+  /// 대상 사이트
+  siteId String? @map("site_id") @db.Uuid
+  site Site? @relation("discovery_job_site_id", fields: [siteId], references: [id])
+  /// 마지막 실행
+  lastRunAt DateTime? @map("last_run_at") @db.Timestamptz(6)
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  discoveryRuns DiscoveryRun[] @relation("discovery_run_job_id")
+  @@map("discovery_job")
+}
+
+/// 수집 실행 — 수집 작업 1회 실행. 에이전트 상시 보고는 일 단위 1행
+model DiscoveryRun {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("discovery_run_tenant_id", fields: [tenantId], references: [id])
+  /// 수집 작업(에이전트 보고는 비움)
+  jobId String? @map("job_id") @db.Uuid
+  job DiscoveryJob? @relation("discovery_run_job_id", fields: [jobId], references: [id])
+  /// 상태
+  status RunStatus @default(QUEUED)
+  /// 시작
+  startedAt DateTime? @map("started_at") @db.Timestamptz(6)
+  /// 종료
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz(6)
+  /// 수집 건수
+  foundCount Int @default(0) @map("found_count")
+  /// 신규
+  newCount Int @default(0) @map("new_count")
+  /// 충돌
+  conflictCount Int @default(0) @map("conflict_count")
+  /// 오류
+  errorMessage String? @map("error_message")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  discoveryItems DiscoveryItem[] @relation("discovery_item_run_id")
+  @@index([tenantId, startedAt])
+  @@map("discovery_run")
+}
+
+/// 수집 결과 — 장비 1대의 수집 결과와 대사 큐 처리
+model DiscoveryItem {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("discovery_item_tenant_id", fields: [tenantId], references: [id])
+  /// 수집 실행
+  runId String @map("run_id") @db.Uuid
+  run DiscoveryRun @relation("discovery_item_run_id", fields: [runId], references: [id])
+  /// 수집 일시
+  collectedAt DateTime @map("collected_at") @db.Timestamptz(6)
+  /// 호스트명
+  hostname String? @db.VarChar(63)
+  /// 시리얼
+  serialNo String? @map("serial_no") @db.VarChar(40)
+  /// 제조사
+  manufacturer String? @db.VarChar(60)
+  /// 모델
+  model String? @db.VarChar(100)
+  /// BIOS 자산태그
+  biosAssetTag String? @map("bios_asset_tag") @db.VarChar(40)
+  /// MAC
+  macAddress String? @map("mac_address") @db.VarChar(17)
+  /// IP
+  ipAddress String? @map("ip_address") @db.Inet
+  /// OS
+  osName String? @map("os_name") @db.VarChar(60)
+  /// 수집 원본
+  raw Json
+  /// New / Conflict / Unmanaged / Matched / Ignored
+  matchStatus DiscoveryMatch @map("match_status")
+  /// 매칭 규칙 SERIAL_MFR, BIOS_TAG, MAC, HOSTNAME_MODEL
+  matchRule String? @map("match_rule") @db.VarChar(30)
+  /// 매칭된 자산
+  matchedAssetId String? @map("matched_asset_id") @db.Uuid
+  matchedAsset Asset? @relation("discovery_item_matched_asset_id", fields: [matchedAssetId], references: [id])
+  /// 충돌 필드 {field: {alm, discovered}}
+  conflictFields Json? @map("conflict_fields")
+  /// 처리 결과
+  resolution DiscoveryResolution?
+  /// 처리자
+  resolvedBy String? @map("resolved_by") @db.Uuid
+  resolved AppUser? @relation("discovery_item_resolved_by", fields: [resolvedBy], references: [id])
+  /// 처리 일시
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@index([tenantId, matchStatus])
+  @@map("discovery_item")
+}
+
+/// CI — CMDB 구성항목. 하드웨어 CI는 자산과 1:1
+model ConfigItem {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("config_item_tenant_id", fields: [tenantId], references: [id])
+  /// CI 유형
+  ciType CiType @map("ci_type")
+  /// 이름
+  name String @db.VarChar(100)
+  /// 하드웨어 CI면 자산
+  assetId String? @unique @map("asset_id") @db.Uuid
+  asset Asset? @relation("config_item_asset_id", fields: [assetId], references: [id])
+  /// 담당자
+  ownerUserId String? @map("owner_user_id") @db.Uuid
+  ownerUser AppUser? @relation("config_item_owner_user_id", fields: [ownerUserId], references: [id])
+  /// 설명
+  description String?
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  ciRelationsSourceCi CiRelation[] @relation("ci_relation_source_ci_id")
+  ciRelationsTargetCi CiRelation[] @relation("ci_relation_target_ci_id")
+  ticketLinks TicketLink[] @relation("ticket_link_config_item_id")
+  @@index([tenantId, ciType])
+  @@map("config_item")
+}
+
+/// CI 관계 — source가 target에 대해 갖는 관계 (예: 앱 runs on 서버)
+model CiRelation {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("ci_relation_tenant_id", fields: [tenantId], references: [id])
+  /// 출발 CI
+  sourceCiId String @map("source_ci_id") @db.Uuid
+  sourceCi ConfigItem @relation("ci_relation_source_ci_id", fields: [sourceCiId], references: [id])
+  /// 도착 CI
+  targetCiId String @map("target_ci_id") @db.Uuid
+  targetCi ConfigItem @relation("ci_relation_target_ci_id", fields: [targetCiId], references: [id])
+  /// 관계 유형
+  relationType CiRelationType @map("relation_type")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([sourceCiId, targetCiId, relationType])
+  @@index([targetCiId])
+  @@map("ci_relation")
+}
+
+/// 티켓 연결 — ITSM 인시던트·변경 참조
+model TicketLink {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("ticket_link_tenant_id", fields: [tenantId], references: [id])
+  /// CI
+  configItemId String @map("config_item_id") @db.Uuid
+  configItem ConfigItem @relation("ticket_link_config_item_id", fields: [configItemId], references: [id])
+  /// ITSM 시스템
+  itsmSystem String @map("itsm_system") @db.VarChar(20)
+  /// 티켓 번호
+  ticketNo String @map("ticket_no") @db.VarChar(30)
+  /// INCIDENT / CHANGE
+  ticketType String @map("ticket_type") @db.VarChar(20)
+  /// 제목
+  title String? @db.VarChar(200)
+  /// 상태
+  ticketStatus String? @map("ticket_status") @db.VarChar(20)
+  /// 접수 일시
+  openedAt DateTime? @map("opened_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([configItemId, itsmSystem, ticketNo])
+  @@map("ticket_link")
+}
+
+/// 소프트웨어 제품 — 라이선스 관리 대상 제품과 설치명 매칭 규칙
+model SoftwareProduct {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("software_product_tenant_id", fields: [tenantId], references: [id])
+  /// 게시자
+  publisher String @db.VarChar(80)
+  /// 제품명
+  name String @db.VarChar(120)
+  /// 상용 여부(비인가 설치 판정)
+  isCommercial Boolean @default(true) @map("is_commercial")
+  /// 설치 목록 이름 매칭 정규식
+  matchPattern String? @map("match_pattern") @db.VarChar(200)
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  licenses License[] @relation("license_product_id")
+  softwareInstalls SoftwareInstall[] @relation("software_install_product_id")
+  @@unique([tenantId, publisher, name])
+  @@map("software_product")
+}
+
+/// 라이선스 — 보유 라이선스. 사용 수량·준수 판정은 뷰 v_license_compliance
+model License {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("license_tenant_id", fields: [tenantId], references: [id])
+  /// 제품
+  productId String @map("product_id") @db.Uuid
+  product SoftwareProduct @relation("license_product_id", fields: [productId], references: [id])
+  /// 사용자 / 장치 / 코어 / 네트워크
+  licenseModel LicenseModel @map("license_model")
+  /// 보유 수량
+  ownedQuantity Int @map("owned_quantity")
+  /// 단가(USD, 연간)
+  unitCost Decimal? @map("unit_cost") @db.Decimal(15, 2)
+  /// 갱신일
+  renewalDate DateTime? @map("renewal_date") @db.Date
+  /// 연결 계약
+  contractId String? @map("contract_id") @db.Uuid
+  contract Contract? @relation("license_contract_id", fields: [contractId], references: [id])
+  /// 구매 PO
+  poNo String? @map("po_no") @db.VarChar(10)
+  /// 메모
+  notes String?
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  licenseAssignments LicenseAssignment[] @relation("license_assignment_license_id")
+  purchaseRequests PurchaseRequest[] @relation("purchase_request_license_id")
+  @@index([tenantId, productId])
+  @@map("license")
+}
+
+/// 라이선스 할당 — 사용자형 라이선스의 좌석 할당. 장치형은 software_install로 계산
+model LicenseAssignment {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("license_assignment_tenant_id", fields: [tenantId], references: [id])
+  /// 라이선스
+  licenseId String @map("license_id") @db.Uuid
+  license License @relation("license_assignment_license_id", fields: [licenseId], references: [id])
+  /// 사용자
+  userId String? @map("user_id") @db.Uuid
+  user AppUser? @relation("license_assignment_user_id", fields: [userId], references: [id])
+  /// 장치
+  assetId String? @map("asset_id") @db.Uuid
+  asset Asset? @relation("license_assignment_asset_id", fields: [assetId], references: [id])
+  /// 할당 일시
+  assignedAt DateTime @map("assigned_at") @db.Timestamptz(6)
+  /// 회수 일시
+  releasedAt DateTime? @map("released_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@index([licenseId, releasedAt])
+  @@map("license_assignment")
+}
+
+/// 설치 소프트웨어 — 에이전트가 수집한 자산별 설치 목록
+model SoftwareInstall {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("software_install_tenant_id", fields: [tenantId], references: [id])
+  /// 자산
+  assetId String @map("asset_id") @db.Uuid
+  asset Asset @relation("software_install_asset_id", fields: [assetId], references: [id])
+  /// 매칭된 제품(비면 미분류)
+  productId String? @map("product_id") @db.Uuid
+  product SoftwareProduct? @relation("software_install_product_id", fields: [productId], references: [id])
+  /// 설치 목록 원본 이름
+  rawName String @map("raw_name") @db.VarChar(200)
+  /// 버전
+  productVersion String @default("") @map("product_version") @db.VarChar(50)
+  /// 설치일
+  installDate DateTime? @map("install_date") @db.Date
+  /// 최초 수집
+  firstSeenAt DateTime @map("first_seen_at") @db.Timestamptz(6)
+  /// 최근 수집
+  lastSeenAt DateTime @map("last_seen_at") @db.Timestamptz(6)
+  /// 최근 수집에서 사라짐
+  isRemoved Boolean @default(false) @map("is_removed")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([assetId, rawName, productVersion])
+  @@index([tenantId, productId])
+  @@map("software_install")
+}
+
+/// 계약 — 유지보수·리스·서비스·구독 계약
+model Contract {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("contract_tenant_id", fields: [tenantId], references: [id])
+  /// 계약번호
+  contractNo String @map("contract_no") @db.VarChar(30)
+  /// 계약 유형
+  contractType ContractType @map("contract_type")
+  /// 계약명
+  title String @db.VarChar(120)
+  /// 공급사
+  vendorId String? @map("vendor_id") @db.Uuid
+  vendor Vendor? @relation("contract_vendor_id", fields: [vendorId], references: [id])
+  /// 시작일
+  startDate DateTime @map("start_date") @db.Date
+  /// 종료일
+  endDate DateTime? @map("end_date") @db.Date
+  /// 계약 금액(USD)
+  amount Decimal? @db.Decimal(15, 2)
+  /// 자동갱신
+  isAutoRenew Boolean @default(false) @map("is_auto_renew")
+  /// 담당자(만료 알림 수신)
+  ownerUserId String? @map("owner_user_id") @db.Uuid
+  ownerUser AppUser? @relation("contract_owner_user_id", fields: [ownerUserId], references: [id])
+  /// 메모
+  notes String?
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  licenses License[] @relation("license_contract_id")
+  contractAssets ContractAsset[] @relation("contract_asset_contract_id")
+  purchaseRequests PurchaseRequest[] @relation("purchase_request_contract_id")
+  @@unique([tenantId, contractNo])
+  @@index([tenantId, endDate])
+  @@map("contract")
+}
+
+/// 계약 대상 자산 — 계약과 자산 N:M
+model ContractAsset {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("contract_asset_tenant_id", fields: [tenantId], references: [id])
+  /// 계약
+  contractId String @map("contract_id") @db.Uuid
+  contract Contract @relation("contract_asset_contract_id", fields: [contractId], references: [id])
+  /// 자산
+  assetId String @map("asset_id") @db.Uuid
+  asset Asset @relation("contract_asset_asset_id", fields: [assetId], references: [id])
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([contractId, assetId])
+  @@index([assetId])
+  @@map("contract_asset")
+}
+
+/// 구매요청 — 구매요청 헤더. 승인 후 SAP PO 생성(IF-MM-02)
+model PurchaseRequest {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("purchase_request_tenant_id", fields: [tenantId], references: [id])
+  /// 요청번호 PR-nnnnn = SAP postingId
+  prNo String @map("pr_no") @db.VarChar(12)
+  /// 제목
+  title String @db.VarChar(120)
+  /// 요청자
+  requesterId String @map("requester_id") @db.Uuid
+  requester AppUser @relation("purchase_request_requester_id", fields: [requesterId], references: [id])
+  /// 회사코드
+  companyId String @map("company_id") @db.Uuid
+  company Company @relation("purchase_request_company_id", fields: [companyId], references: [id])
+  /// 코스트센터
+  costCenterId String @map("cost_center_id") @db.Uuid
+  costCenter CostCenter @relation("purchase_request_cost_center_id", fields: [costCenterId], references: [id])
+  /// 상태
+  status PurchaseRequestStatus @default(DRAFT)
+  /// 예상금액(USD)
+  estimatedAmount Decimal? @map("estimated_amount") @db.Decimal(15, 2)
+  /// 필요일
+  neededBy DateTime? @map("needed_by") @db.Date
+  /// 사유
+  reason String?
+  /// USER / LICENSE_SHORTAGE / CONTRACT_RENEWAL
+  source String @default("USER") @db.VarChar(20)
+  /// 라이선스 부족분 구매
+  licenseId String? @map("license_id") @db.Uuid
+  license License? @relation("purchase_request_license_id", fields: [licenseId], references: [id])
+  /// 갱신 대상 계약
+  contractId String? @map("contract_id") @db.Uuid
+  contract Contract? @relation("purchase_request_contract_id", fields: [contractId], references: [id])
+  /// 공급사
+  vendorId String? @map("vendor_id") @db.Uuid
+  vendor Vendor? @relation("purchase_request_vendor_id", fields: [vendorId], references: [id])
+  /// EKORG
+  purchasingOrg String? @map("purchasing_org") @db.VarChar(4)
+  /// EKGRP
+  purchasingGroup String? @map("purchasing_group") @db.VarChar(3)
+  /// 생성된 PO 번호
+  sapPoNo String? @map("sap_po_no") @db.VarChar(10)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  purchaseRequestItems PurchaseRequestItem[] @relation("purchase_request_item_request_id")
+  poItems PoItem[] @relation("po_item_purchase_request_id")
+  approvals Approval[] @relation("approval_purchase_request_id")
+  sapPostings SapPosting[] @relation("sap_posting_purchase_request_id")
+  @@unique([tenantId, prNo])
+  @@index([tenantId, status])
+  @@map("purchase_request")
+}
+
+/// 구매요청 품목 — 구매요청 품목
+model PurchaseRequestItem {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("purchase_request_item_tenant_id", fields: [tenantId], references: [id])
+  /// 구매요청
+  requestId String @map("request_id") @db.Uuid
+  request PurchaseRequest @relation("purchase_request_item_request_id", fields: [requestId], references: [id])
+  /// 항목 번호
+  lineNo Int @map("line_no")
+  /// 품목명 = EKPO TXZ01
+  description String @db.VarChar(40)
+  /// 카테고리
+  categoryId String? @map("category_id") @db.Uuid
+  category Category? @relation("purchase_request_item_category_id", fields: [categoryId], references: [id])
+  /// 모델
+  modelId String? @map("model_id") @db.Uuid
+  model Model? @relation("purchase_request_item_model_id", fields: [modelId], references: [id])
+  /// 자산클래스
+  assetClassId String? @map("asset_class_id") @db.Uuid
+  assetClass AssetClass? @relation("purchase_request_item_asset_class_id", fields: [assetClassId], references: [id])
+  /// 수량
+  quantity Int
+  /// 단가(USD)
+  unitPrice Decimal? @map("unit_price") @db.Decimal(15, 2)
+  /// 지정 자산번호(IF-AA-03 선처리)
+  sapAssetNo String? @map("sap_asset_no") @db.VarChar(12)
+  /// 보조번호
+  sapSubNo String? @map("sap_sub_no") @db.VarChar(4)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([requestId, lineNo])
+  @@map("purchase_request_item")
+}
+
+/// 구매오더 항목 — SAP 자산 PO 항목 (IF-MM-01, 계정지정 A)
+model PoItem {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("po_item_tenant_id", fields: [tenantId], references: [id])
+  /// EBELN
+  poNo String @map("po_no") @db.VarChar(10)
+  /// EBELP
+  itemNo String @map("item_no") @db.VarChar(5)
+  /// 회사코드
+  companyId String @map("company_id") @db.Uuid
+  company Company @relation("po_item_company_id", fields: [companyId], references: [id])
+  /// 공급사
+  vendorId String? @map("vendor_id") @db.Uuid
+  vendor Vendor? @relation("po_item_vendor_id", fields: [vendorId], references: [id])
+  /// 공급사명(수신 원본)
+  vendorName String? @map("vendor_name") @db.VarChar(80)
+  /// TXZ01
+  description String @db.VarChar(40)
+  /// MENGE
+  quantity Decimal @db.Decimal(13, 3)
+  /// NETPR
+  unitPrice Decimal? @map("unit_price") @db.Decimal(15, 2)
+  /// EKKN KOSTL
+  costCenterId String? @map("cost_center_id") @db.Uuid
+  costCenter CostCenter? @relation("po_item_cost_center_id", fields: [costCenterId], references: [id])
+  /// ALM 구매요청에서 생성된 경우
+  purchaseRequestId String? @map("purchase_request_id") @db.Uuid
+  purchaseRequest PurchaseRequest? @relation("po_item_purchase_request_id", fields: [purchaseRequestId], references: [id])
+  /// 누적 입고 수량
+  grQuantity Decimal @default(0) @map("gr_quantity") @db.Decimal(13, 3)
+  /// LOEKZ. 입고 대기 취소
+  isDeleted Boolean @default(false) @map("is_deleted")
+  /// 마지막 수신
+  sapSyncedAt DateTime? @map("sap_synced_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  assets Asset[] @relation("asset_po_item_id")
+  poItemAssets PoItemAsset[] @relation("po_item_asset_po_item_id")
+  goodsReceipts GoodsReceipt[] @relation("goods_receipt_po_item_id")
+  assetRequests AssetRequest[] @relation("asset_request_po_item_id")
+  @@unique([tenantId, poNo, itemNo])
+  @@map("po_item")
+}
+
+/// PO 지정 자산 — PO 항목에 지정된 SAP 자산번호(EKKN). 항목당 여러 개
+model PoItemAsset {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("po_item_asset_tenant_id", fields: [tenantId], references: [id])
+  /// PO 항목
+  poItemId String @map("po_item_id") @db.Uuid
+  poItem PoItem @relation("po_item_asset_po_item_id", fields: [poItemId], references: [id])
+  /// ANLN1
+  sapAssetNo String @map("sap_asset_no") @db.VarChar(12)
+  /// ANLN2
+  sapSubNo String @map("sap_sub_no") @db.VarChar(4)
+  /// 연결된 ALM 자산
+  assetId String? @map("asset_id") @db.Uuid
+  asset Asset? @relation("po_item_asset_asset_id", fields: [assetId], references: [id])
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([poItemId, sapAssetNo, sapSubNo])
+  @@map("po_item_asset")
+}
+
+/// 입고 — SAP 입고 문서 항목 (IF-MM-03). 101 수신 시 자산 생성
+model GoodsReceipt {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("goods_receipt_tenant_id", fields: [tenantId], references: [id])
+  /// PO 항목
+  poItemId String @map("po_item_id") @db.Uuid
+  poItem PoItem @relation("goods_receipt_po_item_id", fields: [poItemId], references: [id])
+  /// MBLNR
+  materialDoc String @map("material_doc") @db.VarChar(10)
+  /// MJAHR
+  docYear Int @map("doc_year")
+  /// ZEILE
+  docItem String @map("doc_item") @db.VarChar(4)
+  /// BWART 101 입고 / 102 취소
+  movementType String @map("movement_type") @db.VarChar(3)
+  /// MENGE
+  quantity Decimal @db.Decimal(13, 3)
+  /// BUDAT
+  postingDate DateTime @map("posting_date") @db.Date
+  /// 자산 생성 완료 일시
+  assetsCreatedAt DateTime? @map("assets_created_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  assets Asset[] @relation("asset_goods_receipt_id")
+  @@unique([tenantId, materialDoc, docYear, docItem])
+  @@map("goods_receipt")
+}
+
+/// 자산 요청 — 신규·변경·이관·폐기·매각 요청. 부서 관리자·자산회계 승인 후 SAP 전기
+model AssetRequest {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("asset_request_tenant_id", fields: [tenantId], references: [id])
+  /// 요청번호 AR-nnnnn = SAP postingId, BKTXT
+  requestNo String @map("request_no") @db.VarChar(12)
+  /// 요청 유형
+  requestType RequestType @map("request_type")
+  /// 상태
+  status RequestStatus @default(SUBMITTED)
+  /// 발생 출처
+  source RequestSource @default(USER)
+  /// 대상 자산(신규는 ALM 자산 생성 후 연결)
+  assetId String? @map("asset_id") @db.Uuid
+  asset Asset? @relation("asset_request_asset_id", fields: [assetId], references: [id])
+  /// 요청자
+  requesterId String @map("requester_id") @db.Uuid
+  requester AppUser @relation("asset_request_requester_id", fields: [requesterId], references: [id])
+  /// 제출 일시
+  submittedAt DateTime? @map("submitted_at") @db.Timestamptz(6)
+  /// 사유
+  reason String? @db.VarChar(200)
+  /// 현재 승인 단계 1 부서 관리자, 2 자산회계
+  currentStep Int @default(1) @map("current_step")
+  /// 신규: 자산클래스
+  assetClassId String? @map("asset_class_id") @db.Uuid
+  assetClass AssetClass? @relation("asset_request_asset_class_id", fields: [assetClassId], references: [id])
+  /// 신규: 예상 취득가
+  acquisitionValue Decimal? @map("acquisition_value") @db.Decimal(15, 2)
+  /// 신규: 참조 PO
+  poItemId String? @map("po_item_id") @db.Uuid
+  poItem PoItem? @relation("asset_request_po_item_id", fields: [poItemId], references: [id])
+  /// 신규·이관: 코스트센터
+  targetCostCenterId String? @map("target_cost_center_id") @db.Uuid
+  targetCostCenter CostCenter? @relation("asset_request_target_cost_center_id", fields: [targetCostCenterId], references: [id])
+  /// 변경: 새 룸
+  targetRoomId String? @map("target_room_id") @db.Uuid
+  targetRoom Room? @relation("asset_request_target_room_id", fields: [targetRoomId], references: [id])
+  /// 손익센터·세그먼트 변경 → ABUMN
+  isProfitCenterChange Boolean @default(false) @map("is_profit_center_change")
+  /// 변경: {field: {before, after}}
+  changes Json?
+  /// 이관일·폐기일·가치일(BZDAT)
+  effectiveDate DateTime? @map("effective_date") @db.Date
+  /// 폐기 유형
+  retireType RetireType? @map("retire_type")
+  /// 매각금액(SALE 필수)
+  saleAmount Decimal? @map("sale_amount") @db.Decimal(15, 2)
+  /// 매입처
+  buyer String? @db.VarChar(80)
+  /// 실사 차이에서 생성
+  countItemId String? @map("count_item_id") @db.Uuid
+  countItem CountItem? @relation("asset_request_count_item_id", fields: [countItemId], references: [id])
+  /// 대사 차이에서 생성
+  reconDiffId String? @map("recon_diff_id") @db.Uuid
+  reconDiff ReconDiff? @relation("asset_request_recon_diff_id", fields: [reconDiffId], references: [id])
+  /// 전기 완료·반려 일시
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  assetEvents AssetEvent[] @relation("asset_event_asset_request_id")
+  approvals Approval[] @relation("approval_asset_request_id")
+  sapPostings SapPosting[] @relation("sap_posting_asset_request_id")
+  @@unique([tenantId, requestNo])
+  @@index([tenantId, status])
+  @@index([assetId])
+  @@map("asset_request")
+}
+
+/// 승인 — 자산 요청·구매요청의 단계별 승인. 둘 중 하나만 채움
+model Approval {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("approval_tenant_id", fields: [tenantId], references: [id])
+  /// 자산 요청
+  assetRequestId String? @map("asset_request_id") @db.Uuid
+  assetRequest AssetRequest? @relation("approval_asset_request_id", fields: [assetRequestId], references: [id])
+  /// 구매요청
+  purchaseRequestId String? @map("purchase_request_id") @db.Uuid
+  purchaseRequest PurchaseRequest? @relation("approval_purchase_request_id", fields: [purchaseRequestId], references: [id])
+  /// 단계 1 부서 관리자, 2 자산회계(최종)
+  stepNo Int @map("step_no")
+  /// 승인 역할
+  approverRole RoleCode @map("approver_role")
+  /// 승인자(결정 시 기록)
+  approverId String? @map("approver_id") @db.Uuid
+  approver AppUser? @relation("approval_approver_id", fields: [approverId], references: [id])
+  /// 결정
+  decision ApprovalDecision @default(PENDING)
+  /// 의견
+  comment String? @db.VarChar(500)
+  /// 결정 일시
+  decidedAt DateTime? @map("decided_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([assetRequestId, stepNo])
+  @@unique([purchaseRequestId, stepNo])
+  @@index([tenantId, approverRole, decision])
+  @@map("approval")
+}
+
+/// 실사 캠페인 — 실물 실사 캠페인
+model CountCampaign {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("count_campaign_tenant_id", fields: [tenantId], references: [id])
+  /// 코드 (예: PI26Q4) = INVZU 접두어
+  campaignCode String @map("campaign_code") @db.VarChar(6)
+  /// 이름
+  name String @db.VarChar(100)
+  /// 회사코드
+  companyId String @map("company_id") @db.Uuid
+  company Company @relation("count_campaign_company_id", fields: [companyId], references: [id])
+  /// 기준일(SAP 키 데이트)
+  keyDate DateTime @map("key_date") @db.Date
+  /// 기한
+  dueDate DateTime @map("due_date") @db.Date
+  /// 단계
+  status CampaignStatus @default(SCOPING)
+  /// 범위 조건(사이트·룸·자산클래스)
+  scope Json
+  /// 범위 확정 일시(count_item 생성)
+  scopeFrozenAt DateTime? @map("scope_frozen_at") @db.Timestamptz(6)
+  /// 종료 일시
+  closedAt DateTime? @map("closed_at") @db.Timestamptz(6)
+  /// 담당 자산 관리자
+  ownerId String @map("owner_id") @db.Uuid
+  owner AppUser @relation("count_campaign_owner_id", fields: [ownerId], references: [id])
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  assetEvents AssetEvent[] @relation("asset_event_count_campaign_id")
+  countTasks CountTask[] @relation("count_task_campaign_id")
+  countItems CountItem[] @relation("count_item_campaign_id")
+  countScans CountScan[] @relation("count_scan_campaign_id")
+  countUnregistereds CountUnregistered[] @relation("count_unregistered_campaign_id")
+  reconRuns ReconRun[] @relation("recon_run_count_campaign_id")
+  @@unique([tenantId, campaignCode])
+  @@map("count_campaign")
+}
+
+/// 룸 실사 작업 — 캠페인 × 룸. 실사 담당자 배정 단위
+model CountTask {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("count_task_tenant_id", fields: [tenantId], references: [id])
+  /// 캠페인
+  campaignId String @map("campaign_id") @db.Uuid
+  campaign CountCampaign @relation("count_task_campaign_id", fields: [campaignId], references: [id])
+  /// 룸
+  roomId String @map("room_id") @db.Uuid
+  room Room @relation("count_task_room_id", fields: [roomId], references: [id])
+  /// 실사 담당자
+  assigneeId String? @map("assignee_id") @db.Uuid
+  assignee AppUser? @relation("count_task_assignee_id", fields: [assigneeId], references: [id])
+  /// 상태
+  status CountTaskStatus @default(NOT_STARTED)
+  /// 대상 자산 수
+  expectedCount Int @default(0) @map("expected_count")
+  /// 시작
+  startedAt DateTime? @map("started_at") @db.Timestamptz(6)
+  /// 룸 완료(PDA-07)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  countItems CountItem[] @relation("count_item_task_id")
+  countScans CountScan[] @relation("count_scan_task_id")
+  @@unique([campaignId, roomId])
+  @@index([assigneeId, status])
+  @@map("count_task")
+}
+
+/// 실사 대상 — 캠페인 범위 확정 시 자산별 1행. 판정·차이 처리 결과
+model CountItem {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("count_item_tenant_id", fields: [tenantId], references: [id])
+  /// 캠페인
+  campaignId String @map("campaign_id") @db.Uuid
+  campaign CountCampaign @relation("count_item_campaign_id", fields: [campaignId], references: [id])
+  /// 자산
+  assetId String @map("asset_id") @db.Uuid
+  asset Asset @relation("count_item_asset_id", fields: [assetId], references: [id])
+  /// 등록 룸의 작업
+  taskId String @map("task_id") @db.Uuid
+  task CountTask @relation("count_item_task_id", fields: [taskId], references: [id])
+  /// 등록 룸(확정 시점)
+  expectedRoomId String @map("expected_room_id") @db.Uuid
+  expectedRoom Room @relation("count_item_expected_room_id", fields: [expectedRoomId], references: [id])
+  /// 판정
+  result CountResult @default(PENDING)
+  /// 발견 룸
+  foundRoomId String? @map("found_room_id") @db.Uuid
+  foundRoom Room? @relation("count_item_found_room_id", fields: [foundRoomId], references: [id])
+  /// 정상 / 파손 / 미사용
+  condition AssetCondition?
+  /// 사용자 확인
+  isUserConfirmed Boolean @default(false) @map("is_user_confirmed")
+  /// 메모
+  note String? @db.VarChar(200)
+  /// 실사자
+  countedBy String? @map("counted_by") @db.Uuid
+  counted AppUser? @relation("count_item_counted_by", fields: [countedBy], references: [id])
+  /// 실사 일시
+  countedAt DateTime? @map("counted_at") @db.Timestamptz(6)
+  /// 라벨 재출력 요청
+  needsRelabel Boolean @default(false) @map("needs_relabel")
+  /// 차이 처리
+  varianceAction VarianceAction? @map("variance_action")
+  /// 처리자
+  resolvedBy String? @map("resolved_by") @db.Uuid
+  resolved AppUser? @relation("count_item_resolved_by", fields: [resolvedBy], references: [id])
+  /// 처리 일시
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  assetRequests AssetRequest[] @relation("asset_request_count_item_id")
+  countScans CountScan[] @relation("count_scan_count_item_id")
+  sapPostings SapPosting[] @relation("sap_posting_count_item_id")
+  @@unique([campaignId, assetId])
+  @@index([taskId])
+  @@index([campaignId, result])
+  @@map("count_item")
+}
+
+/// 스캔 기록 — PDA 스캔 원본. 재전송 중복은 client_scan_id로 막음
+model CountScan {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("count_scan_tenant_id", fields: [tenantId], references: [id])
+  /// 캠페인
+  campaignId String @map("campaign_id") @db.Uuid
+  campaign CountCampaign @relation("count_scan_campaign_id", fields: [campaignId], references: [id])
+  /// 룸 작업
+  taskId String? @map("task_id") @db.Uuid
+  task CountTask? @relation("count_scan_task_id", fields: [taskId], references: [id])
+  /// 스캔 위치 룸
+  roomId String @map("room_id") @db.Uuid
+  room Room @relation("count_scan_room_id", fields: [roomId], references: [id])
+  /// PDA가 만든 UUID(멱등성)
+  clientScanId String @map("client_scan_id") @db.Uuid
+  /// 기기
+  deviceId String? @map("device_id") @db.Uuid
+  device PdaDevice? @relation("count_scan_device_id", fields: [deviceId], references: [id])
+  /// 실사자
+  scannedBy String @map("scanned_by") @db.Uuid
+  scanned AppUser @relation("count_scan_scanned_by", fields: [scannedBy], references: [id])
+  /// 읽은 값
+  barcode String @db.VarChar(40)
+  /// TRIGGER / CAMERA / MANUAL
+  inputMethod String @map("input_method") @db.VarChar(10)
+  /// 판정
+  result ScanResult
+  /// 자산
+  assetId String? @map("asset_id") @db.Uuid
+  asset Asset? @relation("count_scan_asset_id", fields: [assetId], references: [id])
+  /// 실사 대상
+  countItemId String? @map("count_item_id") @db.Uuid
+  countItem CountItem? @relation("count_scan_count_item_id", fields: [countItemId], references: [id])
+  /// 상태 입력
+  condition AssetCondition?
+  /// 메모
+  note String? @db.VarChar(200)
+  /// 기기 스캔 시각
+  scannedAt DateTime @map("scanned_at") @db.Timestamptz(6)
+  /// 서버 수신 시각
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([tenantId, clientScanId])
+  @@index([campaignId, scannedAt])
+  @@index([countItemId])
+  @@map("count_scan")
+}
+
+/// 미등록 자산 — 실사 중 발견한 대장 미등록 자산. 사진은 attachment
+model CountUnregistered {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("count_unregistered_tenant_id", fields: [tenantId], references: [id])
+  /// 캠페인
+  campaignId String @map("campaign_id") @db.Uuid
+  campaign CountCampaign @relation("count_unregistered_campaign_id", fields: [campaignId], references: [id])
+  /// 임시번호 UNREG-nnnn
+  tempNo String @map("temp_no") @db.VarChar(12)
+  /// 발견 룸
+  roomId String @map("room_id") @db.Uuid
+  room Room @relation("count_unregistered_room_id", fields: [roomId], references: [id])
+  /// 카테고리
+  categoryId String? @map("category_id") @db.Uuid
+  category Category? @relation("count_unregistered_category_id", fields: [categoryId], references: [id])
+  /// 설명
+  description String @db.VarChar(100)
+  /// 시리얼
+  serialNo String? @map("serial_no") @db.VarChar(40)
+  /// 읽은 값(있으면)
+  scannedBarcode String? @map("scanned_barcode") @db.VarChar(40)
+  /// PDA UUID(멱등성)
+  clientScanId String @map("client_scan_id") @db.Uuid
+  /// 보고자
+  reportedBy String @map("reported_by") @db.Uuid
+  reported AppUser @relation("count_unregistered_reported_by", fields: [reportedBy], references: [id])
+  /// 보고 일시
+  reportedAt DateTime @map("reported_at") @db.Timestamptz(6)
+  /// REGISTER / NON_ASSET
+  resolution VarianceAction?
+  /// 등록된 자산
+  createdAssetId String? @map("created_asset_id") @db.Uuid
+  createdAsset Asset? @relation("count_unregistered_created_asset_id", fields: [createdAssetId], references: [id])
+  /// 처리자
+  resolvedBy String? @map("resolved_by") @db.Uuid
+  resolved AppUser? @relation("count_unregistered_resolved_by", fields: [resolvedBy], references: [id])
+  /// 처리 일시
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([campaignId, tempNo])
+  @@unique([tenantId, clientScanId])
+  @@map("count_unregistered")
+}
+
+/// PDA 기기 — 실사 기기와 마지막 동기화
+model PdaDevice {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("pda_device_tenant_id", fields: [tenantId], references: [id])
+  /// 기기 시리얼
+  deviceSerial String @map("device_serial") @db.VarChar(40)
+  /// 모델 (예: TC58)
+  model String? @db.VarChar(40)
+  /// 앱 버전
+  appVersion String? @map("app_version") @db.VarChar(20)
+  /// 마지막 사용자
+  lastUserId String? @map("last_user_id") @db.Uuid
+  lastUser AppUser? @relation("pda_device_last_user_id", fields: [lastUserId], references: [id])
+  /// 마지막 동기화
+  lastSyncAt DateTime? @map("last_sync_at") @db.Timestamptz(6)
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  countScans CountScan[] @relation("count_scan_device_id")
+  @@unique([tenantId, deviceSerial])
+  @@map("pda_device")
+}
+
+/// 라벨 템플릿 — ZPL 라벨 템플릿
+model LabelTemplate {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("label_template_tenant_id", fields: [tenantId], references: [id])
+  /// 코드
+  templateCode String @map("template_code") @db.VarChar(20)
+  /// 이름
+  name String @db.VarChar(60)
+  /// QR+Code128 / QR / Code128
+  layout LabelLayout
+  /// 폭(인치)
+  widthIn Decimal @default(2) @map("width_in") @db.Decimal(4, 2)
+  /// 높이(인치)
+  heightIn Decimal @default(1) @map("height_in") @db.Decimal(4, 2)
+  /// 해상도
+  dpi Int @default(203)
+  /// ZPL 본문(치환 변수 포함)
+  zpl String
+  /// 기본 템플릿
+  isDefault Boolean @default(false) @map("is_default")
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  labelPrintJobs LabelPrintJob[] @relation("label_print_job_template_id")
+  @@unique([tenantId, templateCode])
+  @@map("label_template")
+}
+
+/// 라벨 프린터 — 네트워크 라벨 프린터
+model Printer {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("printer_tenant_id", fields: [tenantId], references: [id])
+  /// 이름
+  name String @db.VarChar(60)
+  /// 사이트
+  siteId String? @map("site_id") @db.Uuid
+  site Site? @relation("printer_site_id", fields: [siteId], references: [id])
+  /// IP 또는 호스트
+  host String @db.VarChar(100)
+  /// 포트
+  port Int @default(9100)
+  /// 해상도
+  dpi Int @default(203)
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  labelPrintJobs LabelPrintJob[] @relation("label_print_job_printer_id")
+  @@unique([tenantId, name])
+  @@map("printer")
+}
+
+/// 라벨 출력 — 출력 대기열과 출력 이력
+model LabelPrintJob {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("label_print_job_tenant_id", fields: [tenantId], references: [id])
+  /// 자산
+  assetId String @map("asset_id") @db.Uuid
+  asset Asset @relation("label_print_job_asset_id", fields: [assetId], references: [id])
+  /// 템플릿
+  templateId String @map("template_id") @db.Uuid
+  template LabelTemplate @relation("label_print_job_template_id", fields: [templateId], references: [id])
+  /// 프린터(출력 시 지정)
+  printerId String? @map("printer_id") @db.Uuid
+  printer Printer? @relation("label_print_job_printer_id", fields: [printerId], references: [id])
+  /// 요청 출처
+  source PrintSource
+  /// 상태
+  status PrintStatus @default(QUEUED)
+  /// 매수
+  copies Int @default(1)
+  /// 요청자
+  requestedBy String? @map("requested_by") @db.Uuid
+  requested AppUser? @relation("label_print_job_requested_by", fields: [requestedBy], references: [id])
+  /// 요청 일시
+  requestedAt DateTime @default(now()) @map("requested_at") @db.Timestamptz(6)
+  /// 출력 일시
+  printedAt DateTime? @map("printed_at") @db.Timestamptz(6)
+  /// 오류
+  errorMessage String? @map("error_message") @db.VarChar(500)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@index([tenantId, status])
+  @@index([assetId])
+  @@map("label_print_job")
+}
+
+/// SAP 전기 큐 — 승인 완료 건의 전기 대기열 (IF-AA-03~07, IF-MM-02). claim 시 15분 잠금
+model SapPosting {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("sap_posting_tenant_id", fields: [tenantId], references: [id])
+  /// 요청번호(멱등성 키). 실사 결과는 캠페인코드-nnnnn
+  postingId String @map("posting_id") @db.VarChar(12)
+  /// 전기 유형
+  postingType PostingType @map("posting_type")
+  /// 상태
+  status PostingStatus @default(READY)
+  /// 회사코드
+  companyId String @map("company_id") @db.Uuid
+  company Company @relation("sap_posting_company_id", fields: [companyId], references: [id])
+  /// 자산 요청
+  assetRequestId String? @map("asset_request_id") @db.Uuid
+  assetRequest AssetRequest? @relation("sap_posting_asset_request_id", fields: [assetRequestId], references: [id])
+  /// 구매요청
+  purchaseRequestId String? @map("purchase_request_id") @db.Uuid
+  purchaseRequest PurchaseRequest? @relation("sap_posting_purchase_request_id", fields: [purchaseRequestId], references: [id])
+  /// 실사 결과
+  countItemId String? @map("count_item_id") @db.Uuid
+  countItem CountItem? @relation("sap_posting_count_item_id", fields: [countItemId], references: [id])
+  /// 대상 자산
+  assetId String? @map("asset_id") @db.Uuid
+  asset Asset? @relation("sap_posting_asset_id", fields: [assetId], references: [id])
+  /// 전기일
+  postingDate DateTime? @map("posting_date") @db.Date
+  /// 가치일 BZDAT
+  valueDate DateTime? @map("value_date") @db.Date
+  /// 전송 봉투 payload
+  payload Json
+  /// 최종 승인자
+  approvedBy String? @map("approved_by") @db.Uuid
+  approved AppUser? @relation("sap_posting_approved_by", fields: [approvedBy], references: [id])
+  /// 최종 승인 일시
+  approvedAt DateTime? @map("approved_at") @db.Timestamptz(6)
+  /// 가져간 SAP 배치 ID
+  claimBatchId String? @map("claim_batch_id") @db.VarChar(40)
+  /// 가져간 일시
+  claimedAt DateTime? @map("claimed_at") @db.Timestamptz(6)
+  /// 잠금 만료
+  leaseUntil DateTime? @map("lease_until") @db.Timestamptz(6)
+  /// 시도 횟수
+  attemptCount Int @default(0) @map("attempt_count")
+  /// 결과 수신
+  resultAt DateTime? @map("result_at") @db.Timestamptz(6)
+  /// BELNR
+  sapDocumentNo String? @map("sap_document_no") @db.VarChar(10)
+  /// GJAHR
+  sapFiscalYear Int? @map("sap_fiscal_year")
+  /// 생성·이관된 자산번호
+  sapAssetNo String? @map("sap_asset_no") @db.VarChar(12)
+  /// 보조번호
+  sapSubNo String? @map("sap_sub_no") @db.VarChar(4)
+  /// 생성된 PO 번호
+  sapPoNo String? @map("sap_po_no") @db.VarChar(10)
+  /// BAPI RETURN 메시지
+  messages Json?
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  reconDiffs ReconDiff[] @relation("recon_diff_sap_posting_id")
+  @@unique([tenantId, postingId])
+  @@index([tenantId, status, leaseUntil])
+  @@map("sap_posting")
+}
+
+/// IF 실행 로그 — SAP 호출 1회(배치 1건) 로그. 7년 보관
+model SapIfRun {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("sap_if_run_tenant_id", fields: [tenantId], references: [id])
+  /// IF ID (예: IF-AA-01)
+  interfaceId String @map("interface_id") @db.VarChar(10)
+  /// 데이터 방향
+  direction IfDirection
+  /// 배치 ID
+  batchId String @map("batch_id") @db.VarChar(40)
+  /// X-Correlation-Id
+  correlationId String? @map("correlation_id") @db.Uuid
+  /// X-SAP-System
+  sapSystem String? @map("sap_system") @db.VarChar(10)
+  /// 응답 코드
+  httpStatus Int? @map("http_status")
+  /// 건수
+  recordCount Int @default(0) @map("record_count")
+  /// 성공
+  successCount Int @default(0) @map("success_count")
+  /// 오류
+  errorCount Int @default(0) @map("error_count")
+  /// 결과
+  status IfStatus
+  /// 시작
+  startedAt DateTime @map("started_at") @db.Timestamptz(6)
+  /// 종료
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  sapIfMessages SapIfMessage[] @relation("sap_if_message_run_id")
+  @@index([tenantId, interfaceId, startedAt])
+  @@map("sap_if_run")
+}
+
+/// IF 건별 결과 — IF 실행의 건별 결과. 오류 건은 원본 레코드 보관
+model SapIfMessage {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("sap_if_message_tenant_id", fields: [tenantId], references: [id])
+  /// IF 실행
+  runId String @map("run_id") @db.Uuid
+  run SapIfRun @relation("sap_if_message_run_id", fields: [runId], references: [id])
+  /// 레코드 키 (예: 1000/300001234/0)
+  recordKey String @map("record_key") @db.VarChar(40)
+  /// OK / ERROR
+  result String @db.VarChar(10)
+  /// ALM 오류 코드 (예: ALM-E104)
+  errorCode String? @map("error_code") @db.VarChar(12)
+  /// 메시지
+  message String? @db.VarChar(500)
+  /// 원본 레코드(오류 건만)
+  payload Json?
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([runId])
+  @@index([tenantId, recordKey])
+  @@map("sap_if_message")
+}
+
+/// 멱등성 키 — Idempotency-Key 24시간 보관. 같은 키 재요청은 저장된 응답 반환
+model IdempotencyKey {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("idempotency_key_tenant_id", fields: [tenantId], references: [id])
+  /// API 경로
+  endpoint String @db.VarChar(80)
+  /// Idempotency-Key
+  key String @db.VarChar(80)
+  /// 요청 본문 SHA-256
+  requestHash String @map("request_hash") @db.VarChar(64)
+  /// 응답 코드
+  responseStatus Int? @map("response_status")
+  /// 응답 본문
+  responseBody Json? @map("response_body")
+  /// 만료(생성 + 24시간)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([tenantId, endpoint, key])
+  @@index([expiresAt])
+  @@map("idempotency_key")
+}
+
+/// 대사 실행 — IF-RC-01 스냅샷 1회와 대사 결과 요약
+model ReconRun {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("recon_run_tenant_id", fields: [tenantId], references: [id])
+  /// WEEKLY / CAMPAIGN
+  runType String @map("run_type") @db.VarChar(10)
+  /// SAP 배치 ID
+  batchId String @map("batch_id") @db.VarChar(40)
+  /// 실사 종료 대사
+  countCampaignId String? @map("count_campaign_id") @db.Uuid
+  countCampaign CountCampaign? @relation("recon_run_count_campaign_id", fields: [countCampaignId], references: [id])
+  /// 상태
+  status RunStatus @default(RUNNING)
+  /// 스냅샷 시각
+  snapshotAt DateTime @map("snapshot_at") @db.Timestamptz(6)
+  /// SAP 자산 수
+  sapCount Int @default(0) @map("sap_count")
+  /// ALM 자본화 자산 수
+  almCount Int @default(0) @map("alm_count")
+  /// 차이 수
+  diffCount Int @default(0) @map("diff_count")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  reconSnapshots ReconSnapshot[] @relation("recon_snapshot_run_id")
+  reconDiffs ReconDiff[] @relation("recon_diff_run_id")
+  @@unique([tenantId, batchId])
+  @@map("recon_run")
+}
+
+/// 대사 스냅샷 — SAP 자본화 자산 스냅샷 원본(분할 수신)
+model ReconSnapshot {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("recon_snapshot_tenant_id", fields: [tenantId], references: [id])
+  /// 대사 실행
+  runId String @map("run_id") @db.Uuid
+  run ReconRun @relation("recon_snapshot_run_id", fields: [runId], references: [id])
+  /// BUKRS
+  companyCode String @map("company_code") @db.VarChar(4)
+  /// ANLN1
+  sapAssetNo String @map("sap_asset_no") @db.VarChar(12)
+  /// ANLN2
+  sapSubNo String @map("sap_sub_no") @db.VarChar(4)
+  /// INVNR
+  inventoryNo String? @map("inventory_no") @db.VarChar(25)
+  /// SERNR
+  serialNo String? @map("serial_no") @db.VarChar(18)
+  /// KOSTL
+  costCenterCode String? @map("cost_center_code") @db.VarChar(10)
+  /// STORT
+  location String? @db.VarChar(10)
+  /// RAUMNR
+  roomNo String? @map("room_no") @db.VarChar(8)
+  /// DEAKT
+  deactDate DateTime? @map("deact_date") @db.Date
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([runId, companyCode, sapAssetNo, sapSubNo])
+  @@map("recon_snapshot")
+}
+
+/// 대사 차이 — 차이 1건과 조치
+model ReconDiff {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("recon_diff_tenant_id", fields: [tenantId], references: [id])
+  /// 대사 실행
+  runId String @map("run_id") @db.Uuid
+  run ReconRun @relation("recon_diff_run_id", fields: [runId], references: [id])
+  /// 차이 유형
+  diffType ReconDiffType @map("diff_type")
+  /// ALM 자산
+  assetId String? @map("asset_id") @db.Uuid
+  asset Asset? @relation("recon_diff_asset_id", fields: [assetId], references: [id])
+  /// ANLN1
+  sapAssetNo String? @map("sap_asset_no") @db.VarChar(12)
+  /// ANLN2
+  sapSubNo String? @map("sap_sub_no") @db.VarChar(4)
+  /// ALM 값
+  almValue String? @map("alm_value") @db.VarChar(100)
+  /// SAP 값
+  sapValue String? @map("sap_value") @db.VarChar(100)
+  /// 조치(기본값은 규칙으로 제안)
+  action ReconAction
+  /// 처리 상태
+  status ReconStatus @default(OPEN)
+  /// ALM 값 전송 시 전기 건
+  sapPostingId String? @map("sap_posting_id") @db.Uuid
+  sapPosting SapPosting? @relation("recon_diff_sap_posting_id", fields: [sapPostingId], references: [id])
+  /// 처리자
+  resolvedBy String? @map("resolved_by") @db.Uuid
+  resolved AppUser? @relation("recon_diff_resolved_by", fields: [resolvedBy], references: [id])
+  /// 처리 일시
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  assetRequests AssetRequest[] @relation("asset_request_recon_diff_id")
+  @@index([runId, status])
+  @@map("recon_diff")
+}
+
+/// 필드 매핑 — ALM 필드 ↔ SAP 필드와 기준 시스템(F-310-06)
+model FieldMapping {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("field_mapping_tenant_id", fields: [tenantId], references: [id])
+  /// ALM 테이블.컬럼
+  almField String @map("alm_field") @db.VarChar(60)
+  /// SAP 테이블
+  sapTable String? @map("sap_table") @db.VarChar(30)
+  /// SAP 필드
+  sapField String? @map("sap_field") @db.VarChar(30)
+  /// 기준 시스템
+  masterSystem MasterSystem @map("master_system")
+  /// 사용 IF
+  interfaceIds String? @map("interface_ids") @db.VarChar(100)
+  /// 설명
+  description String? @db.VarChar(200)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([tenantId, almField])
+  @@map("field_mapping")
+}
+
+/// SAP 연결 — SAP 시스템과 API 클라이언트. 비밀은 Secrets Manager
+model SapConnection {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("sap_connection_tenant_id", fields: [tenantId], references: [id])
+  /// 시스템 ID-클라이언트 (예: PRD-100)
+  systemId String @map("system_id") @db.VarChar(10)
+  /// 회사코드
+  companyId String @map("company_id") @db.Uuid
+  company Company @relation("sap_connection_company_id", fields: [companyId], references: [id])
+  /// OAuth 클라이언트 ID
+  oauthClientId String @map("oauth_client_id") @db.VarChar(100)
+  /// 마지막 호출
+  lastCallAt DateTime? @map("last_call_at") @db.Timestamptz(6)
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([tenantId, systemId, companyId])
+  @@unique([oauthClientId])
+  @@map("sap_connection")
+}
+
+/// 공통 코드 — 고객이 바꾸는 코드값(폐기 사유, 실사 비고 등)
+model Code {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("code_tenant_id", fields: [tenantId], references: [id])
+  /// 코드 그룹
+  codeGroup String @map("code_group") @db.VarChar(30)
+  /// 코드
+  code String @db.VarChar(30)
+  /// 영문 이름
+  labelEn String @map("label_en") @db.VarChar(100)
+  /// 한글 이름
+  labelKo String? @map("label_ko") @db.VarChar(100)
+  /// 정렬 순서
+  sortOrder Int @default(0) @map("sort_order")
+  /// 추가 속성
+  attributes Json?
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([tenantId, codeGroup, code])
+  @@map("code")
+}
+
+/// 설정 — 테넌트 설정값 (예: 라이선스 과잉 기준 80%, 자본화 기준금액)
+model Setting {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("setting_tenant_id", fields: [tenantId], references: [id])
+  /// 설정 키
+  key String @db.VarChar(60)
+  /// 값
+  value Json
+  /// 설명
+  description String? @db.VarChar(200)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([tenantId, key])
+  @@map("setting")
+}
+
+/// 채번 — 업무 번호 채번(AT-, AR-, PR-, UNREG-). 행 잠금으로 증가
+model NumberSequence {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("number_sequence_tenant_id", fields: [tenantId], references: [id])
+  /// ASSET_TAG / ASSET_REQUEST / PURCHASE_REQUEST / UNREG
+  seqName String @map("seq_name") @db.VarChar(30)
+  /// 접두어 (예: AT-)
+  prefix String @db.VarChar(10)
+  /// 다음 번호
+  nextValue BigInt @default(1) @map("next_value")
+  /// 자릿수
+  padding Int @default(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([tenantId, seqName])
+  @@map("number_sequence")
+}
+
+/// 첨부 — 사진·문서. 파일은 S3, 메타만 저장
+model Attachment {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("attachment_tenant_id", fields: [tenantId], references: [id])
+  /// 대상 테이블 (asset, count_item, count_unregistered, asset_request, contract)
+  ownerType String @map("owner_type") @db.VarChar(30)
+  /// 대상 행 id
+  ownerId String @map("owner_id") @db.Uuid
+  /// PHOTO / DOCUMENT
+  kind String @default("DOCUMENT") @db.VarChar(20)
+  /// 파일명
+  fileName String @map("file_name") @db.VarChar(200)
+  /// MIME
+  contentType String @map("content_type") @db.VarChar(100)
+  /// 크기
+  sizeBytes BigInt @map("size_bytes")
+  /// S3 객체 키
+  s3Key String @map("s3_key") @db.VarChar(500)
+  /// 해시
+  sha256 String? @db.VarChar(64)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@index([tenantId, ownerType, ownerId])
+  @@map("attachment")
+}
+
+/// 알림 — 이메일·화면 알림 발송 기록
+model Notification {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("notification_tenant_id", fields: [tenantId], references: [id])
+  /// 채널
+  channel NotificationChannel
+  /// 수신자
+  recipientId String? @map("recipient_id") @db.Uuid
+  recipient AppUser? @relation("notification_recipient_id", fields: [recipientId], references: [id])
+  /// 수신 이메일
+  recipientEmail String? @map("recipient_email") @db.VarChar(254)
+  /// 템플릿 (예: CONTRACT_EXPIRY_90)
+  template String @db.VarChar(40)
+  /// 대상 테이블
+  subjectType String? @map("subject_type") @db.VarChar(30)
+  /// 대상 행 id
+  subjectId String? @map("subject_id") @db.Uuid
+  /// 제목
+  title String @db.VarChar(200)
+  /// 상태
+  status NotificationStatus @default(QUEUED)
+  /// 발송 일시
+  sentAt DateTime? @map("sent_at") @db.Timestamptz(6)
+  /// 오류
+  errorMessage String? @map("error_message") @db.VarChar(500)
+  /// 중복 발송 방지 키
+  dedupeKey String? @map("dedupe_key") @db.VarChar(120)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([tenantId, dedupeKey])
+  @@index([recipientId, status])
+  @@map("notification")
+}
+
+/// 감사 로그 — 모든 테이블의 생성·변경 전후값. 7년 보관, 월 파티션
+model AuditLog {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("audit_log_tenant_id", fields: [tenantId], references: [id])
+  /// 테이블
+  tableName String @map("table_name") @db.VarChar(63)
+  /// 행 id
+  rowId String @map("row_id") @db.Uuid
+  /// 동작
+  action AuditAction
+  /// 변경 전
+  before Json?
+  /// 변경 후
+  after Json?
+  /// 사용자 id(FK 없음, 사용자 삭제 대비)
+  actorId String? @map("actor_id") @db.Uuid
+  /// USER / SYSTEM / SAP / PDA
+  actorType String @map("actor_type") @db.VarChar(10)
+  /// 요청 추적 ID
+  correlationId String? @map("correlation_id") @db.Uuid
+  /// 접속 IP
+  ipAddress String? @map("ip_address") @db.Inet
+  /// 발생 일시
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([tenantId, tableName, rowId])
+  @@index([tenantId, occurredAt])
+  @@map("audit_log")
+}
+
+/// 사용자 역할
+enum RoleCode {
+  SYS_ADMIN
+  ASSET_MANAGER
+  DEPT_MANAGER
+  ASSET_ACCOUNTANT
+  COUNTER
+  EMPLOYEE
+  @@map("role_code")
+}
+
+/// 자산 상태
+enum AssetStatus {
+  ON_ORDER
+  IN_STOCK
+  IN_USE
+  IN_REPAIR
+  MISSING
+  RETIRED
+  DISPOSED
+  @@map("asset_status")
+}
+
+/// 자산 생성 출처
+enum AssetSource {
+  MANUAL
+  DISCOVERY
+  GOODS_RECEIPT
+  SAP
+  PDA_COUNT
+  IMPORT
+  @@map("asset_source")
+}
+
+/// 자산 이력 유형
+enum AssetEventType {
+  CREATED
+  UPDATED
+  STATUS_CHANGED
+  ASSIGNED
+  RETURNED
+  TRANSFERRED
+  REPAIR_IN
+  REPAIR_OUT
+  COUNTED
+  LABEL_PRINTED
+  SAP_POSTED
+  SAP_SYNCED
+  RETIRED
+  DISPOSED
+  @@map("asset_event_type")
+}
+
+/// CI 유형
+enum CiType {
+  BUSINESS_SERVICE
+  APPLICATION
+  DATABASE
+  SERVER
+  VIRTUAL_MACHINE
+  NETWORK
+  OT_DEVICE
+  OTHER
+  @@map("ci_type")
+}
+
+/// CI 관계 유형
+enum CiRelationType {
+  DEPENDS_ON
+  RUNS_ON
+  CONNECTED_TO
+  INSTALLED_ON
+  @@map("ci_relation_type")
+}
+
+/// 수집 방식
+enum DiscoveryMethod {
+  AGENT
+  NETWORK_SCAN
+  VCENTER
+  @@map("discovery_method")
+}
+
+/// 작업 실행 상태
+enum RunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  PARTIAL
+  FAILED
+  @@map("run_status")
+}
+
+/// 수집 결과 분류
+enum DiscoveryMatch {
+  NEW
+  CONFLICT
+  UNMANAGED
+  MATCHED
+  IGNORED
+  @@map("discovery_match")
+}
+
+/// 수집 결과 처리
+enum DiscoveryResolution {
+  REGISTERED
+  UPDATED
+  QUARANTINED
+  IGNORED
+  @@map("discovery_resolution")
+}
+
+/// 라이선스 모델
+enum LicenseModel {
+  PER_USER
+  PER_DEVICE
+  PER_CORE
+  NETWORK
+  @@map("license_model")
+}
+
+/// 계약 유형
+enum ContractType {
+  MAINTENANCE
+  LEASE
+  SERVICE
+  SUBSCRIPTION
+  @@map("contract_type")
+}
+
+/// 구매요청 상태
+enum PurchaseRequestStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PO_REQUESTED
+  PO_CREATED
+  PO_ERROR
+  CANCELLED
+  @@map("purchase_request_status")
+}
+
+/// 자산 요청 유형
+enum RequestType {
+  NEW_ASSET
+  CHANGE
+  TRANSFER
+  RETIRE
+  SALE
+  @@map("request_type")
+}
+
+/// 자산 요청 상태
+enum RequestStatus {
+  DRAFT
+  SUBMITTED
+  MGR_APPROVED
+  ACCT_APPROVED
+  POSTED
+  POST_ERROR
+  REJECTED
+  CANCELLED
+  @@map("request_status")
+}
+
+/// 요청 발생 출처
+enum RequestSource {
+  USER
+  ASSIGNMENT
+  COUNT_VARIANCE
+  RECONCILIATION
+  GOODS_RECEIPT
+  @@map("request_source")
+}
+
+/// 폐기 유형
+enum RetireType {
+  SCRAP
+  SALE
+  LOSS
+  @@map("retire_type")
+}
+
+/// 승인 결정
+enum ApprovalDecision {
+  PENDING
+  APPROVED
+  REJECTED
+  SKIPPED
+  @@map("approval_decision")
+}
+
+/// 실사 캠페인 단계
+enum CampaignStatus {
+  SCOPING
+  COUNTING
+  REVIEW
+  POSTING
+  CLOSED
+  CANCELLED
+  @@map("campaign_status")
+}
+
+/// 룸 실사 작업 상태
+enum CountTaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  @@map("count_task_status")
+}
+
+/// 실사 대상 판정
+enum CountResult {
+  PENDING
+  FOUND
+  MISPLACED
+  NOT_FOUND
+  @@map("count_result")
+}
+
+/// 스캔 판정
+enum ScanResult {
+  FOUND
+  MISPLACED
+  OUT_OF_SCOPE
+  UNREGISTERED
+  DUPLICATE
+  RETIRED_ASSET
+  @@map("scan_result")
+}
+
+/// 자산 상태(실사)
+enum AssetCondition {
+  GOOD
+  DAMAGED
+  UNUSED
+  @@map("asset_condition")
+}
+
+/// 차이 처리
+enum VarianceAction {
+  NONE
+  MASTER_CHANGE
+  RECOUNT
+  RETIRE_REQUEST
+  MARK_MISSING
+  REPAIR
+  ACCEPT
+  REGISTER
+  NON_ASSET
+  @@map("variance_action")
+}
+
+/// 라벨 레이아웃
+enum LabelLayout {
+  QR_CODE128
+  QR_ONLY
+  CODE128_ONLY
+  @@map("label_layout")
+}
+
+/// 출력 요청 출처
+enum PrintSource {
+  ASSET_DETAIL
+  GOODS_RECEIPT
+  PDA_REQUEST
+  BULK
+  @@map("print_source")
+}
+
+/// 출력 상태
+enum PrintStatus {
+  QUEUED
+  SENT
+  PRINTED
+  FAILED
+  @@map("print_status")
+}
+
+/// SAP 전기 유형
+enum PostingType {
+  ASSET_CREATE
+  ASSET_CHANGE
+  ASSET_TRANSFER
+  ASSET_RETIRE
+  COUNT_RESULT
+  PO_CREATE
+  @@map("posting_type")
+}
+
+/// SAP 전기 상태
+enum PostingStatus {
+  READY
+  CLAIMED
+  POSTED
+  FAILED
+  CANCELLED
+  @@map("posting_status")
+}
+
+/// 데이터 방향
+enum IfDirection {
+  SAP_TO_ALM
+  ALM_TO_SAP
+  @@map("if_direction")
+}
+
+/// IF 실행 결과
+enum IfStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+  @@map("if_status")
+}
+
+/// 대사 차이 유형
+enum ReconDiffType {
+  SAP_ONLY
+  ALM_ONLY
+  COST_CENTER
+  LOCATION
+  SERIAL
+  TAG
+  RETIRED
+  @@map("recon_diff_type")
+}
+
+/// 대사 조치
+enum ReconAction {
+  SAP_TO_ALM
+  ALM_TO_SAP
+  REVIEW
+  IGNORE
+  @@map("recon_action")
+}
+
+/// 대사 처리 상태
+enum ReconStatus {
+  OPEN
+  RESOLVED
+  IGNORED
+  @@map("recon_status")
+}
+
+/// 기준 시스템
+enum MasterSystem {
+  SAP
+  ALM
+  @@map("master_system")
+}
+
+/// 알림 채널
+enum NotificationChannel {
+  EMAIL
+  IN_APP
+  @@map("notification_channel")
+}
+
+/// 알림 상태
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+  @@map("notification_status")
+}
+
+/// 감사 동작
+enum AuditAction {
+  INSERT
+  UPDATE
+  DELETE
+  @@map("audit_action")
+}

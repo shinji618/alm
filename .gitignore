@@ -7,3 +7,7 @@ coverage/
 .DS_Store
 *.tsbuildinfo
 storybook-static/
+
+# db generator output
+db/spec/out/
+__pycache__/
