@@ -2473,8 +2473,8 @@ model Attachment {
   tenant Tenant @relation("attachment_tenant_id", fields: [tenantId], references: [id])
   /// 대상 테이블 (asset, count_item, count_unregistered, asset_request, contract)
   ownerType String @map("owner_type") @db.VarChar(30)
-  /// 대상 행 id
-  ownerId String @map("owner_id") @db.Uuid
+  /// 대상 행 id. PDA 사진은 업로드 직후 비어 있음
+  ownerId String? @map("owner_id") @db.Uuid
   /// PHOTO / DOCUMENT
   kind String @default("DOCUMENT") @db.VarChar(20)
   /// 파일명
@@ -2487,6 +2487,8 @@ model Attachment {
   s3Key String @map("s3_key") @db.VarChar(500)
   /// 해시
   sha256 String? @db.VarChar(64)
+  /// 대상 연결 일시. 비어 있으면 업로드 대기(24시간 뒤 정리)
+  linkedAt DateTime? @map("linked_at") @db.Timestamptz(6)
   /// 생성 일시
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   /// 생성자

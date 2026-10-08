@@ -706,13 +706,14 @@ padding | int | NN =6 | 자릿수
 ''', uniques=[('tenant_id','seq_name')], screens='-')
 t('common','attachment','첨부','사진·문서. 파일은 S3, 메타만 저장', '''
 owner_type | vc(30) | NN | 대상 테이블 (asset, count_item, count_unregistered, asset_request, contract)
-owner_id | uuid | NN | 대상 행 id
+owner_id | uuid | | 대상 행 id. PDA 사진은 업로드 직후 비어 있음
 kind | vc(20) | NN ='DOCUMENT' | PHOTO / DOCUMENT
 file_name | vc(200) | NN | 파일명
 content_type | vc(100) | NN | MIME
 size_bytes | bigint | NN | 크기
 s3_key | vc(500) | NN | S3 객체 키
 sha256 | vc(64) | | 해시
+linked_at | ts | | 대상 연결 일시. 비어 있으면 업로드 대기(24시간 뒤 정리)
 ''', indexes=[('tenant_id','owner_type','owner_id')], screens='공통')
 t('common','notification','알림','이메일·화면 알림 발송 기록', '''
 channel | E:NotificationChannel | NN | 채널

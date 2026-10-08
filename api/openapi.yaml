@@ -1,0 +1,2985 @@
+openapi: 3.1.0
+info:
+  title: ALM API — PDA · SAP
+  version: 0.1.0
+  license:
+    name: Proprietary — BSG America
+    identifier: LicenseRef-BSG-Proprietary
+  description: BSG America Asset Lifecycle Manager. WBS 2.6 (PDA, SAP). 웹 화면 API는 별도 추가 예정.
+servers:
+- url: https://alm.{domain}/api/v1
+  variables:
+    domain:
+      default: example.com
+tags:
+- name: PDA
+  description: PDA 실사 앱 (Zebra TC58)
+- name: SAP
+  description: SAP S/4HANA 배치 잡(아웃바운드 호출)
+paths:
+  /pda/me:
+    get:
+      operationId: pdaGetMe
+      summary: 로그인 사용자·앱 설정
+      tags:
+      - PDA
+      description: 'PDA-01 · 테이블: app_user, user_role
+
+
+        - COUNTER 역할이 없으면 403 ALM-E401.
+
+        - 앱은 serverTime으로 기기 시계 차이를 기록하고 scannedAt 보정에 쓴다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PdaMe'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - pdaAuth:
+        - pda
+  /pda/devices/{deviceSerial}:
+    put:
+      operationId: pdaRegisterDevice
+      summary: 기기 등록·갱신
+      tags:
+      - PDA
+      description: 'PDA-01 · 테이블: pda_device
+
+
+        - 같은 시리얼이면 갱신(멱등). last_user_id·app_version·last_sync_at 기록.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: deviceSerial
+        in: path
+        required: true
+        description: 기기 시리얼
+        schema:
+          type: string
+          maxLength: 40
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - pdaAuth:
+        - pda
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceRegister'
+  /pda/tasks:
+    get:
+      operationId: pdaListTasks
+      summary: 내 실사 작업 목록
+      tags:
+      - PDA
+      description: 'PDA-02 · 테이블: count_task, count_campaign, room
+
+
+        - assignee = 로그인 사용자이고 캠페인 단계가 COUNTING인 작업만.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: status
+        in: query
+        required: false
+        description: 상태 필터
+        schema:
+          type: string
+          enum:
+          - NOT_STARTED
+          - IN_PROGRESS
+          - COMPLETED
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PdaTaskList'
+        '401':
+          $ref: '#/components/responses/E401'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - pdaAuth:
+        - pda
+  /pda/campaigns/{campaignId}/worklist:
+    get:
+      operationId: pdaGetWorklist
+      summary: 작업목록 다운로드(전체·델타)
+      tags:
+      - PDA
+      description: 'PDA-01 · 테이블: count_item, asset, room
+
+
+        - 내게 배정된 룸의 count_item만 내려준다. 기기 저장 한도 1만 건.
+
+        - since 없이 호출하면 전체, since=syncToken이면 그 뒤 바뀐 행과 removed만.
+
+        - syncToken이 7일보다 오래되면 410 ALM-E309 → 전체 다시 받기.
+
+        - 응답은 gzip. If-None-Match(ETag)가 같으면 304.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: campaignId
+        in: path
+        required: true
+        description: 캠페인
+        schema:
+          type: string
+          format: uuid
+      - name: since
+        in: query
+        required: false
+        description: 이전 syncToken
+        schema:
+          type: string
+      - name: cursor
+        in: query
+        required: false
+        description: 페이지 커서
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        description: 페이지 크기(기본 2,000, 최대 5,000)
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorklistPage'
+        '304':
+          description: 변경 없음(ETag 일치)
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '410':
+          $ref: '#/components/responses/E410'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - pdaAuth:
+        - pda
+  /pda/campaigns/{campaignId}/tag-index:
+    get:
+      operationId: pdaGetTagIndex
+      summary: 범위 밖 태그 색인
+      tags:
+      - PDA
+      description: 'PDA-04 · 테이블: asset
+
+
+        - 작업목록에 없는 태그를 오프라인에서 OUT_OF_SCOPE·RETIRED_ASSET·UNREGISTERED로 가르기 위한 색인.
+
+        - 같은 테넌트의 다른 자산 태그와 상태만(개인정보 없음). 델타·페이지 규칙은 worklist와 같다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: campaignId
+        in: path
+        required: true
+        description: 캠페인
+        schema:
+          type: string
+          format: uuid
+      - name: since
+        in: query
+        required: false
+        description: 이전 syncToken
+        schema:
+          type: string
+      - name: cursor
+        in: query
+        required: false
+        description: 페이지 커서
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagIndexPage'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - pdaAuth:
+        - pda
+  /pda/rooms:
+    get:
+      operationId: pdaListRooms
+      summary: 룸 목록
+      tags:
+      - PDA
+      description: 'PDA-03 · 테이블: room, site
+
+
+        - 캠페인 범위의 사이트에 있는 활성 룸 전체(다른 룸에서 발견한 자산 기록용).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: campaignId
+        in: query
+        required: true
+        description: 캠페인
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PdaRoomList'
+        '401':
+          $ref: '#/components/responses/E401'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - pdaAuth:
+        - pda
+  /pda/codes:
+    get:
+      operationId: pdaGetCodes
+      summary: 코드값
+      tags:
+      - PDA
+      description: 'PDA-05·06 · 테이블: category, code
+
+
+        - 사용자 locale로 이름을 내려준다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PdaCodes'
+        '401':
+          $ref: '#/components/responses/E401'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - pdaAuth:
+        - pda
+  /pda/tasks/{taskId}:
+    patch:
+      operationId: pdaUpdateTask
+      summary: 룸 작업 시작·완료
+      tags:
+      - PDA
+      description: 'PDA-07 · 테이블: count_task
+
+
+        - COMPLETE이고 미확인 자산이 남았는데 force가 아니면 409 ALM-E305(남은 수 반환).
+
+        - 완료한 룸에 스캔이 더 들어오면 작업을 IN_PROGRESS로 되돌린다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - name: taskId
+        in: path
+        required: true
+        description: 작업
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PdaTask'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - pdaAuth:
+        - pda
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskUpdate'
+  /pda/attachments:presign:
+    post:
+      operationId: pdaPresignPhoto
+      summary: 사진 업로드 URL 발급
+      tags:
+      - PDA
+      description: 'PDA-05·06 · 테이블: attachment
+
+
+        - 발급 시 attachment 행을 owner 없이 만들고(linked_at 비움), 스캔·미등록 전송에서 연결될 때 owner_id·linked_at을 채운다.
+
+        - 24시간 안에 연결되지 않은 첨부 행과 S3 객체는 정리 배치가 지운다.
+
+        - 최대 5 MB, JPEG·PNG. 기기에서 긴 변 1,600px로 줄여 올린다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresignResponse'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '413':
+          $ref: '#/components/responses/E413'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - pdaAuth:
+        - pda
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PresignRequest'
+  /pda/scans:batch:
+    post:
+      operationId: pdaPostScans
+      summary: 스캔 일괄 전송
+      tags:
+      - PDA
+      description: 'PDA-04·05·08 · 테이블: count_scan, count_item, count_task, asset, label_print_job
+
+
+        - 건별로 처리하고 실패해도 다음 건을 계속한다. 하나라도 REJECTED면 207.
+
+        - 같은 clientScanId는 DUPLICATE로 최초 결과를 돌려준다(재전송 안전).
+
+        - 서버가 판정을 다시 한다. 기기 판정과 다르면 serverResult가 기준.
+
+        - 같은 자산을 여러 번 스캔하면 scannedAt이 가장 늦은 스캔이 count_item에 남는다.
+
+        - MISSING 자산을 스캔하면 status_before_missing으로 복원하고 asset_event를 남긴다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanBatchResult'
+        '207':
+          description: 일부 성공(건별 결과 확인)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanBatchResult'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - pdaAuth:
+        - pda
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanBatch'
+  /pda/unregistered:batch:
+    post:
+      operationId: pdaPostUnregistered
+      summary: 미등록 자산 일괄 전송
+      tags:
+      - PDA
+      description: 'PDA-06 · 테이블: count_unregistered, attachment, number_sequence
+
+
+        - tempNo(UNREG-nnnn)는 서버가 캠페인 안에서 채번한다. 기기는 provisionalNo를 tempNo로 바꿔 표시.
+
+        - 사진이 없으면 REJECTED ALM-E110.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnregisteredBatchResult'
+        '207':
+          description: 일부 성공(건별 결과 확인)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnregisteredBatchResult'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - pdaAuth:
+        - pda
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnregisteredBatch'
+  /oauth/token:
+    post:
+      operationId: sapToken
+      summary: 토큰 발급(Client Credentials)
+      tags:
+      - SAP
+      description: '공통 · 테이블: sap_connection
+
+
+        - 요청은 application/x-www-form-urlencoded: grant_type=client_credentials, client_id, client_secret, scope=sap.api.
+
+        - 내부적으로 Cognito 앱 클라이언트 토큰을 발급한다. 토큰의 client_id로 sap_connection → 테넌트·회사코드를 정한다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+              - grant_type
+              - client_id
+              - client_secret
+              properties:
+                grant_type:
+                  type: string
+                  enum:
+                  - client_credentials
+                client_id:
+                  type: string
+                client_secret:
+                  type: string
+                scope:
+                  type: string
+                  default: sap.api
+  /sap/ping:
+    get:
+      operationId: sapPing
+      summary: 연결 확인
+      tags:
+      - SAP
+      description: 'SM59 테스트 · 테이블: sap_connection
+
+
+        - SM59 연결 테스트·배치 시작 전 확인용. 부하 없음.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SapPing'
+        '401':
+          $ref: '#/components/responses/E401'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - sapAuth:
+        - sap.api
+  /sap/master-data:
+    post:
+      operationId: sapPostMasterData
+      summary: 조직·코드 마스터 수신
+      tags:
+      - SAP
+      description: 'IF-MD-01 · 테이블: company, plant, cost_center, profit_center, asset_class
+
+
+        - 유형별로 분할 전송하고 isLast=true에서 이번 배치에 없던 코드를 is_active=false로 바꾼다(삭제 안 함).
+
+        - 분할 순서가 어긋나면(chunkNo 누락) 409 ALM-E303, 배치 전체를 다시 보낸다.
+
+        - COST_CENTER는 PROFIT_CENTER 뒤에 보낸다(손익센터 참조).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResult'
+        '207':
+          description: 일부 성공(건별 결과 확인)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResult'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - sapAuth:
+        - sap.api
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MasterDataRequest'
+  /sap/assets:upsert:
+    post:
+      operationId: sapUpsertAssets
+      summary: 자산 마스터 델타 수신
+      tags:
+      - SAP
+      description: 'IF-AA-01 · 테이블: asset, asset_event
+
+
+        - 매칭: ① companyCode+assetNo+subNo ② inventoryNo(자산태그). 둘 다 없으면 ALM 자산을 새로 만들고 실사 필요로 표시.
+
+        - SAP 기준 필드(자산클래스, 자산명, 취득일, 비활성일, 코스트센터·손익센터, IVDAT)만 갱신한다. 시리얼·룸·태그는 ALM 기준이라 덮지 않는다.
+
+        - 코스트센터·자산클래스가 ALM에 없으면 ERROR ALM-E104/E105. 다음 IF-MD-01 수신 후 자동 재처리(최대 3일).
+
+        - 값이 같으면 SKIPPED, 바뀌면 asset_event(SAP_SYNCED)에 전후값.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResult'
+        '207':
+          description: 일부 성공(건별 결과 확인)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResult'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - sapAuth:
+        - sap.api
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssetUpsertRequest'
+  /sap/asset-values:
+    post:
+      operationId: sapPostAssetValues
+      summary: 자산 금액 수신
+      tags:
+      - SAP
+      description: 'IF-AA-02 · 테이블: asset_value
+
+
+        - (자산, 회계연도, 기간, 상각영역) 단위 업서트. 자산이 없으면 ERROR ALM-E201.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResult'
+        '207':
+          description: 일부 성공(건별 결과 확인)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResult'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - sapAuth:
+        - sap.api
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssetValuesRequest'
+  /sap/postings:claim:
+    post:
+      operationId: sapClaimPostings
+      summary: 전기 대상 가져오기(15분 잠금)
+      tags:
+      - SAP
+      description: 'IF-AA-03~07, IF-MM-02 · 테이블: sap_posting
+
+
+        - READY 또는 잠금이 지난 CLAIMED 건을 postingId 순으로 FOR UPDATE SKIP LOCKED로 잡고 CLAIMED·leaseUntil=now+15분·attempt+1.
+
+        - 대상이 없으면 items=[] (200).
+
+        - 월말 마감 기간 설정(setting: sap.posting_blackout)이면 빈 목록을 돌려준다.
+
+        - attempt가 5를 넘으면 FAILED ALM-E306으로 바꾸고 자산회계에게 알린다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimResponse'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - sapAuth:
+        - sap.api
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimRequest'
+  /sap/postings/{postingId}/result:
+    post:
+      operationId: sapPostResult
+      summary: 전기 결과 회신
+      tags:
+      - SAP
+      description: 'IF-AA-03~07, IF-MM-02 · 테이블: sap_posting, asset_request, purchase_request, count_item, asset, asset_event
+
+
+        - POSTED: 결과값(자산번호·전표·PO번호)을 asset·요청에 반영하고 asset_event(SAP_POSTED).
+
+        - FAILED: 요청을 POST_ERROR로, 메시지를 저장. 자산회계가 ALM-310에서 고쳐 재처리하면 READY로 돌아간다.
+
+        - 이미 결과가 있는 건에 다른 결과가 오면 409 ALM-E302, 같은 결과면 200(멱등).
+
+        - 잠금이 지난 뒤 온 결과도 받는다(SAP은 BKTXT로 중복 전기를 막음).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - name: postingId
+        in: path
+        required: true
+        description: 요청번호
+        schema:
+          type: string
+          maxLength: 12
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostingAck'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - sapAuth:
+        - sap.api
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostingResult'
+  /sap/purchase-orders:
+    post:
+      operationId: sapPostPurchaseOrders
+      summary: 자산 PO 항목 수신
+      tags:
+      - SAP
+      description: 'IF-MM-01 · 테이블: po_item, po_item_asset, purchase_request
+
+
+        - (poNo, item) 업서트. deletionFlag=true면 is_deleted=true, 입고 대기 취소.
+
+        - almRequestNo가 있으면 purchase_request.sap_po_no와 연결.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResult'
+        '207':
+          description: 일부 성공(건별 결과 확인)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResult'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - sapAuth:
+        - sap.api
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PurchaseOrdersRequest'
+  /sap/goods-receipts:
+    post:
+      operationId: sapPostGoodsReceipts
+      summary: 입고 수신
+      tags:
+      - SAP
+      description: 'IF-MM-03 · 테이블: goods_receipt, asset, label_print_job
+
+
+        - 101: 수량만큼 자산을 IN_STOCK으로 만들고 태그 채번, PO 지정 자산번호 연결, 라벨 출력 대기열 추가.
+
+        - 102: 자산을 지우지 않고 is_gr_cancelled=true, 자산 관리자에게 알림.
+
+        - PO 항목이 아직 없으면 ERROR ALM-E202(다음 IF-MM-01 후 자동 재처리).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResult'
+        '207':
+          description: 일부 성공(건별 결과 확인)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResult'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - sapAuth:
+        - sap.api
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoodsReceiptsRequest'
+  /sap/reconciliation:
+    post:
+      operationId: sapPostReconciliation
+      summary: 대사 스냅샷 수신(분할)
+      tags:
+      - SAP
+      description: 'IF-RC-01 · 테이블: recon_run, recon_snapshot, recon_diff
+
+
+        - 첫 분할에 recon_run을 만들고, isLast=true에서 202와 함께 차이 계산을 비동기로 시작.
+
+        - 차이 규칙은 SAP 인터페이스 명세서 7.3(SAP_ONLY, ALM_ONLY, COST_CENTER, LOCATION, SERIAL, TAG, RETIRED).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconResponse'
+        '202':
+          description: 접수(비동기 처리)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconResponse'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security:
+      - sapAuth:
+        - sap.api
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReconRequest'
+components:
+  securitySchemes:
+    pdaAuth:
+      type: oauth2
+      description: Cognito 호스티드 UI + 고객사 SSO. Authorization Code + PKCE. 액세스 60분, 리프레시 24시간
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.{domain}/oauth2/authorize
+          tokenUrl: https://auth.{domain}/oauth2/token
+          scopes:
+            pda: PDA 실사
+    sapAuth:
+      type: oauth2
+      description: Client Credentials. 토큰 60분
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth/token
+          scopes:
+            sap.api: SAP 연계
+  parameters:
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: 요청 추적 ID. 없으면 서버가 만들어 응답 헤더로 돌려줌
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        maxLength: 80
+      description: 24시간 안의 같은 키는 저장된 응답을 그대로 반환
+  responses:
+    E400:
+      description: 형식 오류
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    E401:
+      description: 인증 실패
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    E403:
+      description: 권한 없음
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    E404:
+      description: 대상 없음
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    E409:
+      description: 충돌
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    E410:
+      description: 동기화 토큰 만료
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    E413:
+      description: 파일 크기 초과
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    E429:
+      description: 호출 제한
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    E500:
+      description: 서버 오류
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Problem:
+      type: object
+      description: 오류 응답 (RFC 9457 application/problem+json)
+      properties:
+        type:
+          type: string
+          description: '오류 유형 URI (예: https://alm.bsg/errors/validation)'
+        title:
+          type: string
+          description: 요약
+        status:
+          type: integer
+          description: HTTP 상태
+        code:
+          type: string
+          description: 'ALM 오류 코드 (예: ALM-E104)'
+        detail:
+          type: string
+          description: 상세 설명
+        correlationId:
+          type: string
+          format: uuid
+          description: X-Correlation-Id 값
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldError'
+          description: 필드별 오류
+      required:
+      - type
+      - title
+      - status
+      - code
+      - correlationId
+    FieldError:
+      type: object
+      description: 필드 오류
+      properties:
+        field:
+          type: string
+          description: 'JSON 경로 (예: records[3].costCenter)'
+        code:
+          type: string
+          description: ALM 오류 코드
+        message:
+          type: string
+          description: 메시지
+      required:
+      - field
+      - code
+      - message
+    ItemResult:
+      type: object
+      description: 배치 건별 결과
+      properties:
+        key:
+          type: string
+          description: '레코드 키 (예: 1000/300001234/0)'
+        status:
+          type: string
+          enum:
+          - OK
+          - ERROR
+          - SKIPPED
+          description: OK 반영, ERROR 오류, SKIPPED 변경 없음
+        code:
+          type: string
+          description: 오류 코드
+        message:
+          type: string
+          description: 메시지
+      required:
+      - key
+      - status
+    BatchResult:
+      type: object
+      description: 배치 수신 응답. 일부 오류면 HTTP 207
+      properties:
+        batchId:
+          type: string
+          description: 요청의 batchId
+        received:
+          type: integer
+          description: 받은 건수
+        succeeded:
+          type: integer
+          description: 반영 건수
+        failed:
+          type: integer
+          description: 오류 건수
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemResult'
+          description: 건별 결과(오류·SKIPPED만 담고, 성공 건은 생략 가능)
+      required:
+      - batchId
+      - received
+      - succeeded
+      - failed
+      - results
+    PdaMe:
+      type: object
+      description: 로그인 사용자와 앱 설정
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: app_user.id
+        displayName:
+          type: string
+          description: 이름
+        email:
+          type: string
+          description: 이메일
+        locale:
+          type: string
+          enum:
+          - en
+          - ko
+          description: 화면 언어
+        roles:
+          type: array
+          items:
+            type: string
+          description: 역할 코드 (COUNTER 필수)
+        tenantCode:
+          type: string
+          description: 테넌트 코드
+        serverTime:
+          type: string
+          format: date-time
+          description: 서버 시각(기기 시계 보정용)
+        minAppVersion:
+          type: string
+          description: 최소 앱 버전. 낮으면 업데이트 안내
+        offlineHours:
+          type: integer
+          description: 오프라인 허용 시간(기본 24)
+      required:
+      - userId
+      - displayName
+      - email
+      - locale
+      - roles
+      - tenantCode
+      - serverTime
+      - minAppVersion
+      - offlineHours
+    DeviceRegister:
+      type: object
+      description: 기기 등록 요청
+      properties:
+        deviceSerial:
+          type: string
+          maxLength: 40
+          description: 기기 시리얼
+        model:
+          type: string
+          maxLength: 40
+          description: '모델 (예: TC58)'
+        appVersion:
+          type: string
+          maxLength: 20
+          description: 앱 버전
+      required:
+      - deviceSerial
+      - appVersion
+    Device:
+      type: object
+      description: 기기 등록 결과
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+          description: pda_device.id
+        lastSyncAt:
+          type: string
+          format: date-time
+          description: 마지막 동기화
+      required:
+      - deviceId
+    PdaTask:
+      type: object
+      description: 내 룸 실사 작업
+      properties:
+        taskId:
+          type: string
+          format: uuid
+          description: count_task.id
+        campaignId:
+          type: string
+          format: uuid
+          description: 캠페인
+        campaignCode:
+          type: string
+          maxLength: 6
+          description: '캠페인 코드 (예: PI26Q4)'
+        campaignName:
+          type: string
+          description: 캠페인 이름
+        keyDate:
+          type: string
+          format: date
+          description: 기준일
+        dueDate:
+          type: string
+          format: date
+          description: 기한
+        roomId:
+          type: string
+          format: uuid
+          description: 룸
+        roomCode:
+          type: string
+          maxLength: 10
+          description: 룸 코드
+        roomName:
+          type: string
+          description: 룸 이름
+        siteCode:
+          type: string
+          maxLength: 10
+          description: 사이트
+        status:
+          type: string
+          enum:
+          - NOT_STARTED
+          - IN_PROGRESS
+          - COMPLETED
+          description: 작업 상태
+        expectedCount:
+          type: integer
+          description: 대상 자산 수
+        foundCount:
+          type: integer
+          description: 확인(FOUND) 수
+        pendingCount:
+          type: integer
+          description: 미확인 수
+        updatedAt:
+          type: string
+          format: date-time
+          description: 변경 일시
+      required:
+      - taskId
+      - campaignId
+      - campaignCode
+      - campaignName
+      - keyDate
+      - dueDate
+      - roomId
+      - roomCode
+      - roomName
+      - siteCode
+      - status
+      - expectedCount
+      - foundCount
+      - pendingCount
+      - updatedAt
+    PdaTaskList:
+      type: object
+      description: 내 작업 목록
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PdaTask'
+          description: 작업
+      required:
+      - items
+    WorklistItem:
+      type: object
+      description: 작업목록의 실사 대상 1건
+      properties:
+        countItemId:
+          type: string
+          format: uuid
+          description: count_item.id
+        assetId:
+          type: string
+          format: uuid
+          description: 자산
+        assetTag:
+          type: string
+          maxLength: 25
+          description: 자산태그(바코드 값)
+        description:
+          type: string
+          maxLength: 50
+          description: 자산명
+        categoryName:
+          type: string
+          description: 카테고리
+        model:
+          type: string
+          description: 모델
+        serialNo:
+          type: string
+          maxLength: 40
+          description: 시리얼
+        assetStatus:
+          type: string
+          enum:
+          - ON_ORDER
+          - IN_STOCK
+          - IN_USE
+          - IN_REPAIR
+          - MISSING
+          - RETIRED
+          - DISPOSED
+          description: 자산 상태
+        expectedRoomId:
+          type: string
+          format: uuid
+          description: 등록 룸
+        expectedRoomCode:
+          type: string
+          maxLength: 10
+          description: 등록 룸 코드
+        assignedUserName:
+          type: string
+          description: 사용자(PDA-05 사용자 확인)
+        result:
+          type: string
+          enum:
+          - PENDING
+          - FOUND
+          - MISPLACED
+          - NOT_FOUND
+          description: 서버 기준 판정
+        countedAt:
+          type: string
+          format: date-time
+          description: 실사 일시
+        updatedAt:
+          type: string
+          format: date-time
+          description: 변경 일시(델타 기준)
+      required:
+      - countItemId
+      - assetId
+      - assetTag
+      - description
+      - categoryName
+      - assetStatus
+      - expectedRoomId
+      - expectedRoomCode
+      - result
+      - updatedAt
+    WorklistPage:
+      type: object
+      description: 작업목록 페이지. syncToken으로 다음 델타를 받음
+      properties:
+        campaignId:
+          type: string
+          format: uuid
+          description: 캠페인
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorklistItem'
+          description: 대상(최대 limit건)
+        removed:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: 범위에서 빠진 countItemId(델타일 때)
+        nextCursor:
+          type: string
+          description: 다음 페이지 커서. 없으면 마지막
+        syncToken:
+          type: string
+          description: 마지막 페이지에서 저장. 다음 호출의 since로 사용
+      required:
+      - campaignId
+      - items
+      - removed
+      - syncToken
+    TagIndexItem:
+      type: object
+      description: 범위 밖 자산태그(오프라인 판정용)
+      properties:
+        assetTag:
+          type: string
+          maxLength: 25
+          description: 자산태그
+        assetStatus:
+          type: string
+          enum:
+          - ON_ORDER
+          - IN_STOCK
+          - IN_USE
+          - IN_REPAIR
+          - MISSING
+          - RETIRED
+          - DISPOSED
+          description: 자산 상태
+        siteCode:
+          type: string
+          maxLength: 10
+          description: 사이트
+      required:
+      - assetTag
+      - assetStatus
+    TagIndexPage:
+      type: object
+      description: 범위 밖 태그 색인 페이지
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagIndexItem'
+          description: 태그
+        nextCursor:
+          type: string
+          description: 다음 페이지 커서
+        syncToken:
+          type: string
+          description: 다음 델타의 since
+      required:
+      - items
+      - syncToken
+    PdaRoom:
+      type: object
+      description: 룸
+      properties:
+        roomId:
+          type: string
+          format: uuid
+          description: 룸
+        roomCode:
+          type: string
+          maxLength: 10
+          description: 룸 코드
+        name:
+          type: string
+          description: 이름
+        floor:
+          type: string
+          description: 층
+        siteCode:
+          type: string
+          maxLength: 10
+          description: 사이트
+        barcode:
+          type: string
+          maxLength: 30
+          description: 룸 바코드 값
+      required:
+      - roomId
+      - roomCode
+      - name
+      - siteCode
+      - barcode
+    PdaRoomList:
+      type: object
+      description: 룸 목록
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PdaRoom'
+          description: 룸
+      required:
+      - items
+    PdaCodes:
+      type: object
+      description: PDA 코드값
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/CodeItem'
+          description: 미등록 자산 카테고리
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/CodeItem'
+          description: 자산 상태(GOOD, DAMAGED, UNUSED)
+      required:
+      - categories
+      - conditions
+    CodeItem:
+      type: object
+      description: 코드
+      properties:
+        id:
+          type: string
+          description: 코드 또는 id
+        label:
+          type: string
+          description: 이름(사용자 언어)
+      required:
+      - id
+      - label
+    TaskUpdate:
+      type: object
+      description: 룸 작업 시작·완료
+      properties:
+        action:
+          type: string
+          enum:
+          - START
+          - COMPLETE
+          description: 시작 또는 완료(PDA-07)
+        at:
+          type: string
+          format: date-time
+          description: 기기 시각
+        force:
+          type: boolean
+          description: 미확인 자산이 남아도 완료(기본 false)
+      required:
+      - action
+      - at
+    ScanIn:
+      type: object
+      description: 스캔 1건
+      properties:
+        clientScanId:
+          type: string
+          format: uuid
+          description: PDA가 만든 UUID. 멱등성 키
+        campaignId:
+          type: string
+          format: uuid
+          description: 캠페인
+        taskId:
+          type: string
+          format: uuid
+          description: 현재 룸 작업
+        roomId:
+          type: string
+          format: uuid
+          description: 현재 룸(PDA-03에서 선택)
+        barcode:
+          type: string
+          maxLength: 40
+          description: 읽은 값
+        inputMethod:
+          type: string
+          enum:
+          - TRIGGER
+          - CAMERA
+          - MANUAL
+          description: 입력 방법
+        deviceResult:
+          type: string
+          enum:
+          - FOUND
+          - MISPLACED
+          - OUT_OF_SCOPE
+          - UNREGISTERED
+          - DUPLICATE
+          - RETIRED_ASSET
+          description: 기기 판정(참고값)
+        condition:
+          type: string
+          enum:
+          - GOOD
+          - DAMAGED
+          - UNUSED
+          description: 상태 입력(PDA-05)
+        isUserConfirmed:
+          type: boolean
+          description: 사용자 확인
+        needsRelabel:
+          type: boolean
+          description: 라벨 재출력 요청 → label_print_job 생성
+        note:
+          type: string
+          maxLength: 200
+          description: 메모
+        attachmentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: 사진(미리 업로드한 첨부)
+        scannedAt:
+          type: string
+          format: date-time
+          description: 기기 스캔 시각
+      required:
+      - clientScanId
+      - campaignId
+      - taskId
+      - roomId
+      - barcode
+      - inputMethod
+      - deviceResult
+      - scannedAt
+    ScanBatch:
+      type: object
+      description: 스캔 일괄 전송(최대 200건)
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+          description: 기기
+        scans:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScanIn'
+          description: 스캔(scannedAt 순)
+      required:
+      - deviceId
+      - scans
+    ScanResultItem:
+      type: object
+      description: 스캔 건별 처리 결과
+      properties:
+        clientScanId:
+          type: string
+          format: uuid
+          description: 요청의 clientScanId
+        status:
+          type: string
+          enum:
+          - ACCEPTED
+          - DUPLICATE
+          - REJECTED
+          description: ACCEPTED 반영, DUPLICATE 이미 받음(최초 결과 반환), REJECTED 오류
+        serverResult:
+          type: string
+          enum:
+          - FOUND
+          - MISPLACED
+          - OUT_OF_SCOPE
+          - UNREGISTERED
+          - DUPLICATE
+          - RETIRED_ASSET
+          description: 서버 판정
+        countItemId:
+          type: string
+          format: uuid
+          description: 실사 대상
+        assetId:
+          type: string
+          format: uuid
+          description: 자산
+        code:
+          type: string
+          description: 오류 코드(REJECTED)
+        message:
+          type: string
+          description: 메시지
+      required:
+      - clientScanId
+      - status
+    TaskProgress:
+      type: object
+      description: 룸 진행
+      properties:
+        taskId:
+          type: string
+          format: uuid
+          description: 작업
+        foundCount:
+          type: integer
+          description: 확인 수
+        pendingCount:
+          type: integer
+          description: 미확인 수
+      required:
+      - taskId
+      - foundCount
+      - pendingCount
+    ScanBatchResult:
+      type: object
+      description: 스캔 일괄 결과
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScanResultItem'
+          description: 건별 결과(요청 순서)
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskProgress'
+          description: 영향받은 룸 진행
+      required:
+      - results
+      - tasks
+    UnregisteredIn:
+      type: object
+      description: 미등록 자산 1건(PDA-06)
+      properties:
+        clientScanId:
+          type: string
+          format: uuid
+          description: PDA UUID. 멱등성 키
+        campaignId:
+          type: string
+          format: uuid
+          description: 캠페인
+        roomId:
+          type: string
+          format: uuid
+          description: 발견 룸
+        provisionalNo:
+          type: string
+          maxLength: 20
+          description: '기기 임시번호(화면 표시용, 예: TC58A-0007)'
+        categoryId:
+          type: string
+          format: uuid
+          description: 카테고리
+        description:
+          type: string
+          maxLength: 100
+          description: 설명
+        serialNo:
+          type: string
+          maxLength: 40
+          description: 시리얼
+        scannedBarcode:
+          type: string
+          maxLength: 40
+          description: 읽은 값(있으면)
+        attachmentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: 사진 1장 이상(필수)
+        reportedAt:
+          type: string
+          format: date-time
+          description: 기기 시각
+      required:
+      - clientScanId
+      - campaignId
+      - roomId
+      - provisionalNo
+      - description
+      - attachmentIds
+      - reportedAt
+    UnregisteredBatch:
+      type: object
+      description: 미등록 자산 일괄 전송(최대 50건)
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+          description: 기기
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UnregisteredIn'
+          description: 미등록 자산
+      required:
+      - deviceId
+      - items
+    UnregisteredResultItem:
+      type: object
+      description: 미등록 건별 결과
+      properties:
+        clientScanId:
+          type: string
+          format: uuid
+          description: 요청의 clientScanId
+        status:
+          type: string
+          enum:
+          - ACCEPTED
+          - DUPLICATE
+          - REJECTED
+          description: 처리 결과
+        tempNo:
+          type: string
+          maxLength: 12
+          description: 서버 채번 UNREG-nnnn (캠페인 내 유일)
+        code:
+          type: string
+          description: 오류 코드
+        message:
+          type: string
+          description: 메시지
+      required:
+      - clientScanId
+      - status
+    UnregisteredBatchResult:
+      type: object
+      description: 미등록 일괄 결과
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/UnregisteredResultItem'
+          description: 건별 결과
+      required:
+      - results
+    PresignRequest:
+      type: object
+      description: 사진 업로드 URL 요청
+      properties:
+        fileName:
+          type: string
+          maxLength: 200
+          description: 파일명
+        contentType:
+          type: string
+          enum:
+          - image/jpeg
+          - image/png
+          description: MIME
+        sizeBytes:
+          type: integer
+          description: 크기(최대 5 MB)
+        sha256:
+          type: string
+          maxLength: 64
+          description: 파일 해시(업로드 후 검증)
+        ownerType:
+          type: string
+          enum:
+          - count_item
+          - count_unregistered
+          description: 연결 대상 종류
+      required:
+      - fileName
+      - contentType
+      - sizeBytes
+      - sha256
+      - ownerType
+    PresignResponse:
+      type: object
+      description: 사진 업로드 URL
+      properties:
+        attachmentId:
+          type: string
+          format: uuid
+          description: attachment.id. 스캔·미등록 전송에 사용
+        uploadUrl:
+          type: string
+          description: S3 presigned PUT URL
+        headers:
+          type: object
+          additionalProperties: true
+          description: PUT 시 함께 보낼 헤더(Content-Type, x-amz-checksum-sha256)
+        expiresAt:
+          type: string
+          format: date-time
+          description: URL 만료(발급 + 15분)
+      required:
+      - attachmentId
+      - uploadUrl
+      - headers
+      - expiresAt
+    TokenResponse:
+      type: object
+      description: OAuth 2.0 토큰
+      properties:
+        access_token:
+          type: string
+          description: Bearer 토큰(JWT)
+        token_type:
+          type: string
+          enum:
+          - Bearer
+          description: Bearer
+        expires_in:
+          type: integer
+          description: 유효 초(3600)
+        scope:
+          type: string
+          description: sap.api
+      required:
+      - access_token
+      - token_type
+      - expires_in
+      - scope
+    SapPing:
+      type: object
+      description: 연결 확인
+      properties:
+        status:
+          type: string
+          enum:
+          - UP
+          description: 상태
+        serverTime:
+          type: string
+          format: date-time
+          description: 서버 시각
+        tenantCode:
+          type: string
+          description: 클라이언트가 속한 테넌트
+        companyCodes:
+          type: array
+          items:
+            type: string
+          description: 허용 회사코드
+      required:
+      - status
+      - serverTime
+      - tenantCode
+      - companyCodes
+    MasterDataRequest:
+      type: object
+      description: IF-MD-01 조직·코드 마스터(유형별 전체 전송, 분할 가능)
+      properties:
+        batchId:
+          type: string
+          maxLength: 40
+          description: '배치 ID (예: MD01-20261004-0530)'
+        type:
+          type: string
+          enum:
+          - COMPANY
+          - PLANT
+          - COST_CENTER
+          - PROFIT_CENTER
+          - ASSET_CLASS
+          - LOCATION
+          description: 마스터 유형
+        chunkNo:
+          type: integer
+          description: 분할 번호(1부터)
+        isLast:
+          type: boolean
+          description: 마지막 분할. true 수신 시 이번 배치에 없던 코드를 비활성 처리
+        records:
+          type: array
+          items:
+            oneOf:
+            - $ref: '#/components/schemas/MdCompany'
+            - $ref: '#/components/schemas/MdPlant'
+            - $ref: '#/components/schemas/MdCostCenter'
+            - $ref: '#/components/schemas/MdProfitCenter'
+            - $ref: '#/components/schemas/MdAssetClass'
+            - $ref: '#/components/schemas/MdLocation'
+          description: 유형별 레코드(아래 MdCompany 등), 최대 5,000건
+      required:
+      - batchId
+      - type
+      - chunkNo
+      - isLast
+      - records
+    MdCompany:
+      type: object
+      description: COMPANY 레코드 → company
+      properties:
+        companyCode:
+          type: string
+          maxLength: 4
+          description: BUKRS
+        name:
+          type: string
+          maxLength: 25
+          description: BUTXT
+        currency:
+          type: string
+          maxLength: 5
+          description: WAERS
+      required:
+      - companyCode
+      - name
+      - currency
+    MdPlant:
+      type: object
+      description: PLANT 레코드 → plant
+      properties:
+        plantCode:
+          type: string
+          maxLength: 4
+          description: WERKS
+        companyCode:
+          type: string
+          maxLength: 4
+          description: BUKRS
+        name:
+          type: string
+          maxLength: 30
+          description: NAME1
+        address:
+          type: string
+          maxLength: 200
+          description: 주소
+      required:
+      - plantCode
+      - companyCode
+      - name
+    MdCostCenter:
+      type: object
+      description: COST_CENTER 레코드 → cost_center
+      properties:
+        controllingArea:
+          type: string
+          maxLength: 4
+          description: KOKRS
+        costCenter:
+          type: string
+          maxLength: 10
+          description: KOSTL
+        name:
+          type: string
+          maxLength: 20
+          description: KTEXT
+        companyCode:
+          type: string
+          maxLength: 4
+          description: BUKRS
+        profitCenter:
+          type: string
+          maxLength: 10
+          description: PRCTR
+        responsible:
+          type: string
+          maxLength: 20
+          description: VERAK
+        validFrom:
+          type: string
+          format: date
+          description: DATAB
+        validTo:
+          type: string
+          format: date
+          description: DATBI
+      required:
+      - controllingArea
+      - costCenter
+      - name
+      - companyCode
+    MdProfitCenter:
+      type: object
+      description: PROFIT_CENTER 레코드 → profit_center
+      properties:
+        controllingArea:
+          type: string
+          maxLength: 4
+          description: KOKRS
+        profitCenter:
+          type: string
+          maxLength: 10
+          description: PRCTR
+        name:
+          type: string
+          maxLength: 20
+          description: KTEXT
+        segment:
+          type: string
+          maxLength: 10
+          description: SEGMENT
+      required:
+      - controllingArea
+      - profitCenter
+      - name
+    MdAssetClass:
+      type: object
+      description: ASSET_CLASS 레코드 → asset_class
+      properties:
+        assetClass:
+          type: string
+          maxLength: 8
+          description: ANLKL
+        name:
+          type: string
+          maxLength: 50
+          description: TXK50
+        isLowValue:
+          type: boolean
+          description: 저가자산 여부
+        usefulLifeYears:
+          type: integer
+          description: 내용연수 기본값
+      required:
+      - assetClass
+      - name
+      - isLowValue
+    MdLocation:
+      type: object
+      description: LOCATION 레코드 → site.sap_location 확인용
+      properties:
+        plantCode:
+          type: string
+          maxLength: 4
+          description: WERKS
+        location:
+          type: string
+          maxLength: 10
+          description: STAND
+        name:
+          type: string
+          maxLength: 40
+          description: KTEXT
+      required:
+      - plantCode
+      - location
+      - name
+    SapAsset:
+      type: object
+      description: IF-AA-01 자산 마스터 1건 → asset(SAP 기준 필드만 갱신)
+      properties:
+        companyCode:
+          type: string
+          maxLength: 4
+          description: ANLA-BUKRS
+        assetNo:
+          type: string
+          maxLength: 12
+          description: ANLA-ANLN1
+        subNo:
+          type: string
+          maxLength: 4
+          description: ANLA-ANLN2
+        assetClass:
+          type: string
+          maxLength: 8
+          description: ANLA-ANLKL
+        description:
+          type: string
+          maxLength: 50
+          description: ANLA-TXT50
+        serialNo:
+          type: string
+          maxLength: 18
+          description: ANLA-SERNR (ALM 기준, 참고만)
+        inventoryNo:
+          type: string
+          maxLength: 25
+          description: ANLA-INVNR = 자산태그. ALM 자산 매칭 키
+        capDate:
+          type: string
+          format: date
+          description: ANLA-AKTIV
+        deactDate:
+          type: string
+          format: date
+          description: ANLA-DEAKT. 값이 있으면 ALM을 RETIRED로 대사
+        lastCountDate:
+          type: string
+          format: date
+          description: ANLA-IVDAT
+        inventoryNote:
+          type: string
+          maxLength: 15
+          description: ANLA-INVZU
+        costCenter:
+          type: string
+          maxLength: 10
+          description: ANLZ-KOSTL
+        profitCenter:
+          type: string
+          maxLength: 10
+          description: ANLZ-PRCTR
+        plant:
+          type: string
+          maxLength: 4
+          description: ANLZ-WERKS
+        location:
+          type: string
+          maxLength: 10
+          description: ANLZ-STORT = ALM 룸 코드
+        room:
+          type: string
+          maxLength: 8
+          description: ANLZ-RAUMNR
+        changedAt:
+          type: string
+          format: date-time
+          description: 변경 시각(델타 기준)
+      required:
+      - companyCode
+      - assetNo
+      - subNo
+      - assetClass
+      - description
+      - costCenter
+      - changedAt
+    AssetUpsertRequest:
+      type: object
+      description: IF-AA-01 요청
+      properties:
+        batchId:
+          type: string
+          maxLength: 40
+          description: 배치 ID
+        isFull:
+          type: boolean
+          description: 최초 전체 전송이면 true
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/SapAsset'
+          description: 최대 1,000건
+      required:
+      - batchId
+      - records
+    SapAssetValue:
+      type: object
+      description: IF-AA-02 기간 금액 1건 → asset_value
+      properties:
+        companyCode:
+          type: string
+          maxLength: 4
+          description: BUKRS
+        assetNo:
+          type: string
+          maxLength: 12
+          description: ANLN1
+        subNo:
+          type: string
+          maxLength: 4
+          description: ANLN2
+        fiscalYear:
+          type: integer
+          description: GJAHR
+        period:
+          type: integer
+          description: 기간 1~16
+        depArea:
+          type: string
+          maxLength: 2
+          description: AFABE (01)
+        acquisitionValue:
+          type: number
+          description: 취득가 누계(USD, 소수 2자리)
+        accumDepreciation:
+          type: number
+          description: 감가상각누계액(음수)
+        netBookValue:
+          type: number
+          description: 장부가액
+        usefulLifeYears:
+          type: integer
+          description: NDJAR
+        usefulLifePeriods:
+          type: integer
+          description: NDPER
+        depKey:
+          type: string
+          maxLength: 4
+          description: AFASL
+      required:
+      - companyCode
+      - assetNo
+      - subNo
+      - fiscalYear
+      - period
+      - depArea
+      - acquisitionValue
+      - accumDepreciation
+      - netBookValue
+    AssetValuesRequest:
+      type: object
+      description: IF-AA-02 요청
+      properties:
+        batchId:
+          type: string
+          maxLength: 40
+          description: 배치 ID
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/SapAssetValue'
+          description: 최대 1,000건
+      required:
+      - batchId
+      - records
+    ClaimRequest:
+      type: object
+      description: 전기 대상 가져오기
+      properties:
+        batchId:
+          type: string
+          maxLength: 40
+          description: 'SAP 잡 실행 ID (예: POST-20261004-0915)'
+        maxItems:
+          type: integer
+          description: 최대 건수(기본 50, 최대 200)
+        types:
+          type: array
+          items:
+            type: string
+            enum:
+            - ASSET_CREATE
+            - ASSET_CHANGE
+            - ASSET_TRANSFER
+            - ASSET_RETIRE
+            - COUNT_RESULT
+            - PO_CREATE
+          description: 가져올 유형(비면 전체)
+      required:
+      - batchId
+    AssetRef:
+      type: object
+      description: 자산 키
+      properties:
+        assetNo:
+          type: string
+          maxLength: 12
+          description: ANLN1 (신규는 빈 값)
+        subNo:
+          type: string
+          maxLength: 4
+          description: ANLN2
+        inventoryNo:
+          type: string
+          maxLength: 25
+          description: INVNR = 자산태그 (ASSET_CREATE·COUNT_RESULT는 필수)
+    PostingEnvelope:
+      type: object
+      description: 전기 1건(공통 봉투)
+      properties:
+        postingId:
+          type: string
+          maxLength: 12
+          description: ALM 요청번호. BKTXT에 기재, 멱등성 키
+        type:
+          type: string
+          enum:
+          - ASSET_CREATE
+          - ASSET_CHANGE
+          - ASSET_TRANSFER
+          - ASSET_RETIRE
+          - COUNT_RESULT
+          - PO_CREATE
+          description: 전기 유형
+        companyCode:
+          type: string
+          maxLength: 4
+          description: 회사코드
+        postingDate:
+          type: string
+          format: date
+          description: 전기일
+        valueDate:
+          type: string
+          format: date
+          description: 가치일 BZDAT
+        asset:
+          allOf:
+          - $ref: '#/components/schemas/AssetRef'
+          description: 대상 자산(PO_CREATE는 없음)
+        payload:
+          description: type별 payload
+          oneOf:
+          - $ref: '#/components/schemas/AssetCreatePayload'
+          - $ref: '#/components/schemas/AssetChangePayload'
+          - $ref: '#/components/schemas/AssetTransferPayload'
+          - $ref: '#/components/schemas/AssetRetirePayload'
+          - $ref: '#/components/schemas/CountResultPayload'
+          - $ref: '#/components/schemas/PoCreatePayload'
+        approvedBy:
+          type: string
+          description: 최종 승인자(이메일)
+        approvedAt:
+          type: string
+          format: date-time
+          description: 최종 승인 일시
+        attempt:
+          type: integer
+          description: 시도 횟수(1부터)
+        leaseUntil:
+          type: string
+          format: date-time
+          description: 잠금 만료. 만료까지 결과가 없으면 다시 대상
+      required:
+      - postingId
+      - type
+      - companyCode
+      - postingDate
+      - payload
+      - approvedBy
+      - approvedAt
+      - attempt
+      - leaseUntil
+    ClaimResponse:
+      type: object
+      description: 전기 대상 응답
+      properties:
+        batchId:
+          type: string
+          description: 요청의 batchId
+        leaseSeconds:
+          type: integer
+          description: 잠금 시간(900)
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PostingEnvelope'
+          description: 전기 대상(postingId 순)
+      required:
+      - batchId
+      - leaseSeconds
+      - items
+    AssetCreatePayload:
+      type: object
+      description: ASSET_CREATE (IF-AA-03, BAPI_FIXEDASSET_CREATE1)
+      properties:
+        assetClass:
+          type: string
+          maxLength: 8
+          description: ANLKL
+        description:
+          type: string
+          maxLength: 50
+          description: TXT50
+        costCenter:
+          type: string
+          maxLength: 10
+          description: KOSTL
+        capDate:
+          type: string
+          format: date
+          description: AKTIV(빈 값 가능)
+        serialNo:
+          type: string
+          maxLength: 18
+          description: SERNR
+        inventoryNo:
+          type: string
+          maxLength: 25
+          description: INVNR
+        location:
+          type: string
+          maxLength: 10
+          description: STORT = 룸 코드
+        room:
+          type: string
+          maxLength: 8
+          description: RAUMNR 약어
+        poNo:
+          type: string
+          maxLength: 10
+          description: 참조 PO
+        poItem:
+          type: string
+          maxLength: 5
+          description: 참조 PO 항목
+      required:
+      - assetClass
+      - description
+      - costCenter
+      - inventoryNo
+    AssetChangePayload:
+      type: object
+      description: ASSET_CHANGE (IF-AA-04, BAPI_FIXEDASSET_CHANGE)
+      properties:
+        fields:
+          type: object
+          additionalProperties: true
+          description: '변경 필드만: description, serialNo, inventoryNo, location, room, costCenter'
+        costCenterValidFrom:
+          type: string
+          format: date
+          description: 코스트센터 변경 시 시간종속 유효시작일
+      required:
+      - fields
+    AssetTransferPayload:
+      type: object
+      description: ASSET_TRANSFER (IF-AA-05, ABUMN)
+      properties:
+        newCostCenter:
+          type: string
+          maxLength: 10
+          description: 새 코스트센터
+        newProfitCenter:
+          type: string
+          maxLength: 10
+          description: 새 손익센터
+        transactionType:
+          type: string
+          maxLength: 3
+          description: 거래유형(300번대)
+        percent:
+          type: number
+          description: 이관 비율(100)
+        createNewSubNo:
+          type: boolean
+          description: 신규 보조번호 생성 여부
+      required:
+      - newCostCenter
+      - newProfitCenter
+      - transactionType
+      - percent
+      - createNewSubNo
+    AssetRetirePayload:
+      type: object
+      description: ASSET_RETIRE (IF-AA-06, BAPI_ASSET_RETIREMENT_POST)
+      properties:
+        retireType:
+          type: string
+          enum:
+          - SCRAP
+          - SALE
+          description: ABAVN 폐기 / ABAON 매각
+        transactionType:
+          type: string
+          maxLength: 3
+          description: 거래유형
+        saleAmount:
+          type: number
+          description: 매각금액(SALE 필수)
+        customer:
+          type: string
+          maxLength: 10
+          description: 매각 고객번호(사용 시)
+        isPartial:
+          type: boolean
+          description: 부분 폐기(기본 false)
+        reason:
+          type: string
+          maxLength: 50
+          description: 사유
+      required:
+      - retireType
+      - transactionType
+      - isPartial
+    CountResultPayload:
+      type: object
+      description: COUNT_RESULT (IF-AA-07, BAPI_FIXEDASSET_CHANGE)
+      properties:
+        lastCountDate:
+          type: string
+          format: date
+          description: IVDAT
+        inventoryNote:
+          type: string
+          maxLength: 15
+          description: 'INVZU (예: PI26Q4-OK)'
+      required:
+      - lastCountDate
+      - inventoryNote
+    PoCreatePayload:
+      type: object
+      description: PO_CREATE (IF-MM-02, BAPI_PO_CREATE1)
+      properties:
+        purchasingOrg:
+          type: string
+          maxLength: 4
+          description: EKORG
+        purchasingGroup:
+          type: string
+          maxLength: 3
+          description: EKGRP
+        vendor:
+          type: string
+          maxLength: 10
+          description: LIFNR
+        costCenter:
+          type: string
+          maxLength: 10
+          description: KOSTL
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PoCreateItem'
+          description: 품목
+      required:
+      - purchasingOrg
+      - purchasingGroup
+      - vendor
+      - costCenter
+      - items
+    PoCreateItem:
+      type: object
+      description: PO 품목
+      properties:
+        itemNo:
+          type: string
+          maxLength: 5
+          description: EBELP (10, 20 …)
+        description:
+          type: string
+          maxLength: 40
+          description: TXZ01
+        quantity:
+          type: number
+          description: MENGE
+        unitPrice:
+          type: number
+          description: NETPR(USD)
+        assetNo:
+          type: string
+          maxLength: 12
+          description: 계정지정 A 자산번호(없으면 IF-AA-03 선처리)
+        subNo:
+          type: string
+          maxLength: 4
+          description: 보조번호
+      required:
+      - itemNo
+      - description
+      - quantity
+      - unitPrice
+      - assetNo
+      - subNo
+    BapiMessage:
+      type: object
+      description: BAPI RETURN 메시지
+      properties:
+        type:
+          type: string
+          enum:
+          - S
+          - I
+          - W
+          - E
+          - A
+          description: 메시지 유형
+        id:
+          type: string
+          maxLength: 20
+          description: 메시지 클래스
+        number:
+          type: string
+          maxLength: 3
+          description: 메시지 번호
+        text:
+          type: string
+          maxLength: 220
+          description: 메시지
+      required:
+      - type
+      - id
+      - number
+      - text
+    SapDocument:
+      type: object
+      description: SAP 전표
+      properties:
+        belnr:
+          type: string
+          maxLength: 10
+          description: 전표번호
+        gjahr:
+          type: string
+          maxLength: 4
+          description: 회계연도
+      required:
+      - belnr
+      - gjahr
+    PostingResult:
+      type: object
+      description: 전기 결과 회신
+      properties:
+        postingId:
+          type: string
+          maxLength: 12
+          description: 경로의 id와 같아야 함
+        status:
+          type: string
+          enum:
+          - POSTED
+          - FAILED
+          description: 결과
+        sapDocument:
+          allOf:
+          - $ref: '#/components/schemas/SapDocument'
+          description: 전표(이관·폐기)
+        asset:
+          allOf:
+          - $ref: '#/components/schemas/AssetRef'
+          description: 생성·이관된 자산번호
+        poNo:
+          type: string
+          maxLength: 10
+          description: 생성된 PO 번호(PO_CREATE)
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/BapiMessage'
+          description: FAILED면 E·A 메시지 전부
+      required:
+      - postingId
+      - status
+      - messages
+    PostingAck:
+      type: object
+      description: 결과 회신 응답
+      properties:
+        postingId:
+          type: string
+          description: 요청번호
+        status:
+          type: string
+          enum:
+          - POSTED
+          - FAILED
+          description: 저장된 결과(중복 회신이면 최초 결과)
+        requestStatus:
+          type: string
+          description: 연결된 ALM 요청 상태(POSTED, POST_ERROR 등)
+      required:
+      - postingId
+      - status
+      - requestStatus
+    SapPoItem:
+      type: object
+      description: IF-MM-01 자산 PO 항목 → po_item, po_item_asset
+      properties:
+        poNo:
+          type: string
+          maxLength: 10
+          description: EBELN
+        item:
+          type: string
+          maxLength: 5
+          description: EBELP
+        companyCode:
+          type: string
+          maxLength: 4
+          description: BUKRS
+        vendor:
+          type: string
+          maxLength: 10
+          description: LIFNR
+        vendorName:
+          type: string
+          maxLength: 80
+          description: 공급사명
+        description:
+          type: string
+          maxLength: 40
+          description: TXZ01
+        quantity:
+          type: number
+          description: MENGE
+        unitPrice:
+          type: number
+          description: NETPR
+        costCenter:
+          type: string
+          maxLength: 10
+          description: EKKN-KOSTL
+        assets:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssetRef'
+          description: EKKN 자산번호(항목당 여러 개)
+        deletionFlag:
+          type: boolean
+          description: LOEKZ. true면 입고 대기 취소
+        almRequestNo:
+          type: string
+          maxLength: 12
+          description: ALM에서 생성한 PO면 PR 번호
+      required:
+      - poNo
+      - item
+      - companyCode
+      - description
+      - quantity
+      - deletionFlag
+    PurchaseOrdersRequest:
+      type: object
+      description: IF-MM-01 요청
+      properties:
+        batchId:
+          type: string
+          maxLength: 40
+          description: 배치 ID
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/SapPoItem'
+          description: 최대 1,000건
+      required:
+      - batchId
+      - records
+    SapGoodsReceipt:
+      type: object
+      description: IF-MM-03 입고 1건 → goods_receipt, 101이면 asset 생성
+      properties:
+        materialDoc:
+          type: string
+          maxLength: 10
+          description: MBLNR
+        docYear:
+          type: string
+          maxLength: 4
+          description: MJAHR
+        docItem:
+          type: string
+          maxLength: 4
+          description: ZEILE
+        poNo:
+          type: string
+          maxLength: 10
+          description: EBELN
+        poItem:
+          type: string
+          maxLength: 5
+          description: EBELP
+        movementType:
+          type: string
+          enum:
+          - '101'
+          - '102'
+          description: 101 입고 / 102 취소
+        quantity:
+          type: number
+          description: MENGE
+        postingDate:
+          type: string
+          format: date
+          description: BUDAT
+      required:
+      - materialDoc
+      - docYear
+      - docItem
+      - poNo
+      - poItem
+      - movementType
+      - quantity
+      - postingDate
+    GoodsReceiptsRequest:
+      type: object
+      description: IF-MM-03 요청
+      properties:
+        batchId:
+          type: string
+          maxLength: 40
+          description: 배치 ID
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/SapGoodsReceipt'
+          description: 최대 1,000건
+      required:
+      - batchId
+      - records
+    ReconRecord:
+      type: object
+      description: IF-RC-01 스냅샷 1건 → recon_snapshot
+      properties:
+        companyCode:
+          type: string
+          maxLength: 4
+          description: BUKRS
+        assetNo:
+          type: string
+          maxLength: 12
+          description: ANLN1
+        subNo:
+          type: string
+          maxLength: 4
+          description: ANLN2
+        inventoryNo:
+          type: string
+          maxLength: 25
+          description: INVNR
+        serialNo:
+          type: string
+          maxLength: 18
+          description: SERNR
+        costCenter:
+          type: string
+          maxLength: 10
+          description: KOSTL
+        location:
+          type: string
+          maxLength: 10
+          description: STORT
+        room:
+          type: string
+          maxLength: 8
+          description: RAUMNR
+        deactDate:
+          type: string
+          format: date
+          description: DEAKT
+      required:
+      - companyCode
+      - assetNo
+      - subNo
+    ReconRequest:
+      type: object
+      description: IF-RC-01 요청(분할 전송)
+      properties:
+        batchId:
+          type: string
+          maxLength: 40
+          description: 배치 ID(모든 분할이 같은 값)
+        runType:
+          type: string
+          enum:
+          - WEEKLY
+          - CAMPAIGN
+          description: 주간 / 실사 종료
+        campaignCode:
+          type: string
+          maxLength: 6
+          description: CAMPAIGN이면 필수
+        snapshotAt:
+          type: string
+          format: date-time
+          description: 스냅샷 시각
+        chunkNo:
+          type: integer
+          description: 분할 번호(1부터)
+        isLast:
+          type: boolean
+          description: 마지막 분할이면 true → 차이 계산 시작
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReconRecord'
+          description: 최대 5,000건
+      required:
+      - batchId
+      - runType
+      - snapshotAt
+      - chunkNo
+      - isLast
+      - records
+    ReconResponse:
+      type: object
+      description: IF-RC-01 응답
+      properties:
+        batchId:
+          type: string
+          description: 배치 ID
+        runId:
+          type: string
+          format: uuid
+          description: recon_run.id
+        received:
+          type: integer
+          description: 이번 분할 건수
+        status:
+          type: string
+          enum:
+          - RECEIVING
+          - PROCESSING
+          description: 마지막 분할이면 PROCESSING(차이는 비동기 계산)
+      required:
+      - batchId
+      - runId
+      - received
+      - status

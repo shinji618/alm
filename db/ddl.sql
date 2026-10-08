@@ -2192,13 +2192,14 @@ CREATE TABLE attachment (
   id uuid PRIMARY KEY,
   tenant_id uuid NOT NULL,
   owner_type varchar(30) NOT NULL,
-  owner_id uuid NOT NULL,
+  owner_id uuid,
   kind varchar(20) NOT NULL DEFAULT 'DOCUMENT',
   file_name varchar(200) NOT NULL,
   content_type varchar(100) NOT NULL,
   size_bytes bigint NOT NULL,
   s3_key varchar(500) NOT NULL,
   sha256 varchar(64),
+  linked_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -2208,13 +2209,14 @@ CREATE TABLE attachment (
 COMMENT ON COLUMN attachment.id IS '기본키';
 COMMENT ON COLUMN attachment.tenant_id IS '테넌트';
 COMMENT ON COLUMN attachment.owner_type IS '대상 테이블 (asset, count_item, count_unregistered, asset_request, contract)';
-COMMENT ON COLUMN attachment.owner_id IS '대상 행 id';
+COMMENT ON COLUMN attachment.owner_id IS '대상 행 id. PDA 사진은 업로드 직후 비어 있음';
 COMMENT ON COLUMN attachment.kind IS 'PHOTO / DOCUMENT';
 COMMENT ON COLUMN attachment.file_name IS '파일명';
 COMMENT ON COLUMN attachment.content_type IS 'MIME';
 COMMENT ON COLUMN attachment.size_bytes IS '크기';
 COMMENT ON COLUMN attachment.s3_key IS 'S3 객체 키';
 COMMENT ON COLUMN attachment.sha256 IS '해시';
+COMMENT ON COLUMN attachment.linked_at IS '대상 연결 일시. 비어 있으면 업로드 대기(24시간 뒤 정리)';
 COMMENT ON COLUMN attachment.created_at IS '생성 일시';
 COMMENT ON COLUMN attachment.created_by IS '생성자';
 COMMENT ON COLUMN attachment.updated_at IS '변경 일시';
