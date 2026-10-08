@@ -1097,10 +1097,16 @@ requestNo | string | N | 연결 요청
 ''')
 schema('RunRequestInput', 'SAP 수동 실행 요청(F-310-04)', '''
 interfaceId | enum(IF-MD-01,IF-AA-01,IF-AA-02,IF-MM-01,IF-RC-01) | Y | 실행할 수신 IF
+runType | enum(WEEKLY,CAMPAIGN) | N | IF-RC-01만. 기본 WEEKLY
+campaignCode | string(6) | N | runType=CAMPAIGN이면 필수
+isClosing | bool | N | IF-AA-02만. 월말 마감 후 실행이면 true(그 기간 금액을 마감값으로 잠금)
 ''')
 schema('RunRequest', 'SAP 실행 요청', '''
 id | uuid | Y | id
 interfaceId | string | Y | IF
+runType | enum(WEEKLY,CAMPAIGN) | N | IF-RC-01 실행 조건
+campaignCode | string(6) | N | 실사 캠페인 코드
+isClosing | bool | N | IF-AA-02 마감 실행 여부
 status | enum(PENDING,PICKED,DONE) | Y | PENDING → SAP 잡이 가져가면 PICKED → 실행 로그 생기면 DONE
 requestedAt | datetime | Y | 요청
 pickedAt | datetime | N | SAP이 가져간 일시
@@ -1179,7 +1185,7 @@ W('SAP 연계','GET','/integration/sap/runs/{id}/messages','listSapRunMessages',
 W('SAP 연계','GET','/integration/sap/postings','listPostings','전기 큐',AC,None,'PostingRowList','200','sap_posting','ALM-310',[ '기본 FAILED·READY·CLAIMED.'],params=[('status','query','string','N','상태'),('type','query','string','N','유형'),('q','query','string','N','요청번호·자산태그')]+PG)
 W('SAP 연계','GET','/integration/sap/postings/{id}','getPosting','전기 상세',AC,None,'PostingDetail','200, 404','sap_posting','ALM-310',[ '-'],params=CI)
 W('SAP 연계','POST','/integration/sap/postings/{id}:retry','retryPosting','재전기',AC,None,'PostingSummary','200, 409','sap_posting, asset_request','ALM-310',
-  ['FAILED만. 연결 요청의 현재 값으로 payload를 다시 만들고 READY, attempt는 0부터(F-310-03).', '같은 postingId를 쓰므로 SAP BKTXT 확인으로 중복 전기가 막힌다.'],params=CI,idem='Idempotency-Key')
+  ['FAILED만. 연결 요청의 현재 값으로 payload를 다시 만들고 READY, attempt는 0부터(F-310-03).', '같은 postingId를 쓰므로 SAP BKTXT·로그 확인으로 중복 전기가 막힌다.', '재시도 초과(ALM-E306) 건은 SAP에 이미 전기됐을 수 있으므로, 화면이 SAP 전표·자산 확인 체크를 받은 뒤에만 재전기한다.'],params=CI,idem='Idempotency-Key')
 W('SAP 연계','POST','/integration/sap/postings/{id}:cancel','cancelPosting','전기 취소',AC,None,'PostingSummary','200, 409','sap_posting, asset_request','ALM-310',[ 'READY·FAILED만. 연결 요청은 CANCELLED.'],params=CI)
 W('SAP 연계','POST','/integration/sap/run-requests','createRunRequest','SAP 수동 실행 요청',AC,'RunRequestInput','RunRequest','201, 409','sap_run_request','ALM-310',
   ['ALM은 SAP을 직접 호출하지 않는다. 요청을 남기면 15분 주기 SAP 잡이 GET /sap/run-requests로 가져가 해당 수신 잡을 바로 실행한다.', '같은 IF의 PENDING이 있으면 409.'],ok='201')

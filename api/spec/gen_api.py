@@ -42,6 +42,8 @@ def build_openapi():
     paths = {}
     for e in E:
         params = [{'$ref': '#/components/parameters/CorrelationId'}]
+        if e['group'] == 'sap' and e['op'] != 'sapToken':
+            params += [{'$ref': '#/components/parameters/SapSystem'}, {'$ref': '#/components/parameters/CompanyCode'}]
         if 'Idempotency-Key' in e['idem']:
             params.append({'$ref': '#/components/parameters/IdempotencyKey'})
         for n, where, t, r, d in e['params']:
@@ -91,6 +93,10 @@ def build_openapi():
                 'sapAuth': {'type': 'oauth2', 'description': 'Client Credentials. 토큰 60분',
                             'flows': {'clientCredentials': {'tokenUrl': '/oauth/token', 'scopes': {'sap.api': 'SAP 연계'}}}}},
             'parameters': {
+                'SapSystem': {'name': 'X-SAP-System', 'in': 'header', 'required': False, 'schema': {'type': 'string', 'maxLength': 10},
+                              'description': 'SAP 시스템ID-클라이언트 (예: PRD-100). 로그 기록용. sap_connection과 다르면 403'},
+                'CompanyCode': {'name': 'X-Company-Code', 'in': 'header', 'required': False, 'schema': {'type': 'string', 'maxLength': 4},
+                              'description': '회사코드. 토큰에 허용된 회사코드가 아니면 403'},
                 'CorrelationId': {'name': 'X-Correlation-Id', 'in': 'header', 'required': False, 'schema': {'type': 'string', 'format': 'uuid'},
                                   'description': '요청 추적 ID. 없으면 서버가 만들어 응답 헤더로 돌려줌'},
                 'IdempotencyKey': {'name': 'Idempotency-Key', 'in': 'header', 'required': True, 'schema': {'type': 'string', 'maxLength': 80},

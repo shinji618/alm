@@ -22,7 +22,7 @@ code | string | Y | ALM 오류 코드
 message | string | Y | 메시지
 ''')
 schema('ItemResult', '배치 건별 결과', '''
-key | string | Y | 레코드 키 (예: 1000/300001234/0)
+key | string | Y | 레코드 키 (예: 1000/000300001234/0000)
 status | enum(OK,ERROR,SKIPPED) | Y | OK 반영, ERROR 오류, SKIPPED 변경 없음
 code | string | N | 오류 코드
 message | string | N | 메시지
@@ -227,7 +227,7 @@ schema('MasterDataRequest', 'IF-MD-01 조직·코드 마스터(유형별 전체 
 batchId | string(40) | Y | 배치 ID (예: MD01-20261004-0530)
 type | enum(COMPANY,PLANT,COST_CENTER,PROFIT_CENTER,ASSET_CLASS,LOCATION) | Y | 마스터 유형
 chunkNo | int | Y | 분할 번호(1부터)
-isLast | bool | Y | 마지막 분할. true 수신 시 이번 배치에 없던 코드를 비활성 처리
+isLast | bool | N | 마지막 분할이면 true(없으면 false). true 수신 시 이번 배치에 없던 코드를 비활성 처리
 records | [object] | Y | 유형별 레코드(아래 MdCompany 등), 최대 5,000건
 ''')
 schema('MdCompany', 'COMPANY 레코드 → company', '''
@@ -260,7 +260,7 @@ segment | string(10) | N | SEGMENT
 schema('MdAssetClass', 'ASSET_CLASS 레코드 → asset_class', '''
 assetClass | string(8) | Y | ANLKL
 name | string(50) | Y | TXK50
-isLowValue | bool | Y | 저가자산 여부
+isLowValue | bool | N | 저가자산 여부(없으면 false)
 usefulLifeYears | int | N | 내용연수 기본값
 ''')
 schema('MdLocation', 'LOCATION 레코드 → site.sap_location 확인용', '''
@@ -300,7 +300,7 @@ fiscalYear | int | Y | GJAHR
 period | int | Y | 기간 1~16
 depArea | string(2) | Y | AFABE (01)
 acquisitionValue | number | Y | 취득가 누계(USD, 소수 2자리)
-accumDepreciation | number | Y | 감가상각누계액(음수)
+accumDepreciation | number | Y | 감가상각누계액(음수, 0이어도 생략하지 않음)
 netBookValue | number | Y | 장부가액
 usefulLifeYears | int | N | NDJAR
 usefulLifePeriods | int | N | NDPER
@@ -308,6 +308,7 @@ depKey | string(4) | N | AFASL
 ''')
 schema('AssetValuesRequest', 'IF-AA-02 요청', '''
 batchId | string(40) | Y | 배치 ID
+isClosing | bool | N | 마감 후 실행이면 true → 이 레코드의 (회계연도, 기간)을 마감값으로 잠금
 records | [SapAssetValue] | Y | 최대 1,000건
 ''')
 schema('ClaimRequest', '전기 대상 가져오기', '''
@@ -357,16 +358,16 @@ costCenterValidFrom | date | N | 코스트센터 변경 시 시간종속 유효�
 schema('AssetTransferPayload', 'ASSET_TRANSFER (IF-AA-05, ABUMN)', '''
 newCostCenter | string(10) | Y | 새 코스트센터
 newProfitCenter | string(10) | Y | 새 손익센터
-transactionType | string(3) | Y | 거래유형(300번대)
+transactionType | string(3) | N | 참고용. SAP은 ZALM_MAP(TRANSFER_TT) 값을 쓴다
 percent | number | Y | 이관 비율(100)
 createNewSubNo | bool | Y | 신규 보조번호 생성 여부
 ''')
 schema('AssetRetirePayload', 'ASSET_RETIRE (IF-AA-06, BAPI_ASSET_RETIREMENT_POST)', '''
-retireType | enum(SCRAP,SALE) | Y | ABAVN 폐기 / ABAON 매각
-transactionType | string(3) | Y | 거래유형
+retireType | enum(SCRAP,SALE,LOSS) | Y | ABAVN 폐기 / ABAON 매각 / 분실(폐기 처리)
+transactionType | string(3) | N | 참고용. SAP은 ZALM_MAP(retireType → 거래유형) 값을 쓴다
 saleAmount | number | N | 매각금액(SALE 필수)
 customer | string(10) | N | 매각 고객번호(사용 시)
-isPartial | bool | Y | 부분 폐기(기본 false)
+isPartial | bool | N | v1은 전체 폐기만 지원. 항상 false(true면 SAP이 FAILED)
 reason | string(50) | N | 사유
 ''')
 schema('CountResultPayload', 'COUNT_RESULT (IF-AA-07, BAPI_FIXEDASSET_CHANGE)', '''
@@ -404,7 +405,7 @@ status | enum(POSTED,FAILED) | Y | 결과
 sapDocument | SapDocument | N | 전표(이관·폐기)
 asset | AssetRef | N | 생성·이관된 자산번호
 poNo | string(10) | N | 생성된 PO 번호(PO_CREATE)
-messages | [BapiMessage] | Y | FAILED면 E·A 메시지 전부
+messages | [BapiMessage] | N | FAILED면 E·A 메시지 전부(필수), POSTED면 생략 가능
 ''')
 schema('PostingAck', '결과 회신 응답', '''
 postingId | string | Y | 요청번호
@@ -422,7 +423,7 @@ quantity | number | Y | MENGE
 unitPrice | number | N | NETPR
 costCenter | string(10) | N | EKKN-KOSTL
 assets | [AssetRef] | N | EKKN 자산번호(항목당 여러 개)
-deletionFlag | bool | Y | LOEKZ. true면 입고 대기 취소
+deletionFlag | bool | N | LOEKZ. true면 입고 대기 취소(없으면 false)
 almRequestNo | string(12) | N | ALM에서 생성한 PO면 PR 번호
 ''')
 schema('PurchaseOrdersRequest', 'IF-MM-01 요청', '''
@@ -435,7 +436,7 @@ docYear | string(4) | Y | MJAHR
 docItem | string(4) | Y | ZEILE
 poNo | string(10) | Y | EBELN
 poItem | string(5) | Y | EBELP
-movementType | enum(101,102) | Y | 101 입고 / 102 취소
+movementType | enum(101,102,122) | Y | 101 입고 / 102 취소 / 122 공급사 반품
 quantity | number | Y | MENGE
 postingDate | date | Y | BUDAT
 ''')
@@ -460,7 +461,7 @@ runType | enum(WEEKLY,CAMPAIGN) | Y | 주간 / 실사 종료
 campaignCode | string(6) | N | CAMPAIGN이면 필수
 snapshotAt | datetime | Y | 스냅샷 시각
 chunkNo | int | Y | 분할 번호(1부터)
-isLast | bool | Y | 마지막 분할이면 true → 차이 계산 시작
+isLast | bool | N | 마지막 분할이면 true → 차이 계산 시작(없으면 false)
 records | [ReconRecord] | Y | 최대 5,000건
 ''')
 schema('ReconResponse', 'IF-RC-01 응답', '''
@@ -527,15 +528,14 @@ ep(Q,'GET','/sap/ping','sapPing','연결 확인','SAP',None,'SapPing','200, 401'
    ['SM59 연결 테스트·배치 시작 전 확인용. 부하 없음.'])
 ep(Q,'POST','/sap/master-data','sapPostMasterData','조직·코드 마스터 수신','SAP','MasterDataRequest','BatchResult','200, 207, 400, 401, 409','company, plant, cost_center, profit_center, asset_class','IF-MD-01',
    ['유형별로 분할 전송하고 isLast=true에서 이번 배치에 없던 코드를 is_active=false로 바꾼다(삭제 안 함).',
-    '분할 순서가 어긋나면(chunkNo 누락) 409 ALM-E303, 배치 전체를 다시 보낸다.',
-    'COST_CENTER는 PROFIT_CENTER 뒤에 보낸다(손익센터 참조).'], idem='Idempotency-Key = batchId-chunkNo')
+    '순서: COMPANY → PLANT → PROFIT_CENTER → COST_CENTER → ASSET_CLASS → LOCATION(참조 순). chunkNo는 유형마다 1부터, 409 ALM-E303이면 그 유형을 새 batchId로 처음부터 다시 보낸다.'], idem='Idempotency-Key = batchId-type-chunkNo')
 ep(Q,'POST','/sap/assets:upsert','sapUpsertAssets','자산 마스터 델타 수신','SAP','AssetUpsertRequest','BatchResult','200, 207, 400, 401','asset, asset_event','IF-AA-01',
    ['매칭: ① companyCode+assetNo+subNo ② inventoryNo(자산태그). 둘 다 없으면 ALM 자산을 새로 만들고 실사 필요로 표시.',
     'SAP 기준 필드(자산클래스, 자산명, 취득일, 비활성일, 코스트센터·손익센터, IVDAT)만 갱신한다. 시리얼·룸·태그는 ALM 기준이라 덮지 않는다.',
     '코스트센터·자산클래스가 ALM에 없으면 ERROR ALM-E104/E105. 다음 IF-MD-01 수신 후 자동 재처리(최대 3일).',
     '값이 같으면 SKIPPED, 바뀌면 asset_event(SAP_SYNCED)에 전후값.'], idem='Idempotency-Key = batchId-일련번호')
 ep(Q,'POST','/sap/asset-values','sapPostAssetValues','자산 금액 수신','SAP','AssetValuesRequest','BatchResult','200, 207, 400, 401','asset_value','IF-AA-02',
-   ['(자산, 회계연도, 기간, 상각영역) 단위 업서트. 자산이 없으면 ERROR ALM-E201.'], idem='Idempotency-Key = batchId-일련번호')
+   ['(자산, 회계연도, 기간, 상각영역) 단위 업서트. 자산이 없으면 ERROR ALM-E201.', 'isClosing=true로 받은 기간은 마감값으로 잠그고, 이후 같은 기간에 isClosing 없이 오는 값은 SKIPPED(매일 실행이 다음 기간 취득을 섞어 덮어쓰지 않게).'], idem='Idempotency-Key = batchId-일련번호')
 ep(Q,'POST','/sap/postings:claim','sapClaimPostings','전기 대상 가져오기(15분 잠금)','SAP','ClaimRequest','ClaimResponse','200, 400, 401','sap_posting','IF-AA-03~07, IF-MM-02',
    ['READY 또는 잠금이 지난 CLAIMED 건을 postingId 순으로 FOR UPDATE SKIP LOCKED로 잡고 CLAIMED·leaseUntil=now+15분·attempt+1.',
     '대상이 없으면 items=[] (200).',
@@ -545,18 +545,18 @@ ep(Q,'POST','/sap/postings/{postingId}/result','sapPostResult','전기 결과 �
    ['POSTED: 결과값(자산번호·전표·PO번호)을 asset·요청에 반영하고 asset_event(SAP_POSTED).',
     'FAILED: 요청을 POST_ERROR로, 메시지를 저장. 자산회계가 ALM-310에서 고쳐 재처리하면 READY로 돌아간다.',
     '이미 결과가 있는 건에 다른 결과가 오면 409 ALM-E302, 같은 결과면 200(멱등).',
-    '잠금이 지난 뒤 온 결과도 받는다(SAP은 BKTXT로 중복 전기를 막음).'],
-   params=[('postingId','path','string(12)','Y','요청번호')], idem='Idempotency-Key = postingId')
+    '잠금이 지난 뒤 온 결과도 받는다(SAP은 BKTXT로 중복 전기를 막음).', '재시도 초과(ALM-E306)로 FAILED가 된 건에 POSTED가 오면 받아들여 POSTED로 바꾼다(SAP 기준). 같은 결과의 재회신은 200.'],
+   params=[('postingId','path','string(12)','Y','요청번호')], idem='Idempotency-Key = postingId-attempt')
 ep(Q,'POST','/sap/purchase-orders','sapPostPurchaseOrders','자산 PO 항목 수신','SAP','PurchaseOrdersRequest','BatchResult','200, 207, 400, 401','po_item, po_item_asset, purchase_request','IF-MM-01',
    ['(poNo, item) 업서트. deletionFlag=true면 is_deleted=true, 입고 대기 취소.',
     'almRequestNo가 있으면 purchase_request.sap_po_no와 연결.'], idem='Idempotency-Key = batchId-일련번호')
 ep(Q,'POST','/sap/goods-receipts','sapPostGoodsReceipts','입고 수신','SAP','GoodsReceiptsRequest','BatchResult','200, 207, 400, 401','goods_receipt, asset, label_print_job','IF-MM-03',
-   ['101: 수량만큼 자산을 IN_STOCK으로 만들고 태그 채번, PO 지정 자산번호 연결, 라벨 출력 대기열 추가.',
-    '102: 자산을 지우지 않고 is_gr_cancelled=true, 자산 관리자에게 알림.',
+   ['101: 수량만큼 자산을 IN_STOCK으로 만들고 태그 채번, PO 지정 자산번호 연결, 라벨 출력 대기열 추가.', '같은 문서 행(materialDoc, docYear, docItem)이 다시 오면 아무것도 만들지 않고 SKIPPED(SAP 겹침 송신 대비).',
+    '102·122: 자산을 지우지 않고 is_gr_cancelled=true, 자산 관리자에게 알림.',
     'PO 항목이 아직 없으면 ERROR ALM-E202(다음 IF-MM-01 후 자동 재처리).'], idem='Idempotency-Key = batchId-일련번호')
 ep(Q,'POST','/sap/reconciliation','sapPostReconciliation','대사 스냅샷 수신(분할)','SAP','ReconRequest','ReconResponse','200, 202, 400, 401, 409','recon_run, recon_snapshot, recon_diff','IF-RC-01',
    ['첫 분할에 recon_run을 만들고, isLast=true에서 202와 함께 차이 계산을 비동기로 시작.',
-    '차이 규칙은 SAP 인터페이스 명세서 7.3(SAP_ONLY, ALM_ONLY, COST_CENTER, LOCATION, SERIAL, TAG, RETIRED).'], idem='Idempotency-Key = batchId-chunkNo')
+    '차이 규칙은 SAP 인터페이스 명세서 v1.0 5.7(SAP_ONLY, ALM_ONLY, COST_CENTER, LOCATION, SERIAL, TAG, RETIRED). ALM 쪽 비교 대상은 같은 회사코드의 자산 중 RETIRED·DISPOSED는 비활성 12개월 이내만.'], idem='Idempotency-Key = batchId-chunkNo')
 
 ERRORS = [
  ('ALM-E100','400','형식 오류','JSON 형식·타입·길이 위반'),

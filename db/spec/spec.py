@@ -218,6 +218,7 @@ net_book_value | num(15,2) | NN | 장부가액(NBV)
 useful_life_years | int | | NDJAR
 useful_life_periods | int | | NDPER
 dep_key | vc(4) | | AFASL
+is_closed | bool | NN =false | 마감값(isClosing 수신). true면 이후 일반 수신으로 덮어쓰지 않음
 received_at | ts | NN | 수신 일시
 ''', uniques=[('asset_id','fiscal_year','period','dep_area')], screens='ALM-010, 111')
 t('asset','asset_assignment','자산 할당','Check-out·반납 이력. 반납 전 행이 현재 할당', '''
@@ -617,7 +618,7 @@ finished_at | ts | | 종료
 ''', indexes=[('tenant_id','interface_id','started_at')], mode='log', screens='ALM-310')
 t('sap','sap_if_message','IF 건별 결과','IF 실행의 건별 결과. 오류 건은 원본 레코드 보관', '''
 run_id | ->sap_if_run | NN | IF 실행
-record_key | vc(40) | NN | 레코드 키 (예: 1000/300001234/0)
+record_key | vc(40) | NN | 레코드 키 (예: 1000/000300001234/0000)
 result | vc(10) | NN | OK / ERROR
 error_code | vc(12) | | ALM 오류 코드 (예: ALM-E104)
 message | vc(500) | | 메시지
@@ -685,6 +686,7 @@ is_active | bool | NN =true | 사용 여부
 
 t('sap','sap_run_request','SAP 실행 요청','화면의 수동 실행 요청(F-310-04). SAP 잡이 GET /sap/run-requests로 가져가 실행', '''
 interface_id | vc(10) | NN | 실행할 수신 IF (IF-MD-01, IF-AA-01, IF-AA-02, IF-MM-01, IF-RC-01)
+params | json | | 실행 조건 (IF-RC-01: runType, campaignCode / IF-AA-02: isClosing)
 status | vc(10) | NN ='PENDING' | PENDING / PICKED / DONE / CANCELLED
 requested_by | ->app_user | NN | 요청자
 requested_at | ts | NN =now | 요청 일시

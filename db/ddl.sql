@@ -579,6 +579,7 @@ CREATE TABLE asset_value (
   useful_life_years integer,
   useful_life_periods integer,
   dep_key varchar(4),
+  is_closed boolean NOT NULL DEFAULT false,
   received_at timestamptz NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
@@ -599,6 +600,7 @@ COMMENT ON COLUMN asset_value.net_book_value IS '장부가액(NBV)';
 COMMENT ON COLUMN asset_value.useful_life_years IS 'NDJAR';
 COMMENT ON COLUMN asset_value.useful_life_periods IS 'NDPER';
 COMMENT ON COLUMN asset_value.dep_key IS 'AFASL';
+COMMENT ON COLUMN asset_value.is_closed IS '마감값(isClosing 수신). true면 이후 일반 수신으로 덮어쓰지 않음';
 COMMENT ON COLUMN asset_value.received_at IS '수신 일시';
 COMMENT ON COLUMN asset_value.created_at IS '생성 일시';
 COMMENT ON COLUMN asset_value.created_by IS '생성자';
@@ -1889,7 +1891,7 @@ CREATE TABLE sap_if_message (
 COMMENT ON COLUMN sap_if_message.id IS '기본키';
 COMMENT ON COLUMN sap_if_message.tenant_id IS '테넌트';
 COMMENT ON COLUMN sap_if_message.run_id IS 'IF 실행';
-COMMENT ON COLUMN sap_if_message.record_key IS '레코드 키 (예: 1000/300001234/0)';
+COMMENT ON COLUMN sap_if_message.record_key IS '레코드 키 (예: 1000/000300001234/0000)';
 COMMENT ON COLUMN sap_if_message.result IS 'OK / ERROR';
 COMMENT ON COLUMN sap_if_message.error_code IS 'ALM 오류 코드 (예: ALM-E104)';
 COMMENT ON COLUMN sap_if_message.message IS '메시지';
@@ -2104,6 +2106,7 @@ CREATE TABLE sap_run_request (
   id uuid PRIMARY KEY,
   tenant_id uuid NOT NULL,
   interface_id varchar(10) NOT NULL,
+  params jsonb,
   status varchar(10) NOT NULL DEFAULT 'PENDING',
   requested_by uuid NOT NULL,
   requested_at timestamptz NOT NULL DEFAULT now(),
@@ -2119,6 +2122,7 @@ CREATE TABLE sap_run_request (
 COMMENT ON COLUMN sap_run_request.id IS '기본키';
 COMMENT ON COLUMN sap_run_request.tenant_id IS '테넌트';
 COMMENT ON COLUMN sap_run_request.interface_id IS '실행할 수신 IF (IF-MD-01, IF-AA-01, IF-AA-02, IF-MM-01, IF-RC-01)';
+COMMENT ON COLUMN sap_run_request.params IS '실행 조건 (IF-RC-01: runType, campaignCode / IF-AA-02: isClosing)';
 COMMENT ON COLUMN sap_run_request.status IS 'PENDING / PICKED / DONE / CANCELLED';
 COMMENT ON COLUMN sap_run_request.requested_by IS '요청자';
 COMMENT ON COLUMN sap_run_request.requested_at IS '요청 일시';

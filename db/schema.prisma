@@ -727,6 +727,8 @@ model AssetValue {
   usefulLifePeriods Int? @map("useful_life_periods")
   /// AFASL
   depKey String? @map("dep_key") @db.VarChar(4)
+  /// 마감값(isClosing 수신). true면 이후 일반 수신으로 덮어쓰지 않음
+  isClosed Boolean @default(false) @map("is_closed")
   /// 수신 일시
   receivedAt DateTime @map("received_at") @db.Timestamptz(6)
   /// 생성 일시
@@ -2153,7 +2155,7 @@ model SapIfMessage {
   /// IF 실행
   runId String @map("run_id") @db.Uuid
   run SapIfRun @relation("sap_if_message_run_id", fields: [runId], references: [id])
-  /// 레코드 키 (예: 1000/300001234/0)
+  /// 레코드 키 (예: 1000/000300001234/0000)
   recordKey String @map("record_key") @db.VarChar(40)
   /// OK / ERROR
   result String @db.VarChar(10)
@@ -2388,6 +2390,8 @@ model SapRunRequest {
   tenant Tenant @relation("sap_run_request_tenant_id", fields: [tenantId], references: [id])
   /// 실행할 수신 IF (IF-MD-01, IF-AA-01, IF-AA-02, IF-MM-01, IF-RC-01)
   interfaceId String @map("interface_id") @db.VarChar(10)
+  /// 실행 조건 (IF-RC-01: runType, campaignCode / IF-AA-02: isClosing)
+  params Json?
   /// PENDING / PICKED / DONE / CANCELLED
   status String @default("PENDING") @db.VarChar(10)
   /// 요청자
