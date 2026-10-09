@@ -150,7 +150,7 @@ describe('Observability (10 9장)', () => {
     const t = tpl('prd', 'obs');
     t.hasResourceProperties('AWS::Logs::SubscriptionFilter', Match.objectLike({ LogGroupName: '/aws/rds/instance/alm-prd/postgresql', FilterPattern: '"AUDIT:"' }));
     t.hasResourceProperties('AWS::KinesisFirehose::DeliveryStream', Match.objectLike({ ExtendedS3DestinationConfiguration: Match.objectLike({
-      BucketARN: 'arn:aws:s3:::alm-audit-archive-111111111111', Prefix: Match.stringLikeRegexp('^prd/pgaudit/') }) }));
+      BucketARN: 'arn:aws:s3:::alm-audit-archive-085462181410', Prefix: Match.stringLikeRegexp('^prd/pgaudit/') }) }));
   });
   it('월 예산 80%·100%', () => {
     tpl('prd', 'obs').hasResourceProperties('AWS::Budgets::Budget', Match.objectLike({ Budget: Match.objectLike({ BudgetLimit: { Amount: 900, Unit: 'USD' } }) }));
@@ -161,9 +161,9 @@ describe('계정 공통', () => {
   const g = buildGlobal(newApp());
   it('감사 보관: Object Lock 준수 모드 10년, us-east-2 복제', () => {
     const t = Template.fromStack(g.logArchive);
-    t.hasResourceProperties('AWS::S3::Bucket', Match.objectLike({ BucketName: 'alm-audit-archive-111111111111',
+    t.hasResourceProperties('AWS::S3::Bucket', Match.objectLike({ BucketName: 'alm-audit-archive-085462181410',
       ObjectLockEnabled: true, ObjectLockConfiguration: { ObjectLockEnabled: 'Enabled', Rule: { DefaultRetention: { Mode: 'COMPLIANCE', Days: 3653 } } },
-      ReplicationConfiguration: Match.objectLike({ Rules: [Match.objectLike({ Destination: Match.objectLike({ Bucket: 'arn:aws:s3:::alm-audit-archive-replica-111111111111' }) })] }) }));
+      ReplicationConfiguration: Match.objectLike({ Rules: [Match.objectLike({ Destination: Match.objectLike({ Bucket: 'arn:aws:s3:::alm-audit-archive-replica-085462181410' }) })] }) }));
   });
   it('ECR: 태그 불변, 푸시 시 검사', () => {
     Template.fromStack(g.shared).hasResourceProperties('AWS::ECR::Repository', Match.objectLike({ ImageTagMutability: 'IMMUTABLE',

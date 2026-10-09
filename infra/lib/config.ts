@@ -6,7 +6,7 @@ export type EnvName = 'dev' | 'qa' | 'prd';
 export interface OrgConfig {
   region: string;            // 주 리전
   backupRegion: string;      // 백업 리전
-  accounts: { logArchive: string; shared: string; backup: string; dev: string; qa: string; prd: string };
+  accounts: { management: string; audit: string; logArchive: string; shared: string; backup: string; dev: string; qa: string; prd: string };
   domain: string;            // 서비스 도메인 (A-03)
   hostedZoneId: string;      // Route 53 호스팅 영역 ID (domain)
   githubRepo: string;        // OIDC 신뢰 대상
@@ -47,7 +47,9 @@ export const ORG: OrgConfig = {
   region: 'us-east-1',
   backupRegion: 'us-east-2',
   accounts: {
-    logArchive: '111111111111', shared: '222222222222', backup: '333333333333',
+    // 2026-10-09 Control Tower 랜딩 존(조직 o-fhpi1b9oci)에서 생성. 나머지는 자리 값
+    management: '740122273988', audit: '319759855604', logArchive: '085462181410',
+    shared: '222222222222', backup: '333333333333',
     dev: '444444444444', qa: '555555555555', prd: '666666666666',
   },
   domain: 'bsgglobal.com',          // 서비스는 alm.<도메인> (A-03)
