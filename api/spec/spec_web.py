@@ -1317,7 +1317,7 @@ logoutUrl | string | Y | Cognito·IdP 로그아웃 URL(브라우저가 이동)
 W('인증','GET','/auth/login','authLogin','로그인 시작','없음',None,'AccessToken','302, 400, 403','tenant','로그인 화면',
   ['email의 도메인으로 auth_idp_by_domain()(tenant_domain)을 불러 해당 IdP(identity_provider = tenant.idp_provider_name)로 Cognito /oauth2/authorize에 302.',
    'PKCE code_verifier와 state는 암호화 쿠키 alm_pkce(5분, HttpOnly, Secure, SameSite=Lax, Path=/api/v1/auth)에 둔다.',
-   '모르는 도메인도 같은 화면 문구로 안내해 고객사 여부를 드러내지 않는다(403 ALM-E405, CloudWatch에만 기록, IP당 분당 10회 제한).'],
+   '모르는 도메인도 같은 화면 문구로 안내해 고객사 여부를 드러내지 않는다(403 ALM-E405, CloudWatch에만 기록). 호출 제한: WAF IP당 5분 300회(등록된 고객사 출구 IP 제외).'],
   params=[('email','query','string','Y','로그인 이메일'),('returnTo','query','string','N','로그인 뒤 돌아갈 화면 경로(같은 사이트 상대 경로만)')], ok='302')
 W('인증','GET','/auth/callback','authCallback','로그인 콜백','없음',None,'AccessToken','302, 400, 403','app_user, security_event','로그인 화면',
   ['state 확인 → 코드 교환(웹 앱 클라이언트, 비밀 있음) → 액세스 토큰의 username(ID 토큰은 cognito:username)으로 auth_tenant_by_username() → 테넌트·idp_subject.',

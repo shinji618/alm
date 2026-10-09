@@ -7342,7 +7342,7 @@ paths:
 
         - PKCE code_verifier와 state는 암호화 쿠키 alm_pkce(5분, HttpOnly, Secure, SameSite=Lax, Path=/api/v1/auth)에 둔다.
 
-        - 모르는 도메인도 같은 화면 문구로 안내해 고객사 여부를 드러내지 않는다(403 ALM-E405, CloudWatch에만 기록, IP당 분당 10회 제한).'
+        - 모르는 도메인도 같은 화면 문구로 안내해 고객사 여부를 드러내지 않는다(403 ALM-E405, CloudWatch에만 기록). 호출 제한: WAF IP당 5분 300회(등록된 고객사 출구 IP 제외).'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       - name: email
