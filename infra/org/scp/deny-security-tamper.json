@@ -1,0 +1,19 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenySecurityServiceTamper",
+      "Effect": "Deny",
+      "Action": [
+        "guardduty:DeleteDetector", "guardduty:DisassociateFromMasterAccount", "guardduty:DisassociateFromAdministratorAccount",
+        "guardduty:UpdateDetector", "guardduty:DeleteMembers", "guardduty:StopMonitoringMembers",
+        "securityhub:DisableSecurityHub", "securityhub:DisassociateFromAdministratorAccount", "securityhub:BatchDisableStandards",
+        "access-analyzer:DeleteAnalyzer", "inspector2:Disable",
+        "config:StopConfigurationRecorder", "config:DeleteConfigurationRecorder", "config:DeleteDeliveryChannel",
+        "cloudtrail:StopLogging", "cloudtrail:DeleteTrail", "cloudtrail:UpdateTrail", "cloudtrail:PutEventSelectors"
+      ],
+      "Resource": "*",
+      "Condition": { "ArnNotLike": { "aws:PrincipalArn": ["arn:aws:iam::*:role/AWSControlTowerExecution", "arn:aws:iam::*:role/aws-service-role/*"] } }
+    }
+  ]
+}
