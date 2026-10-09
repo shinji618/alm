@@ -15,6 +15,7 @@ export interface OrgConfig {
   costCenter: string;
   workloadsOuId: string;     // Control Tower Workloads OU (추가 SCP 대상)
   securityOuId: string;      // Security OU
+  sharedOuId: string;        // Shared OU
   ssoInstanceArn: string;    // IAM Identity Center 인스턴스
 }
 
@@ -58,9 +59,10 @@ export const ORG: OrgConfig = {
   ecrRepositoryName: 'alm',
   backupVaultArn: 'arn:aws:backup:us-east-1:333333333333:backup-vault:alm-backup-vault',
   costCenter: 'ALM',
-  workloadsOuId: 'ou-xxxx-workloads',
-  securityOuId: 'ou-xxxx-security',
-  ssoInstanceArn: 'arn:aws:sso:::instance/ssoins-0000000000000000',
+  workloadsOuId: 'ou-9djy-5jnut6za',
+  securityOuId: 'ou-9djy-4stg96uq',
+  sharedOuId: 'ou-9djy-10yk9mcs',
+  ssoInstanceArn: 'arn:aws:sso:::instance/ssoins-72231dff1f435dc2',
 };
 
 const common = {

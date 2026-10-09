@@ -72,7 +72,7 @@ export class OrgBaselineStack extends Stack {
       new organizations.CfnPolicy(this, name, {
         name, type: 'SERVICE_CONTROL_POLICY', description: `ALM ${name} (architecture 3.1)`,
         content: JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')),
-        targetIds: [ORG.workloadsOuId, ORG.securityOuId],
+        targetIds: [ORG.workloadsOuId, ORG.securityOuId, ORG.sharedOuId],
       });
     }
     const ps = (id: string, name: string, desc: string, hours: number, managed: string[], inline?: object) =>
