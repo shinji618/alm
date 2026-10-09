@@ -38,7 +38,8 @@ jobs:
     name: 이미지(ARM64) → ECR
     if: vars.DEPLOY_ENABLED == 'true'
     needs: ci
-    runs-on: ubuntu-24.04-arm
+    # 비공개 저장소에서도 무료인 x86 실행기 + QEMU로 ARM64 이미지를 만든다
+    runs-on: ubuntu-24.04
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
     steps:
@@ -51,6 +52,9 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
       - id: ecr
         uses: aws-actions/amazon-ecr-login@v2
+      - uses: docker/setup-qemu-action@v3
+        with: { platforms: arm64 }
+      - uses: docker/setup-buildx-action@v3
       - name: 빌드할 Dockerfile 고르기
         id: src
         run: |
@@ -64,8 +68,8 @@ jobs:
         run: |
           exists() { aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$1" >/dev/null 2>&1; }
           build_push() {  # build_push <태그> <context> <file>
-            docker build -t "$IMAGE:$1" -f "$3" "$2"
-            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.1 image \
+            docker buildx build --platform linux/arm64 --load -t "$IMAGE:$1" -f "$3" "$2"
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.1 image --platform linux/arm64 \
               --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --no-progress "$IMAGE:$1"
             docker push "$IMAGE:$1"
           }
