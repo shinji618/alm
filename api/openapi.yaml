@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: ALM API — Web · PDA · SAP
-  version: 0.3.0
+  version: 0.4.0
   license:
     name: Proprietary — BSG America
     identifier: LicenseRef-BSG-Proprietary
@@ -5628,7 +5628,7 @@ paths:
       description: 'ALM-250 · 테이블: printer
 
 
-        - -'
+        - ALM 서버는 프린터에 연결하지 않는다. 등록 정보는 화면에서 프린터를 고르고 해상도를 맞추는 데만 쓴다(결정 A-08).'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       responses:
@@ -5702,16 +5702,16 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/Printer'
-  /printers/{id}:test:
-    post:
-      operationId: testPrinter
-      summary: 시험 출력
+  /printers/{id}/test-label:
+    get:
+      operationId: getTestLabel
+      summary: 시험 라벨 ZPL
       tags:
       - WEB
-      description: 'ALM-250 · 테이블: printer
+      description: 'ALM-250 · 테이블: printer, label_template
 
 
-        - 9100 포트 연결 실패면 502 ALM-E501.'
+        - 기본 템플릿에 견본 값을 넣은 ZPL을 돌려준다. 브라우저가 Browser Print로 보낸다. 이력은 남기지 않는다.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       - name: id
@@ -5727,11 +5727,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LabelJobRow'
+                $ref: '#/components/schemas/ZplPreview'
         '404':
           $ref: '#/components/responses/E404'
-        '502':
-          $ref: '#/components/responses/E502'
         '429':
           $ref: '#/components/responses/E429'
         '500':
@@ -5751,7 +5749,9 @@ paths:
       description: 'ALM-250 · 테이블: label_print_job
 
 
-        - 기본 status=QUEUED.'
+        - 기본 status=QUEUED,FAILED. PDA 재출력 요청(PDA_REQUEST)도 이 대기열에 쌓이고, 자산 관리자가 PC에서 모아서 출력한다.
+
+        - RENDERED로 30분 넘게 결과 회신이 없으면 "확인 필요"로 표시(다시 출력 가능).'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       - name: status
@@ -5766,6 +5766,13 @@ paths:
         description: 출처
         schema:
           type: string
+      - name: siteId
+        in: query
+        required: false
+        description: 사이트
+        schema:
+          type: string
+          format: uuid
       - name: page
         in: query
         required: false
@@ -5840,18 +5847,62 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/LabelJobCreate'
-  /label-jobs:print:
+  /label-jobs:render:
     post:
-      operationId: printLabelJobs
-      summary: 출력 실행
+      operationId: renderLabelJobs
+      summary: ZPL 받기(출력 시작)
+      tags:
+      - WEB
+      description: 'ALM-250 · 테이블: label_print_job, label_template, asset, printer
+
+
+        - QUEUED·FAILED·RENDERED 작업만(그 외 409 ALM-E320). 상태를 RENDERED로 바꾸고 attempt_count를 올린다.
+
+        - 서버는 프린터에 연결하지 않는다. 브라우저가 Zebra Browser Print(PC에 설치, localhost)로 받은 ZPL을 프린터에 보낸 뒤 :report로 결과를 회신한다(결정 A-08).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabelZplBundle'
+        '400':
+          $ref: '#/components/responses/E400'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: label.print
+      x-scope:
+        ASSET_MANAGER: ALL
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LabelRender'
+  /label-jobs:report:
+    post:
+      operationId: reportLabelJobs
+      summary: 출력 결과 회신
       tags:
       - WEB
       description: 'ALM-250 · 테이블: label_print_job, asset_event
 
 
-        - 서버가 네트워크 프린터 9100 포트로 ZPL을 보낸다(같은 VPC 또는 사이트 VPN 필요).
+        - renderId의 작업만 받는다. RENDERED가 아닌 작업은 건별 409 ALM-E320.
 
-        - 성공 건은 PRINTED와 asset_event(LABEL_PRINTED).'
+        - PRINTED는 printed_at·client_info 기록과 asset_event(LABEL_PRINTED). FAILED는 오류 문구를 남기고 다시 출력할 수 있다.
+
+        - Browser Print가 확인하는 것은 프린터로 전송 성공까지다. 용지 걸림 등은 사용자가 화면에서 실패로 표시해 다시 출력한다.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       - $ref: '#/components/parameters/IdempotencyKey'
@@ -5870,8 +5921,8 @@ paths:
                 $ref: '#/components/schemas/BulkResult'
         '400':
           $ref: '#/components/responses/E400'
-        '502':
-          $ref: '#/components/responses/E502'
+        '409':
+          $ref: '#/components/responses/E409'
         '429':
           $ref: '#/components/responses/E429'
         '500':
@@ -5887,7 +5938,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LabelPrint'
+              $ref: '#/components/schemas/LabelReport'
   /label-jobs/{id}/zpl:
     get:
       operationId: previewZpl
@@ -7699,12 +7750,6 @@ components:
             $ref: '#/components/schemas/Problem'
     E422:
       description: 업무 규칙 위반
-      content:
-        application/problem+json:
-          schema:
-            $ref: '#/components/schemas/Problem'
-    E502:
-      description: 외부 장치 연결 실패
       content:
         application/problem+json:
           schema:
@@ -13363,13 +13408,20 @@ components:
           type: string
           format: uuid
           description: 사이트
+        deviceName:
+          type: string
+          maxLength: 100
+          description: Browser Print 장치 이름
+        connection:
+          type: string
+          enum:
+          - USB
+          - NETWORK
+          description: 연결 방식
         host:
           type: string
           maxLength: 100
-          description: 주소
-        port:
-          type: integer
-          description: 포트
+          description: IP(NETWORK 참고용)
         dpi:
           type: integer
           description: 해상도
@@ -13379,8 +13431,7 @@ components:
       required:
       - id
       - name
-      - host
-      - port
+      - connection
       - dpi
       - isActive
     PrinterList:
@@ -13420,13 +13471,17 @@ components:
           type: string
           enum:
           - QUEUED
-          - SENT
+          - RENDERED
           - PRINTED
           - FAILED
+          - CANCELLED
           description: 상태
         copies:
           type: integer
           description: 매수
+        attemptCount:
+          type: integer
+          description: 출력 시도 횟수
         requestedByName:
           type: string
           description: 요청자
@@ -13434,10 +13489,13 @@ components:
           type: string
           format: date-time
           description: 요청
+        renderedByName:
+          type: string
+          description: 출력한 사용자
         printedAt:
           type: string
           format: date-time
-          description: 출력
+          description: 출력 확인
         error:
           type: string
           description: 오류
@@ -13448,6 +13506,7 @@ components:
       - source
       - status
       - copies
+      - attemptCount
       - requestedAt
     LabelJobRowList:
       type: object
@@ -13491,23 +13550,101 @@ components:
           description: 매수(기본 1)
       required:
       - assetIds
-    LabelPrint:
+    LabelRender:
       type: object
-      description: 출력 실행
+      description: ZPL 발급 요청
       properties:
         jobIds:
           type: array
           items:
             type: string
             format: uuid
-          description: 대기열 작업
+          description: 대기열 작업(최대 200)
         printerId:
           type: string
           format: uuid
-          description: 프린터
+          description: 출력할 프린터(해상도·장치 이름)
       required:
       - jobIds
       - printerId
+    LabelZplItem:
+      type: object
+      description: 작업별 ZPL
+      properties:
+        jobId:
+          type: string
+          format: uuid
+          description: 작업
+        assetTag:
+          type: string
+          description: 자산
+        zpl:
+          type: string
+          description: 치환된 ZPL(매수는 ^PQ로 포함)
+      required:
+      - jobId
+      - assetTag
+      - zpl
+    LabelZplBundle:
+      type: object
+      description: ZPL 묶음
+      properties:
+        renderId:
+          type: string
+          format: uuid
+          description: 이번 발급 id(결과 회신에 사용)
+        deviceName:
+          type: string
+          description: 보낼 Browser Print 장치 이름
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LabelZplItem'
+          description: 작업별 ZPL. 브라우저는 순서대로 전송
+      required:
+      - renderId
+      - items
+    LabelPrintResult:
+      type: object
+      description: 작업별 출력 결과
+      properties:
+        jobId:
+          type: string
+          format: uuid
+          description: 작업
+        status:
+          type: string
+          enum:
+          - PRINTED
+          - FAILED
+          description: 결과
+        error:
+          type: string
+          maxLength: 500
+          description: 실패 사유(Browser Print 오류 문구)
+      required:
+      - jobId
+      - status
+    LabelReport:
+      type: object
+      description: 출력 결과 회신
+      properties:
+        renderId:
+          type: string
+          format: uuid
+          description: ZPL 발급 id
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/LabelPrintResult'
+          description: 작업별 결과
+        clientInfo:
+          type: string
+          maxLength: 200
+          description: Browser Print 버전·장치 이름
+      required:
+      - renderId
+      - results
     ZplPreview:
       type: object
       description: ZPL 미리보기

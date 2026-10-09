@@ -1008,8 +1008,9 @@ schema('Printer', '프린터', '''
 id | uuid | Y | id
 name | string(60) | Y | 이름
 siteId | uuid | N | 사이트
-host | string(100) | Y | 주소
-port | int | Y | 포트
+deviceName | string(100) | N | Browser Print 장치 이름
+connection | enum(USB,NETWORK) | Y | 연결 방식
+host | string(100) | N | IP(NETWORK 참고용)
 dpi | int | Y | 해상도
 isActive | bool | Y | 사용
 ''')
@@ -1021,11 +1022,13 @@ id | uuid | Y | id
 assetTag | string | Y | 자산
 templateName | string | Y | 템플릿
 source | enum(ASSET_DETAIL,GOODS_RECEIPT,PDA_REQUEST,BULK) | Y | 출처
-status | enum(QUEUED,SENT,PRINTED,FAILED) | Y | 상태
+status | enum(QUEUED,RENDERED,PRINTED,FAILED,CANCELLED) | Y | 상태
 copies | int | Y | 매수
+attemptCount | int | Y | 출력 시도 횟수
 requestedByName | string | N | 요청자
 requestedAt | datetime | Y | 요청
-printedAt | datetime | N | 출력
+renderedByName | string | N | 출력한 사용자
+printedAt | datetime | N | 출력 확인
 error | string | N | 오류
 ''')
 lst('LabelJobRow', '출력 목록')
@@ -1034,9 +1037,29 @@ assetIds | [uuid] | Y | 자산(최대 500)
 templateId | uuid | N | 템플릿(비면 기본)
 copies | int | N | 매수(기본 1)
 ''')
-schema('LabelPrint', '출력 실행', '''
-jobIds | [uuid] | Y | 대기열 작업
-printerId | uuid | Y | 프린터
+schema('LabelRender', 'ZPL 발급 요청', '''
+jobIds | [uuid] | Y | 대기열 작업(최대 200)
+printerId | uuid | Y | 출력할 프린터(해상도·장치 이름)
+''')
+schema('LabelZplItem', '작업별 ZPL', '''
+jobId | uuid | Y | 작업
+assetTag | string | Y | 자산
+zpl | string | Y | 치환된 ZPL(매수는 ^PQ로 포함)
+''')
+schema('LabelZplBundle', 'ZPL 묶음', '''
+renderId | uuid | Y | 이번 발급 id(결과 회신에 사용)
+deviceName | string | N | 보낼 Browser Print 장치 이름
+items | [LabelZplItem] | Y | 작업별 ZPL. 브라우저는 순서대로 전송
+''')
+schema('LabelPrintResult', '작업별 출력 결과', '''
+jobId | uuid | Y | 작업
+status | enum(PRINTED,FAILED) | Y | 결과
+error | string(500) | N | 실패 사유(Browser Print 오류 문구)
+''')
+schema('LabelReport', '출력 결과 회신', '''
+renderId | uuid | Y | ZPL 발급 id
+results | [LabelPrintResult] | Y | 작업별 결과
+clientInfo | string(200) | N | Browser Print 버전·장치 이름
 ''')
 schema('ZplPreview', 'ZPL 미리보기', '''
 zpl | string | Y | 치환된 ZPL
@@ -1045,13 +1068,18 @@ W('라벨','GET','/label-templates','listLabelTemplates','템플릿 목록',AM,N
 W('라벨','POST','/label-templates','createLabelTemplate','템플릿 등록',SA,'LabelTemplate','LabelTemplate','201, 400','label_template','ALM-250',[ 'ZPL 문법은 저장 시 기본 검사(^XA…^XZ).'],ok='201')
 W('라벨','PATCH','/label-templates/{id}','patchLabelTemplate','템플릿 수정',SA,'LabelTemplate','LabelTemplate','200, 400, 404','label_template','ALM-250',[ '-'],params=CI)
 W('라벨','GET','/printers','listPrinters','프린터 목록',AM,None,'PrinterList','200','printer','ALM-250',[ '-'],params=[('siteId','query','uuid','N','사이트')])
-W('라벨','POST','/printers','createPrinter','프린터 등록',SA,'Printer','Printer','201, 400','printer','ALM-250',[ '-'],ok='201')
+W('라벨','POST','/printers','createPrinter','프린터 등록',SA,'Printer','Printer','201, 400','printer','ALM-250',[ 'ALM 서버는 프린터에 연결하지 않는다. 등록 정보는 화면에서 프린터를 고르고 해상도를 맞추는 데만 쓴다(결정 A-08).'],ok='201')
 W('라벨','PATCH','/printers/{id}','patchPrinter','프린터 수정',SA,'Printer','Printer','200, 400, 404','printer','ALM-250',[ '-'],params=CI)
-W('라벨','POST','/printers/{id}:test','testPrinter','시험 출력',AM,None,'LabelJobRow','200, 404, 502','printer','ALM-250',[ '9100 포트 연결 실패면 502 ALM-E501.'],params=CI)
-W('라벨','GET','/label-jobs','listLabelJobs','출력 대기열·이력',AM,None,'LabelJobRowList','200','label_print_job','ALM-250',[ '기본 status=QUEUED.'],params=[('status','query','string','N','상태'),('source','query','string','N','출처')]+PG)
+W('라벨','GET','/printers/{id}/test-label','getTestLabel','시험 라벨 ZPL',AM,None,'ZplPreview','200, 404','printer, label_template','ALM-250',
+  ['기본 템플릿에 견본 값을 넣은 ZPL을 돌려준다. 브라우저가 Browser Print로 보낸다. 이력은 남기지 않는다.'],params=CI)
+W('라벨','GET','/label-jobs','listLabelJobs','출력 대기열·이력',AM,None,'LabelJobRowList','200','label_print_job','ALM-250',[ '기본 status=QUEUED,FAILED. PDA 재출력 요청(PDA_REQUEST)도 이 대기열에 쌓이고, 자산 관리자가 PC에서 모아서 출력한다.', 'RENDERED로 30분 넘게 결과 회신이 없으면 "확인 필요"로 표시(다시 출력 가능).'],params=[('status','query','string','N','상태'),('source','query','string','N','출처'),('siteId','query','uuid','N','사이트')]+PG)
 W('라벨','POST','/label-jobs','createLabelJobs','대기열 추가',AM,'LabelJobCreate','LabelJobRowList','201, 400','label_print_job','ALM-250',[ '자산 목록의 선택 자산(F-110-03)·재출력에서 호출.'],idem='Idempotency-Key',ok='201')
-W('라벨','POST','/label-jobs:print','printLabelJobs','출력 실행',AM,'LabelPrint','BulkResult','200, 207, 400, 502','label_print_job, asset_event','ALM-250',
-  ['서버가 네트워크 프린터 9100 포트로 ZPL을 보낸다(같은 VPC 또는 사이트 VPN 필요).', '성공 건은 PRINTED와 asset_event(LABEL_PRINTED).'],idem='Idempotency-Key')
+W('라벨','POST','/label-jobs:render','renderLabelJobs','ZPL 받기(출력 시작)',AM,'LabelRender','LabelZplBundle','200, 400, 409','label_print_job, label_template, asset, printer','ALM-250',
+  ['QUEUED·FAILED·RENDERED 작업만(그 외 409 ALM-E320). 상태를 RENDERED로 바꾸고 attempt_count를 올린다.',
+   '서버는 프린터에 연결하지 않는다. 브라우저가 Zebra Browser Print(PC에 설치, localhost)로 받은 ZPL을 프린터에 보낸 뒤 :report로 결과를 회신한다(결정 A-08).'],idem='Idempotency-Key')
+W('라벨','POST','/label-jobs:report','reportLabelJobs','출력 결과 회신',AM,'LabelReport','BulkResult','200, 207, 400, 409','label_print_job, asset_event','ALM-250',
+  ['renderId의 작업만 받는다. RENDERED가 아닌 작업은 건별 409 ALM-E320.', 'PRINTED는 printed_at·client_info 기록과 asset_event(LABEL_PRINTED). FAILED는 오류 문구를 남기고 다시 출력할 수 있다.',
+   'Browser Print가 확인하는 것은 프린터로 전송 성공까지다. 용지 걸림 등은 사용자가 화면에서 실패로 표시해 다시 출력한다.'],idem='Idempotency-Key')
 W('라벨','GET','/label-jobs/{id}/zpl','previewZpl','ZPL 미리보기',AM,None,'ZplPreview','200, 404','label_print_job, label_template, asset','ALM-250',[ '화면은 Labelary 같은 외부 렌더러를 쓰지 않고 자체 미리보기로 표시.'],params=CI)
 
 # ---------------- SAP integration (web) ----------------

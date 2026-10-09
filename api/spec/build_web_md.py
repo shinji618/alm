@@ -40,7 +40,7 @@ title: ALM API 명세서 — 웹 화면
 project: 자산관리시스템(ALM)
 company: BSG America
 wbs: "2.6"
-version: 0.3
+version: 0.4
 updated: 2026-10-08
 tags: [BSGA, 자산관리시스템, ALM, API]
 ---
@@ -49,7 +49,7 @@ tags: [BSGA, 자산관리시스템, ALM, API]
 
 # ALM API 명세서 — 웹 화면
 
-2026-10-08 · 신지승 · v0.3 (WBS 2.6 웹 범위 + 2.8 권한 키·인증 API. PDA·SAP는 06 문서, 권한·보안 설계는 [[09_권한_보안_설계서]])
+2026-10-08 · 신지승 · v0.4 (WBS 2.6 웹 범위 + 2.8 권한 키·인증 API + 2026-10-09 라벨 출력 Browser Print 방식(A-08). PDA·SAP는 06 문서, 권한·보안 설계는 [[09_권한_보안_설계서]])
 
 ## 1. 개요
 
@@ -138,8 +138,54 @@ PDA·SAP와 같은 목록이다. `HTTP·위치`가 '건별'이면 207 응답의 
 
 - [ ] Discovery 에이전트 수신 API(에이전트 → ALM)는 8.1 도구 선정 뒤 정의
 - [ ] ITSM 티켓 원본 조회(8.4) — 현재는 연결된 참조만 조회
-- [ ] 라벨 프린터가 사이트 내부망에만 있으면 서버 직접 출력 대신 사이트 출력 에이전트 필요(네트워크 확인)
-- [ ] 금액 마스킹 대상 역할 최종 확인(현재: 시스템 관리자·자산 관리자·자산회계·감사인만 표시, 09 설계서 결정 S-03)
+- [x] 라벨 출력 방식: 서버 직접 출력 대신 PC의 Zebra Browser Print로 출력(A-08, 2026-10-09). API는 `:render`(ZPL 받기)·`:report`(결과 회신)
+- [x] 금액 마스킹 대상 역할: 시스템 관리자·자산 관리자·자산회계·감사인 + 승인자는 승인 대상만(09 설계서 결정 S-03 확정)
 '''
 open('out/07_API_명세서_웹.md', 'w').write(md)
 print(len(web), 'web endpoints', md.count('\n'), 'lines')
+
+# ---- api/README.md (수량은 원본에서 계산 — 손으로 고치지 않는다) ----
+import collections
+cnt = collections.Counter(e['group'] for e in E)
+by_area = collections.Counter(e.get('area') for e in E if e['group'] == 'web')
+area_rows = '\n'.join(f'| {a} | {by_area[a]} |' for a, _ in AREAS)
+readme = f'''# api — ALM API 명세 (WBS 2.6, 권한 2.8)
+
+> 이 파일은 `spec/build_web_md.py`가 만든다. 수량을 손으로 고치지 말고 생성기를 다시 돌린다.
+
+엔드포인트 = HTTP 메서드 + 경로 1개(OpenAPI operation 1개). 전체 **{len(E)}개**: 웹 {cnt['web']} · PDA {cnt['pda']} · SAP {cnt['sap']}.
+
+| 파일 | 내용 |
+| --- | --- |
+| `openapi.yaml` | OpenAPI 3.1, 엔드포인트 {len(E)}개, 각 작업에 `x-permission`·`x-scope` (생성물) |
+| `permissions.json` | 역할·권한 키·범위·작업별 권한 (생성물, 백엔드·프론트 가드용) |
+| `spec/spec_api.py` | PDA·SAP 스키마·엔드포인트 정의 (원본) |
+| `spec/spec_web.py` | 웹 화면 스키마·엔드포인트 정의 (원본) |
+| `spec/perm.py` | 권한 카탈로그 (원본) |
+| `spec/gen_api.py` | openapi.yaml·permissions.json·문서 표 생성 |
+| `spec/build_md.py` | 산출물 `06_API_명세서_PDA_SAP.md` 조립 |
+| `spec/build_web_md.py` | 산출물 `07_API_명세서_웹.md`와 이 README 조립 |
+
+**웹 영역별 엔드포인트**
+
+| 영역 | 개수 |
+| --- | --- |
+{area_rows}
+
+## 다시 만들기
+
+```bash
+cd api/spec
+mkdir -p out && python gen_api.py && python build_md.py && python build_web_md.py
+cp out/openapi.yaml out/permissions.json out/README.md ../
+cp out/.redocly.lint-ignore.yaml ../   # 처음 한 번
+```
+
+## 검증
+
+- `npx @redocly/cli@1 lint api/openapi.yaml` — 통과. 리디렉트 전용 `/auth/login`·`/auth/callback`은 2xx 응답이 없어 `operation-2xx-response` 경고 2건을 `.redocly.lint-ignore.yaml`로 제외한다.
+- `openapi-spec-validator`로 3.1 스키마 검증.
+- CI(3.2)는 원본에서 다시 생성한 결과가 커밋된 파일과 같은지 확인한다.
+'''
+open('out/README.md', 'w').write(readme)
+print('README:', len(E), dict(cnt))

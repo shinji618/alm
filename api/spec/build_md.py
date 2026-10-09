@@ -9,7 +9,7 @@ title: ALM API 명세서 — PDA · SAP
 project: 자산관리시스템(ALM)
 company: BSG America
 wbs: "2.6"
-version: 0.3
+version: 0.4
 updated: 2026-10-08
 tags: [BSGA, 자산관리시스템, ALM, API]
 ---
@@ -18,7 +18,7 @@ tags: [BSGA, 자산관리시스템, ALM, API]
 
 # ALM API 명세서 — PDA · SAP
 
-2026-10-08 · 신지승 · v0.3 (WBS 2.6 중 PDA·SAP 범위, 2.8 권한·인증 반영)
+2026-10-08 · 신지승 · v0.4 (WBS 2.6 중 PDA·SAP 범위, 2.8 권한·인증 반영, 2026-10-09 중간리뷰 반영)
 
 ## 1. 개요
 

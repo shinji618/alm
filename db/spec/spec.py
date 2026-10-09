@@ -31,7 +31,8 @@ ENUMS = {
  'VarianceAction': ('차이 처리', ['NONE','MASTER_CHANGE','RECOUNT','RETIRE_REQUEST','MARK_MISSING','REPAIR','ACCEPT','REGISTER','NON_ASSET']),
  'LabelLayout': ('라벨 레이아웃', ['QR_CODE128','QR_ONLY','CODE128_ONLY']),
  'PrintSource': ('출력 요청 출처', ['ASSET_DETAIL','GOODS_RECEIPT','PDA_REQUEST','BULK']),
- 'PrintStatus': ('출력 상태', ['QUEUED','SENT','PRINTED','FAILED']),
+ 'PrintStatus': ('출력 상태', ['QUEUED','RENDERED','PRINTED','FAILED','CANCELLED']),
+ 'PrinterConnection': ('프린터 연결', ['USB','NETWORK']),
  'PostingType': ('SAP 전기 유형', ['ASSET_CREATE','ASSET_CHANGE','ASSET_TRANSFER','ASSET_RETIRE','COUNT_RESULT','PO_CREATE']),
  'PostingStatus': ('SAP 전기 상태', ['READY','CLAIMED','POSTED','FAILED','CANCELLED']),
  'IfDirection': ('데이터 방향', ['SAP_TO_ALM','ALM_TO_SAP']),
@@ -566,11 +567,12 @@ zpl | text | NN | ZPL 본문(치환 변수 포함)
 is_default | bool | NN =false | 기본 템플릿
 is_active | bool | NN =true | 사용 여부
 ''', uniques=[('tenant_id','template_code')], screens='ALM-250')
-t('label','printer','라벨 프린터','네트워크 라벨 프린터', '''
+t('label','printer','라벨 프린터','사이트 라벨 프린터. 출력은 PC의 Zebra Browser Print가 하고, ALM은 고르기·기록용으로만 둠(서버가 직접 연결하지 않음)', '''
 name | vc(60) | NN | 이름
 site_id | ->site | | 사이트
-host | vc(100) | NN | IP 또는 호스트
-port | int | NN =9100 | 포트
+device_name | vc(100) | | Browser Print가 보여 주는 장치 이름(이 이름으로 PC의 프린터를 고름)
+connection | E:PrinterConnection | NN =USB | 연결 방식(PC USB, 사내 네트워크)
+host | vc(100) | | IP 또는 호스트(NETWORK일 때 참고용)
 dpi | int | NN =203 | 해상도
 is_active | bool | NN =true | 사용 여부
 ''', uniques=[('tenant_id','name')], screens='ALM-250')
@@ -579,11 +581,15 @@ asset_id | ->asset | NN | 자산
 template_id | ->label_template | NN | 템플릿
 printer_id | ->printer | | 프린터(출력 시 지정)
 source | E:PrintSource | NN | 요청 출처
-status | E:PrintStatus | NN =QUEUED | 상태
+status | E:PrintStatus | NN =QUEUED | 상태(QUEUED 대기 → RENDERED ZPL 발급 → PRINTED·FAILED 브라우저 회신)
 copies | int | NN =1 | 매수
 requested_by | ->app_user | | 요청자
 requested_at | ts | NN =now | 요청 일시
-printed_at | ts | | 출력 일시
+rendered_by | ->app_user | | ZPL을 받아 출력한 사용자
+rendered_at | ts | | ZPL 발급 일시
+attempt_count | int | NN =0 | 출력 시도 횟수
+printed_at | ts | | 출력 확인 일시(Browser Print 전송 성공)
+client_info | vc(200) | | Browser Print 버전·장치 이름
 error_message | vc(500) | | 오류
 ''', indexes=[('tenant_id','status'),('asset_id',)], screens='ALM-250')
 

@@ -128,7 +128,7 @@ OPS = {
     # label
     'listLabelTemplates': 'label.read', 'listPrinters': 'label.read', 'listLabelJobs': 'label.read', 'previewZpl': 'label.read',
     'createLabelTemplate': 'label.config', 'patchLabelTemplate': 'label.config', 'createPrinter': 'label.config', 'patchPrinter': 'label.config',
-    'testPrinter': 'label.print', 'createLabelJobs': 'label.print', 'printLabelJobs': 'label.print',
+    'getTestLabel': 'label.print', 'createLabelJobs': 'label.print', 'renderLabelJobs': 'label.print', 'reportLabelJobs': 'label.print',
     # sap (web)
     'getSapStatus': 'sap.status', 'listSapRuns': 'sap.monitor', 'listSapRunMessages': 'sap.monitor', 'listPostings': 'sap.monitor',
     'getPosting': 'sap.monitor', 'listReconRuns': 'sap.monitor', 'listReconDiffs': 'sap.monitor', 'listFieldMappings': 'sap.monitor',

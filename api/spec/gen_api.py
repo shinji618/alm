@@ -96,10 +96,10 @@ def build_openapi():
                 op['responses'][c] = {'$ref': f'#/components/responses/E{c}'}
         paths.setdefault(e['path'], {})[e['method'].lower()] = op
     err_desc = {'400': '형식 오류', '401': '인증 실패', '403': '권한 없음', '404': '대상 없음', '409': '충돌', '410': '동기화 토큰 만료',
-                '413': '파일 크기 초과', '422': '업무 규칙 위반', '502': '외부 장치 연결 실패', '429': '호출 제한', '500': '서버 오류'}
+                '413': '파일 크기 초과', '422': '업무 규칙 위반', '429': '호출 제한', '500': '서버 오류'}
     doc = {
         'openapi': '3.1.0',
-        'info': {'title': 'ALM API — Web · PDA · SAP', 'version': '0.3.0', 'license': {'name': 'Proprietary — BSG America', 'identifier': 'LicenseRef-BSG-Proprietary'},
+        'info': {'title': 'ALM API — Web · PDA · SAP', 'version': '0.4.0', 'license': {'name': 'Proprietary — BSG America', 'identifier': 'LicenseRef-BSG-Proprietary'},
                  'description': 'BSG America Asset Lifecycle Manager. WBS 2.6 — 웹 화면, PDA, SAP. WBS 2.8 — x-permission(권한 키)·x-scope(역할별 범위).'},
         'servers': [{'url': 'https://alm.{domain}/api/v1', 'variables': {'domain': {'default': 'example.com'}}}],
         'tags': [{'name': 'PDA', 'description': 'PDA 실사 앱 (Zebra TC58)'}, {'name': 'SAP', 'description': 'SAP S/4HANA 배치 잡(아웃바운드 호출)'}, {'name': 'WEB', 'description': '웹 화면(React SPA)'}],

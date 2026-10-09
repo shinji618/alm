@@ -29,7 +29,8 @@ CREATE TYPE asset_condition AS ENUM ('GOOD', 'DAMAGED', 'UNUSED');  -- 자산 �
 CREATE TYPE variance_action AS ENUM ('NONE', 'MASTER_CHANGE', 'RECOUNT', 'RETIRE_REQUEST', 'MARK_MISSING', 'REPAIR', 'ACCEPT', 'REGISTER', 'NON_ASSET');  -- 차이 처리
 CREATE TYPE label_layout AS ENUM ('QR_CODE128', 'QR_ONLY', 'CODE128_ONLY');  -- 라벨 레이아웃
 CREATE TYPE print_source AS ENUM ('ASSET_DETAIL', 'GOODS_RECEIPT', 'PDA_REQUEST', 'BULK');  -- 출력 요청 출처
-CREATE TYPE print_status AS ENUM ('QUEUED', 'SENT', 'PRINTED', 'FAILED');  -- 출력 상태
+CREATE TYPE print_status AS ENUM ('QUEUED', 'RENDERED', 'PRINTED', 'FAILED', 'CANCELLED');  -- 출력 상태
+CREATE TYPE printer_connection AS ENUM ('USB', 'NETWORK');  -- 프린터 연결
 CREATE TYPE posting_type AS ENUM ('ASSET_CREATE', 'ASSET_CHANGE', 'ASSET_TRANSFER', 'ASSET_RETIRE', 'COUNT_RESULT', 'PO_CREATE');  -- SAP 전기 유형
 CREATE TYPE posting_status AS ENUM ('READY', 'CLAIMED', 'POSTED', 'FAILED', 'CANCELLED');  -- SAP 전기 상태
 CREATE TYPE if_direction AS ENUM ('SAP_TO_ALM', 'ALM_TO_SAP');  -- 데이터 방향
@@ -1737,14 +1738,15 @@ COMMENT ON COLUMN label_template.updated_by IS '변경자';
 COMMENT ON COLUMN label_template.version IS '낙관적 잠금';
 COMMENT ON TABLE label_template IS '라벨 템플릿 — ZPL 라벨 템플릿';
 
--- 라벨 프린터: 네트워크 라벨 프린터
+-- 라벨 프린터: 사이트 라벨 프린터. 출력은 PC의 Zebra Browser Print가 하고, ALM은 고르기·기록용으로만 둠(서버가 직접 연결하지 않음)
 CREATE TABLE printer (
   id uuid PRIMARY KEY,
   tenant_id uuid NOT NULL,
   name varchar(60) NOT NULL,
   site_id uuid,
-  host varchar(100) NOT NULL,
-  port integer NOT NULL DEFAULT 9100,
+  device_name varchar(100),
+  connection printer_connection NOT NULL DEFAULT 'USB',
+  host varchar(100),
   dpi integer NOT NULL DEFAULT 203,
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -1758,8 +1760,9 @@ COMMENT ON COLUMN printer.id IS '기본키';
 COMMENT ON COLUMN printer.tenant_id IS '테넌트';
 COMMENT ON COLUMN printer.name IS '이름';
 COMMENT ON COLUMN printer.site_id IS '사이트';
-COMMENT ON COLUMN printer.host IS 'IP 또는 호스트';
-COMMENT ON COLUMN printer.port IS '포트';
+COMMENT ON COLUMN printer.device_name IS 'Browser Print가 보여 주는 장치 이름(이 이름으로 PC의 프린터를 고름)';
+COMMENT ON COLUMN printer.connection IS '연결 방식(PC USB, 사내 네트워크)';
+COMMENT ON COLUMN printer.host IS 'IP 또는 호스트(NETWORK일 때 참고용)';
 COMMENT ON COLUMN printer.dpi IS '해상도';
 COMMENT ON COLUMN printer.is_active IS '사용 여부';
 COMMENT ON COLUMN printer.created_at IS '생성 일시';
@@ -1767,7 +1770,7 @@ COMMENT ON COLUMN printer.created_by IS '생성자';
 COMMENT ON COLUMN printer.updated_at IS '변경 일시';
 COMMENT ON COLUMN printer.updated_by IS '변경자';
 COMMENT ON COLUMN printer.version IS '낙관적 잠금';
-COMMENT ON TABLE printer IS '라벨 프린터 — 네트워크 라벨 프린터';
+COMMENT ON TABLE printer IS '라벨 프린터 — 사이트 라벨 프린터. 출력은 PC의 Zebra Browser Print가 하고, ALM은 고르기·기록용으로만 둠(서버가 직접 연결하지 않음)';
 
 -- 라벨 출력: 출력 대기열과 출력 이력
 CREATE TABLE label_print_job (
@@ -1781,7 +1784,11 @@ CREATE TABLE label_print_job (
   copies integer NOT NULL DEFAULT 1,
   requested_by uuid,
   requested_at timestamptz NOT NULL DEFAULT now(),
+  rendered_by uuid,
+  rendered_at timestamptz,
+  attempt_count integer NOT NULL DEFAULT 0,
   printed_at timestamptz,
+  client_info varchar(200),
   error_message varchar(500),
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
@@ -1795,11 +1802,15 @@ COMMENT ON COLUMN label_print_job.asset_id IS '자산';
 COMMENT ON COLUMN label_print_job.template_id IS '템플릿';
 COMMENT ON COLUMN label_print_job.printer_id IS '프린터(출력 시 지정)';
 COMMENT ON COLUMN label_print_job.source IS '요청 출처';
-COMMENT ON COLUMN label_print_job.status IS '상태';
+COMMENT ON COLUMN label_print_job.status IS '상태(QUEUED 대기 → RENDERED ZPL 발급 → PRINTED·FAILED 브라우저 회신)';
 COMMENT ON COLUMN label_print_job.copies IS '매수';
 COMMENT ON COLUMN label_print_job.requested_by IS '요청자';
 COMMENT ON COLUMN label_print_job.requested_at IS '요청 일시';
-COMMENT ON COLUMN label_print_job.printed_at IS '출력 일시';
+COMMENT ON COLUMN label_print_job.rendered_by IS 'ZPL을 받아 출력한 사용자';
+COMMENT ON COLUMN label_print_job.rendered_at IS 'ZPL 발급 일시';
+COMMENT ON COLUMN label_print_job.attempt_count IS '출력 시도 횟수';
+COMMENT ON COLUMN label_print_job.printed_at IS '출력 확인 일시(Browser Print 전송 성공)';
+COMMENT ON COLUMN label_print_job.client_info IS 'Browser Print 버전·장치 이름';
 COMMENT ON COLUMN label_print_job.error_message IS '오류';
 COMMENT ON COLUMN label_print_job.created_at IS '생성 일시';
 COMMENT ON COLUMN label_print_job.created_by IS '생성자';
@@ -2577,6 +2588,7 @@ ALTER TABLE label_print_job ADD CONSTRAINT fk_label_print_job_asset_id FOREIGN K
 ALTER TABLE label_print_job ADD CONSTRAINT fk_label_print_job_template_id FOREIGN KEY (template_id) REFERENCES label_template(id);
 ALTER TABLE label_print_job ADD CONSTRAINT fk_label_print_job_printer_id FOREIGN KEY (printer_id) REFERENCES printer(id);
 ALTER TABLE label_print_job ADD CONSTRAINT fk_label_print_job_requested_by FOREIGN KEY (requested_by) REFERENCES app_user(id);
+ALTER TABLE label_print_job ADD CONSTRAINT fk_label_print_job_rendered_by FOREIGN KEY (rendered_by) REFERENCES app_user(id);
 ALTER TABLE sap_posting ADD CONSTRAINT fk_sap_posting_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE sap_posting ADD CONSTRAINT fk_sap_posting_company_id FOREIGN KEY (company_id) REFERENCES company(id);
 ALTER TABLE sap_posting ADD CONSTRAINT fk_sap_posting_asset_request_id FOREIGN KEY (asset_request_id) REFERENCES asset_request(id);

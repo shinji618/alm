@@ -40,8 +40,8 @@
   --stage-retire: #9a4a40;
 
   /* type */
-  --f-display: 'Manrope', 'Pretendard', system-ui, sans-serif;
-  --f-body: 'Source Sans 3', 'Pretendard', system-ui, sans-serif;
+  --f-display: 'Manrope', 'Pretendard Variable', 'Pretendard', system-ui, sans-serif;
+  --f-body: 'Source Sans 3', 'Pretendard Variable', 'Pretendard', system-ui, sans-serif;
   --f-mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
   --fs-h1: 22px;
   --fs-h2: 14px;

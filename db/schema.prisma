@@ -181,7 +181,8 @@ model AppUser {
   countUnregisteredsReported CountUnregistered[] @relation("count_unregistered_reported_by")
   countUnregisteredsResolved CountUnregistered[] @relation("count_unregistered_resolved_by")
   pdaDevices PdaDevice[] @relation("pda_device_last_user_id")
-  labelPrintJobs LabelPrintJob[] @relation("label_print_job_requested_by")
+  labelPrintJobsRequested LabelPrintJob[] @relation("label_print_job_requested_by")
+  labelPrintJobsRendered LabelPrintJob[] @relation("label_print_job_rendered_by")
   sapPostings SapPosting[] @relation("sap_posting_approved_by")
   reconDiffs ReconDiff[] @relation("recon_diff_resolved_by")
   sapRunRequests SapRunRequest[] @relation("sap_run_request_requested_by")
@@ -1993,7 +1994,7 @@ model LabelTemplate {
   @@map("label_template")
 }
 
-/// 라벨 프린터 — 네트워크 라벨 프린터
+/// 라벨 프린터 — 사이트 라벨 프린터. 출력은 PC의 Zebra Browser Print가 하고, ALM은 고르기·기록용으로만 둠(서버가 직접 연결하지 않음)
 model Printer {
   id String @id @default(uuid(7)) @db.Uuid
   /// 테넌트
@@ -2004,10 +2005,12 @@ model Printer {
   /// 사이트
   siteId String? @map("site_id") @db.Uuid
   site Site? @relation("printer_site_id", fields: [siteId], references: [id])
-  /// IP 또는 호스트
-  host String @db.VarChar(100)
-  /// 포트
-  port Int @default(9100)
+  /// Browser Print가 보여 주는 장치 이름(이 이름으로 PC의 프린터를 고름)
+  deviceName String? @map("device_name") @db.VarChar(100)
+  /// 연결 방식(PC USB, 사내 네트워크)
+  connection PrinterConnection @default(USB)
+  /// IP 또는 호스트(NETWORK일 때 참고용)
+  host String? @db.VarChar(100)
   /// 해상도
   dpi Int @default(203)
   /// 사용 여부
@@ -2044,7 +2047,7 @@ model LabelPrintJob {
   printer Printer? @relation("label_print_job_printer_id", fields: [printerId], references: [id])
   /// 요청 출처
   source PrintSource
-  /// 상태
+  /// 상태(QUEUED 대기 → RENDERED ZPL 발급 → PRINTED·FAILED 브라우저 회신)
   status PrintStatus @default(QUEUED)
   /// 매수
   copies Int @default(1)
@@ -2053,8 +2056,17 @@ model LabelPrintJob {
   requested AppUser? @relation("label_print_job_requested_by", fields: [requestedBy], references: [id])
   /// 요청 일시
   requestedAt DateTime @default(now()) @map("requested_at") @db.Timestamptz(6)
-  /// 출력 일시
+  /// ZPL을 받아 출력한 사용자
+  renderedBy String? @map("rendered_by") @db.Uuid
+  rendered AppUser? @relation("label_print_job_rendered_by", fields: [renderedBy], references: [id])
+  /// ZPL 발급 일시
+  renderedAt DateTime? @map("rendered_at") @db.Timestamptz(6)
+  /// 출력 시도 횟수
+  attemptCount Int @default(0) @map("attempt_count")
+  /// 출력 확인 일시(Browser Print 전송 성공)
   printedAt DateTime? @map("printed_at") @db.Timestamptz(6)
+  /// Browser Print 버전·장치 이름
+  clientInfo String? @map("client_info") @db.VarChar(200)
   /// 오류
   errorMessage String? @map("error_message") @db.VarChar(500)
   /// 생성 일시
@@ -2979,10 +2991,18 @@ enum PrintSource {
 /// 출력 상태
 enum PrintStatus {
   QUEUED
-  SENT
+  RENDERED
   PRINTED
   FAILED
+  CANCELLED
   @@map("print_status")
+}
+
+/// 프린터 연결
+enum PrinterConnection {
+  USB
+  NETWORK
+  @@map("printer_connection")
 }
 
 /// SAP 전기 유형
