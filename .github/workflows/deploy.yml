@@ -1,0 +1,156 @@
+# 빌드·배포(10 정의서 11장). main 병합 → DEV 자동, 릴리스 태그(v*) → QA → 승인 → PRD.
+# 같은 이미지(커밋 SHA 태그, ECR 태그 불변)를 환경마다 승격한다. 장기 키 없이 GitHub OIDC로 역할을 받는다.
+#
+# 저장소 변수(Settings → Variables):
+#   DEPLOY_ENABLED            'true'로 바꾸기 전에는 검사(ci)만 돌고 빌드·배포는 건너뛴다(AWS 계정 준비 전)
+#   SHARED_ACCOUNT_ID         alm-shared 계정 ID (ECR, alm-ci-build 역할)
+# 환경(dev·qa·prd)별 변수:
+#   AWS_ACCOUNT_ID            그 환경 계정 ID (역할 alm-deploy-<env>)
+# prd 환경에는 필수 검토자(신지승)를 건다.
+name: deploy
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 배포할 환경(수동 실행은 dev만. QA·PRD는 릴리스 태그로)
+        type: choice
+        options: [dev]
+        default: dev
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  AWS_REGION: us-east-1
+  NODE_VERSION: '22'
+  ECR_REPOSITORY: alm
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  image:
+    name: 이미지(ARM64) → ECR
+    if: vars.DEPLOY_ENABLED == 'true'
+    needs: ci
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.SHARED_ACCOUNT_ID }}:role/alm-ci-build
+          aws-region: ${{ env.AWS_REGION }}
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: 빌드할 Dockerfile 고르기
+        id: src
+        run: |
+          # 백엔드(3.4)가 생기기 전까지는 자리 이미지(infra/bootstrap-image)를 같은 태그로 올린다
+          if [[ -f apps/api/Dockerfile ]]; then echo "context=." >> "$GITHUB_OUTPUT"; echo "file=apps/api/Dockerfile" >> "$GITHUB_OUTPUT"
+          else echo "context=infra/bootstrap-image" >> "$GITHUB_OUTPUT"; echo "file=infra/bootstrap-image/Dockerfile" >> "$GITHUB_OUTPUT"; fi
+      - name: 빌드·검사·푸시(이미 있으면 건너뜀)
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          exists() { aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$1" >/dev/null 2>&1; }
+          build_push() {  # build_push <태그> <context> <file>
+            docker build -t "$IMAGE:$1" -f "$3" "$2"
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.1 image \
+              --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --no-progress "$IMAGE:$1"
+            docker push "$IMAGE:$1"
+          }
+          # CDK 기본 태그(bootstrap): 수동 cdk deploy용 자리 이미지. 한 번만 올린다
+          exists bootstrap || build_push bootstrap infra/bootstrap-image infra/bootstrap-image/Dockerfile
+          if exists "$TAG"; then echo "image $TAG already in ECR"; else build_push "$TAG" "${{ steps.src.outputs.context }}" "${{ steps.src.outputs.file }}"; fi
+
+  web:
+    name: 웹 빌드
+    if: vars.DEPLOY_ENABLED == 'true'
+    needs: ci
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
+      - run: npm ci && npm run build
+      - uses: actions/upload-artifact@v4
+        with: { name: web-dist, path: apps/web/dist, retention-days: 30 }
+
+  dev:
+    name: DEV 배포
+    if: github.ref == 'refs/heads/main'
+    needs: [image, web]
+    environment: dev
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm, cache-dependency-path: infra/package-lock.json }
+      - run: npm ci
+        working-directory: infra
+      - uses: actions/download-artifact@v4
+        with: { name: web-dist, path: apps/web/dist }
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/alm-deploy-dev
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+      - run: infra/scripts/deploy.sh dev "${{ needs.image.outputs.tag }}"
+
+  qa:
+    name: QA 배포
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [image, web]
+    environment: qa
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm, cache-dependency-path: infra/package-lock.json }
+      - run: npm ci
+        working-directory: infra
+      - uses: actions/download-artifact@v4
+        with: { name: web-dist, path: apps/web/dist }
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/alm-deploy-qa
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+      - run: infra/scripts/deploy.sh qa "${{ needs.image.outputs.tag }}"
+
+  prd:
+    name: PRD 배포(승인)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [image, web, qa]
+    environment: prd
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 업무시간 밖인지 확인(동부 19시 이후·주말, 10 정의서 11장)
+        run: |
+          h=$(TZ=America/New_York date +%H); d=$(TZ=America/New_York date +%u)
+          if [[ $d -le 5 && $h -ge 7 && $h -lt 19 ]]; then
+            echo "::error::PRD는 업무시간(평일 동부 07~19시) 밖에 배포합니다. 19시 이후 이 작업을 다시 실행하세요."; exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm, cache-dependency-path: infra/package-lock.json }
+      - run: npm ci
+        working-directory: infra
+      - uses: actions/download-artifact@v4
+        with: { name: web-dist, path: apps/web/dist }
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/alm-deploy-prd
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+      - run: infra/scripts/deploy.sh prd "${{ needs.image.outputs.tag }}"
