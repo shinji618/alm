@@ -27,7 +27,7 @@
 
 ```bash
 npm ci
-npm run check          # tsc + vitest(27건) + 4개 대상 synth(cdk-nag 포함)
+npm run check          # tsc + vitest(29건) + 4개 대상 synth(cdk-nag 포함)
 npx cdk synth -c env=dev
 npx cdk diff  -c env=prd
 npx cdk deploy -c env=dev --all
@@ -55,22 +55,28 @@ npx cdk deploy -c env=prd -c imageTag=<태그> --all
 
 ## 처음 배포 순서
 
-1. **Control Tower**: 랜딩 존(us-east-1·us-east-2만 허용), 계정 8개, 조직 CloudTrail 보관 10년으로 변경.
-2. **부트스트랩**: 각 계정·리전에서 `cdk bootstrap aws://<계정>/us-east-1` (prd·log-archive는 us-east-2도).
-3. **계정 공통** (관리자 자격 증명, 계정별로): `cdk deploy -c env=global Alm-OrgBaseline`, `Alm-LogArchiveReplica Alm-LogArchive`, `Alm-BackupVault`, `Alm-Shared`.
-   - 관리 계정에서 AWS Backup **계정 간 백업**을 켠다(조직 설정). GuardDuty·Security Hub 위임 관리자는 audit 계정으로 지정(콘솔/CLI).
-   - BackupVault의 Vault Lock은 3일 뒤 준수 모드로 굳는다. 그 전에 값을 확인한다.
-4. **이미지**: `alm-shared` ECR에 `alm:bootstrap` 태그 이미지를 올린다(3.2 CI가 만든다). 이미지가 없으면 App 스택의 ECS 서비스가 안정화되지 않아 배포가 실패한다.
-5. **환경**: `cdk deploy -c env=dev --all` → QA → PRD(PRD는 `Alm-Prd-Dr`이 먼저 배포된다).
-   - Cognito 사용자 지정 도메인(`auth-*`)은 상위 도메인(`bsgglobal.com`)에 A 레코드가 있어야 만들어진다.
-   - SNS 메일 구독 확인 메일 2통(심각·일반)을 승인한다. 당번 휴대폰은 `alm-<env>-alarms-high`에 SMS로 추가 구독.
-   - PRD는 SES 샌드박스 해제 요청.
-6. **GitHub**: 저장소 환경 `dev`·`qa`·`prd`를 만들고 `prd`에 승인자(신지승)를 건다. 배포 역할은 `arn:aws:iam::<계정>:role/alm-deploy-<env>`, 빌드 역할은 `alm-ci-build`(shared).
+계정 만들기부터 첫 DEV 배포까지의 단계별 체크리스트는 산출물 `12_AWS_초기_구축_체크리스트.md`에 있다. 요약:
 
-## 배포 파이프라인과의 약속 (3.2)
+1. Control Tower 랜딩 존·계정 8개·IAM Identity Center (콘솔, 사람이 한다)
+2. `lib/config.ts` 자리 값 교체
+3. `cdk bootstrap` (계정·리전별)
+4. 계정 공통 스택: `cdk deploy -c env=global …`
+5. GitHub 환경·변수 설정 후 `DEPLOY_ENABLED=true` → main 푸시로 DEV 자동 배포
 
-- 순서: ① `cdk deploy`(인프라 변경 시) ② migrate 작업: 현재 `alm-<env>-migrate` 작업 정의를 새 이미지로 등록 → `RunTask` → 종료 코드 확인 ③ `cdk deploy -c imageTag=<태그>`로 api·worker 갱신 ④ SPA `s3 sync` + CloudFront `/index.html` 무효화.
+## 배포 파이프라인 (WBS 3.2)
+
+| 파일 | 역할 |
+| --- | --- |
+| `.github/workflows/ci.yml` | PR 검사: 웹(타입·시험·빌드·audit), 생성물 일치·OpenAPI·Prisma, DB 보안 시험(PostgreSQL 16), 인프라(`npm run check`), Semgrep |
+| `.github/workflows/deploy.yml` | main → 검사 → 이미지(ARM64, Trivy) → DEV. 태그 `v*` → QA → 승인 → PRD(평일 동부 07~19시 배포 금지) |
+| `scripts/deploy.sh` | 환경 배포: migrate(새 이미지로 RunTask, 실패 시 중단) → `cdk deploy -c imageTag` → SPA 동기화·무효화 |
+| `bootstrap-image/` | 백엔드(3.4) 전까지 쓰는 자리 이미지: `/api/v1/health` 200, 그 밖의 API 503, worker 대기, migrate·archive·partman 즉시 종료 |
+
+- 이미지 태그는 커밋 SHA 12자리. ECR 태그가 불변이라 같은 이미지가 DEV → QA → PRD로 승격된다. `bootstrap` 태그는 처음 한 번 자동으로 올린다.
+- 배포 스크립트가 읽는 스택 출력: App의 `ClusterName`·`MigrateFamily`·`MigrateSecurityGroupId`·`AppSubnetIds`, Edge의 `DistributionId`·`WebBucketName`.
+- migrate를 `cdk deploy`보다 먼저 돌린다(환경 첫 배포만 반대). 그래서 인프라 변경과 앱 갱신은 같은 `cdk deploy`에서 함께 반영된다. DB 변경은 확장 → 전환 → 정리 순서로만 한다.
 - 작업 정의 환경 변수: `APP_ROLE`, `DB_HOST/PORT/NAME`, `DB_IAM_USER`, `CACHE_ENDPOINT`, `CACHE_USER`, `JOBS_QUEUE_URL`, `FILES_BUCKET`, `EXPORTS_BUCKET`, `COGNITO_*`, `SES_CONFIG_SET`, `MAIL_FROM`, `COGNITO_ADMIN_FUNCTION`. 비밀: `COOKIE_KEY`, `COGNITO_WEB_CLIENT_SECRET`.
+- 아직 없는 것: PR의 `cdk diff` 댓글(읽기 전용 역할 필요), 매일 드리프트 점검, 라이선스 검사(3.7).
 
 ## 3.3 이후에 이어서 할 것
 

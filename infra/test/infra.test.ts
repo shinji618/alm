@@ -90,6 +90,12 @@ describe('App (10 6장)', () => {
     const count = (t: Template) => Object.keys(t.findResources('AWS::Scheduler::Schedule')).length;
     expect(count(dev) - count(tpl('prd', 'app'))).toBe(6);
   });
+  it('배포 스크립트가 읽는 출력값', () => {
+    const outs = Object.keys(tpl('dev', 'app').toJSON().Outputs ?? {});
+    for (const k of ['ClusterName', 'MigrateFamily', 'MigrateSecurityGroupId', 'AppSubnetIds']) expect(outs).toContain(k);
+    const edge = Object.keys(tpl('dev', 'edge').toJSON().Outputs ?? {});
+    for (const k of ['DistributionId', 'WebBucketName']) expect(edge).toContain(k);
+  });
   it('작업 역할은 자기 DB 사용자로만 rds-db:connect', () => {
     const json = JSON.stringify(tpl('prd', 'app').toJSON());
     for (const u of ['alm_app_login', 'alm_owner_iam', 'alm_archive_login']) expect(json).toContain(`/${u}`);
@@ -114,6 +120,15 @@ describe('Edge (10 5장)', () => {
     expect(json).toContain('http://localhost:9100');
     t.hasResourceProperties('AWS::CloudFront::Distribution', { DistributionConfig: Match.objectLike({ Aliases: ['alm.bsgglobal.com'],
       CacheBehaviors: Match.arrayWith([Match.objectLike({ PathPattern: '/api/*' })]) }) });
+  });
+});
+
+describe('Ci (10 11장)', () => {
+  it('배포 역할: GitHub 환경 조건, 1시간 세션', () => {
+    const t = tpl('prd', 'ci');
+    t.hasResourceProperties('AWS::IAM::Role', Match.objectLike({ RoleName: 'alm-deploy-prd', MaxSessionDuration: 3600,
+      AssumeRolePolicyDocument: Match.objectLike({ Statement: [Match.objectLike({ Condition: Match.objectLike({
+        StringLike: { 'token.actions.githubusercontent.com:sub': ['repo:shinji618/alm:environment:prd'] } }) })] }) }));
   });
 });
 

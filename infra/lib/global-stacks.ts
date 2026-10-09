@@ -103,6 +103,8 @@ export class CiStack extends Stack {
       assumedBy: githubPrincipal(provider, subjects), description: `GitHub Actions deploy (${cfg.name})` });
     role.addToPolicy(new iam.PolicyStatement({ sid: 'CdkBootstrapRoles', actions: ['sts:AssumeRole'],
       resources: [`arn:aws:iam::${this.account}:role/cdk-hnb659fds-*-${this.account}-*`] }));
+    role.addToPolicy(new iam.PolicyStatement({ sid: 'ReadStackOutputs', actions: ['cloudformation:DescribeStacks'],
+      resources: [`arn:aws:cloudformation:${this.region}:${this.account}:stack/Alm-${Env}-*/*`] }));
     role.addToPolicy(new iam.PolicyStatement({ sid: 'Migrate', actions: ['ecs:DescribeTaskDefinition', 'ecs:RegisterTaskDefinition', 'ecs:RunTask',
       'ecs:DescribeTasks', 'ecs:DescribeServices'], resources: ['*'] }));
     role.addToPolicy(new iam.PolicyStatement({ sid: 'PassTaskRoles', actions: ['iam:PassRole'],

@@ -12,3 +12,6 @@ storybook-static/
 db/spec/out/
 __pycache__/
 api/spec/out/
+
+# DB 보안 시험 결과(비교용 임시 파일)
+db/spec/test_security.actual

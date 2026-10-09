@@ -1,0 +1,95 @@
+DO
+INSERT 0 2
+--- 0. bad provider name (underscore) rejected
+psql:test_security.sql:8: ERROR:  new row for relation "tenant" violates check constraint "tenant_idp_provider_name_check"
+DETAIL:  Failing row contains (...).
+INSERT 0 1
+--- 0b. duplicate domain rejected
+psql:test_security.sql:11: ERROR:  duplicate key value violates unique constraint "tenant_domain_domain_key"
+DETAIL:  Key (domain)=(acme.com) already exists.
+SET
+--- 1. pre-auth lookups
+  idp   
+--------
+ T-ACME
+(1 row)
+
+              tenant_id               | idp_subject | jit_provision 
+--------------------------------------+-------------+---------------
+ 00000000-0000-0000-0000-00000000000a | 9f1c-oid    | f
+(1 row)
+
+psql:test_security.sql:16: ERROR:  unrecognized configuration parameter "app.tenant_id"
+--- 2. write without actor_type -> rejected
+BEGIN
+SET
+psql:test_security.sql:19: ERROR:  audit: app.actor_type is not set for application session tester
+CONTEXT:  PL/pgSQL function audit_row() line 23 at RAISE
+ROLLBACK
+--- 3. bad correlation id does not break write; tenant row visible only own
+BEGIN
+SET
+SET
+SET
+SET
+SET
+INSERT 0 1
+ action | table_name | correlation_id | ip_address | db_user | has_tx 
+--------+------------+----------------+------------+---------+--------
+ INSERT | company    |                |            | tester  | t
+(1 row)
+
+ code 
+------
+ ACME
+(1 row)
+
+--- 4. user_role duplicate with NULL scope rejected
+INSERT 0 1
+INSERT 0 1
+SAVEPOINT
+psql:test_security.sql:30: ERROR:  duplicate key value violates unique constraint "user_role_user_id_role_company_id_site_id_cost_center_id_key"
+ROLLBACK
+--- 5. append-only log table
+SAVEPOINT
+psql:test_security.sql:32: ERROR:  permission denied for table asset_event
+ROLLBACK
+SAVEPOINT
+psql:test_security.sql:33: ERROR:  permission denied for table count_scan
+ROLLBACK
+SAVEPOINT
+psql:test_security.sql:34: ERROR:  permission denied for table sap_if_run
+ROLLBACK
+SAVEPOINT
+psql:test_security.sql:35: ERROR:  permission denied for table security_event
+ROLLBACK
+SAVEPOINT
+psql:test_security.sql:36: ERROR:  permission denied for table audit_log
+ROLLBACK
+COMMIT
+RESET
+--- 6. owner cannot disable / drop audit trigger
+psql:test_security.sql:40: ERROR:  audit: audit triggers must stay enabled
+CONTEXT:  PL/pgSQL function guard_audit_ddl() line 13 at RAISE
+psql:test_security.sql:41: ERROR:  audit: dropping tr_company_audit on public.company is not allowed
+CONTEXT:  PL/pgSQL function guard_audit_ddl() line 9 at RAISE
+ tgenabled 
+-----------
+ O
+(1 row)
+
+--- 7. SAP client lookup
+INSERT 0 1
+UPDATE 1
+SET
+ inactive_tenant_client 
+------------------------
+                      0
+(1 row)
+
+RESET
+   tableowner    
+-----------------
+ alm_audit_owner
+(1 row)
+

@@ -29,7 +29,7 @@ INSERT INTO app_user(id, tenant_id, email, display_name) VALUES ('55555555-5555-
 INSERT INTO user_role(id, tenant_id, user_id, role) VALUES (gen_random_uuid(),'00000000-0000-0000-0000-00000000000a','55555555-5555-5555-5555-555555555555','ASSET_MANAGER');
 SAVEPOINT s; INSERT INTO user_role(id, tenant_id, user_id, role) VALUES (gen_random_uuid(),'00000000-0000-0000-0000-00000000000a','55555555-5555-5555-5555-555555555555','ASSET_MANAGER'); ROLLBACK TO s;
 \echo '--- 5. append-only log table'
-SAVEPOINT s; UPDATE asset_event SET note = note; ROLLBACK TO s;
+SAVEPOINT s; UPDATE asset_event SET reason = reason; ROLLBACK TO s;
 SAVEPOINT s; DELETE FROM count_scan; ROLLBACK TO s;
 SAVEPOINT s; DELETE FROM sap_if_run; ROLLBACK TO s;
 SAVEPOINT s; DELETE FROM security_event; ROLLBACK TO s;

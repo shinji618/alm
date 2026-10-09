@@ -1,4 +1,4 @@
-import { Stack, StackProps, Duration, RemovalPolicy } from 'aws-cdk-lib';
+import { Stack, StackProps, Duration, RemovalPolicy, CfnOutput } from 'aws-cdk-lib';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
@@ -97,6 +97,9 @@ export class EdgeStack extends Stack {
 
     new route53.ARecord(this, 'Alias', { zone, recordName: appDomain, target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(this.distribution)) });
     new route53.AaaaRecord(this, 'AliasV6', { zone, recordName: appDomain, target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(this.distribution)) });
+
+    new CfnOutput(this, 'DistributionId', { value: this.distribution.distributionId });
+    new CfnOutput(this, 'WebBucketName', { value: this.webBucket.bucketName });
 
     // CloudFront 표준 로그 v2 → log-archive 버킷(ACL 불필요)
     const src = new logs.CfnDeliverySource(this, 'CdnLogSource', { name: `alm-${env}-cdn`, logType: 'ACCESS_LOGS', resourceArn: this.distribution.distributionArn });

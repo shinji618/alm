@@ -15,7 +15,8 @@ apps/
     src/pages/DesignGallery  # /design — 컴포넌트 확인 화면
 db/                          # 데이터 모델 원본(spec/spec.py) → schema.prisma, ddl.sql, 보안 SQL
 api/                         # API·권한 원본(spec/) → openapi.yaml, permissions.json
-infra/                       # AWS CDK(스택 13종, cdk-nag, vitest) — infra/README.md
+infra/                       # AWS CDK(스택 13종, cdk-nag, vitest), 배포 스크립트, 자리 이미지 — infra/README.md
+.github/workflows/            # ci.yml(PR 검사), deploy.yml(main→DEV, v*→QA→PRD)
 # 예정: apps/api (NestJS), apps/pda (Android), sap (ABAP)
 ```
 
@@ -30,7 +31,8 @@ infra/                       # AWS CDK(스택 13종, cdk-nag, vitest) — infra/
 | API 서버(NestJS: 인증·권한 가드·RLS 세션·감사) | 미착수(3.4) | 계약만 있음: `api/openapi.yaml`, `api/permissions.json` |
 | DB | 스키마·DDL 생성, 로컬 PostgreSQL 16 시험 | `db/ddl.sql`, `db/spec/test_security.sql` (RDS 미적용) |
 | PDA 앱(Android) | 미착수(5.x) | - |
-| 인프라(CDK) | 코드·시험 완료, 배포 대기(AWS 계정 생성 후) | `infra/`, `npm run check`(tsc·vitest 27건·synth 4대상·cdk-nag 0건) |
+| 인프라(CDK) | 코드·시험 완료, 배포 대기(AWS 계정 생성 후) | `infra/`, `npm run check`(tsc·vitest 29건·synth 4대상·cdk-nag 0건) |
+| CI/CD | PR 검사 동작, 배포는 `DEPLOY_ENABLED` 변수로 꺼 둠 | `.github/workflows/`, `infra/scripts/deploy.sh` |
 | SAP ABAP | 미착수(7.x) | 착수 전 D-13 BAPI 필드 대조 |
 
 R1 완료 기준은 화면이 아니라 끝까지 이어지는 흐름의 통합 검증(WBS 10.2)이다: 로그인 → 자산 조회·요청 → 승인 → SAP 전기 큐 → SAP 회신, 그리고 PDA 오프라인 실사 → 동기화.
@@ -69,4 +71,5 @@ Storybook 스토리 위치: `src/components/**/*.stories.tsx`, 토큰은 `src/st
 | 2.9 | AWS 아키텍처 정의서 (산출물 10) | 설계 확정 |
 | 3.5 | 프론트 공통: 토큰, 컴포넌트 18종, 앱 셸, 영문·한글(Pretendard), 라이트·다크 + Storybook | 구현 완료(v0.1) |
 | 3.1 | AWS 환경 구축(CDK): 환경 스택 8종 + 계정 공통 5종, cdk-nag 예외 사유 목록 (`infra/`) | 진행 중(코드 완료 · 배포 대기) |
+| 3.2 | CI/CD: PR 검사 5종, 이미지·배포 파이프라인(OIDC, 승인), 자리 이미지 | 진행 중(검사 동작 · 배포는 계정 준비 후) |
 | 4.x | 웹 화면 R1 | 예정 |

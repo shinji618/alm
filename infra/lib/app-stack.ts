@@ -1,4 +1,4 @@
-import { Stack, StackProps, Duration, RemovalPolicy, TimeZone } from 'aws-cdk-lib';
+import { Stack, StackProps, Duration, RemovalPolicy, TimeZone, CfnOutput } from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
@@ -195,7 +195,7 @@ export class AppStack extends Stack {
     worker.td.addToTaskRolePolicy(cacheConnect);
 
     // migrate(배포 때 1회 RunTask) — 소유자 로그인. 시작 스크립트가 IAM 토큰으로 URL을 만든다
-    makeTask('migrate', 512, 1024, ['sh', 'scripts/migrate.sh'], 'alm_owner_iam', lg('migrate'));
+    const migrate = makeTask('migrate', 512, 1024, ['sh', 'scripts/migrate.sh'], 'alm_owner_iam', lg('migrate'));
 
     // audit-archive(월 1회 Scheduler RunTask) — 보관 계정 로그인, log-archive 감사 버킷 쓰기
     const archive = makeTask('audit-archive', 512, 1024, ['node', 'dist/main', 'audit-archive'], 'alm_archive_login', lg('audit-archive'));
@@ -283,6 +283,12 @@ export class AppStack extends Stack {
       sdk('StopDb', '5 20 ? * MON-FRI *', 'rds', 'stopDBInstance', { DbInstanceIdentifier: `alm-${env}` });
       sdk('StartDb', '40 6 ? * MON-FRI *', 'rds', 'startDBInstance', { DbInstanceIdentifier: `alm-${env}` });
     }
+
+    // 배포 파이프라인(infra/scripts/deploy.sh)이 읽는 값
+    new CfnOutput(this, 'ClusterName', { value: this.cluster.clusterName });
+    new CfnOutput(this, 'MigrateFamily', { value: migrate.td.family });
+    new CfnOutput(this, 'MigrateSecurityGroupId', { value: migrateSg.securityGroupId });
+    new CfnOutput(this, 'AppSubnetIds', { value: props.vpc.selectSubnets(appSubnets).subnetIds.join(',') });
 
     // 9.3 알람에서 쓰는 지표
     new cw.Metric({ namespace: 'ALM', metricName: 'SapOverdue', dimensionsMap: { Env: env } });
