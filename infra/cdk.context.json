@@ -1,5 +1,5 @@
 {
-  "availability-zones:account=444444444444:region=us-east-1": [
+  "availability-zones:account=236501162716:region=us-east-1": [
     "us-east-1a",
     "us-east-1b",
     "us-east-1c",
@@ -7,7 +7,7 @@
     "us-east-1e",
     "us-east-1f"
   ],
-  "availability-zones:account=555555555555:region=us-east-1": [
+  "availability-zones:account=428477779499:region=us-east-1": [
     "us-east-1a",
     "us-east-1b",
     "us-east-1c",
@@ -15,7 +15,7 @@
     "us-east-1e",
     "us-east-1f"
   ],
-  "availability-zones:account=666666666666:region=us-east-1": [
+  "availability-zones:account=482545366457:region=us-east-1": [
     "us-east-1a",
     "us-east-1b",
     "us-east-1c",

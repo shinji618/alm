@@ -48,16 +48,16 @@ export const ORG: OrgConfig = {
   region: 'us-east-1',
   backupRegion: 'us-east-2',
   accounts: {
-    // 2026-10-09 Control Tower 랜딩 존(조직 o-fhpi1b9oci)에서 생성. 나머지는 자리 값
+    // 2026-10-09~10 Control Tower(조직 o-fhpi1b9oci) Account Factory로 생성
     management: '740122273988', audit: '319759855604', logArchive: '085462181410',
-    shared: '222222222222', backup: '333333333333',
-    dev: '444444444444', qa: '555555555555', prd: '666666666666',
+    shared: '631237958461', backup: '262325793971',
+    dev: '236501162716', qa: '428477779499', prd: '482545366457',
   },
   domain: 'bsgglobal.com',          // 서비스는 alm.<도메인> (A-03)
   hostedZoneId: 'Z0000000000000000000',
   githubRepo: 'shinji618/alm',
   ecrRepositoryName: 'alm',
-  backupVaultArn: 'arn:aws:backup:us-east-1:333333333333:backup-vault:alm-backup-vault',
+  backupVaultArn: 'arn:aws:backup:us-east-1:262325793971:backup-vault:alm-backup-vault',
   costCenter: 'ALM',
   workloadsOuId: 'ou-9djy-5jnut6za',
   securityOuId: 'ou-9djy-4stg96uq',

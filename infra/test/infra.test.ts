@@ -41,7 +41,7 @@ describe('Data', () => {
     tpl('dev', 'data').hasResourceProperties('AWS::RDS::DBInstance', Match.objectLike({ MultiAZ: false }));
   });
   it('files 버킷: KMS·버전 관리·퍼블릭 차단', () => {
-    tpl('dev', 'data').hasResourceProperties('AWS::S3::Bucket', Match.objectLike({ BucketName: 'alm-dev-files-444444444444',
+    tpl('dev', 'data').hasResourceProperties('AWS::S3::Bucket', Match.objectLike({ BucketName: 'alm-dev-files-236501162716',
       VersioningConfiguration: { Status: 'Enabled' },
       BucketEncryption: { ServerSideEncryptionConfiguration: [Match.objectLike({ ServerSideEncryptionByDefault: Match.objectLike({ SSEAlgorithm: 'aws:kms' }) })] } }));
   });
