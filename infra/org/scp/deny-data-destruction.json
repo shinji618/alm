@@ -4,23 +4,67 @@
     {
       "Sid": "DenyObjectLockChangeAndBypass",
       "Effect": "Deny",
-      "Action": ["s3:PutBucketObjectLockConfiguration", "s3:BypassGovernanceRetention", "s3:PutBucketVersioning"],
+      "Action": [
+        "s3:PutBucketObjectLockConfiguration",
+        "s3:BypassGovernanceRetention",
+        "s3:PutBucketVersioning"
+      ],
       "Resource": "arn:aws:s3:::alm-audit-archive-*",
-      "Condition": { "ArnNotLike": { "aws:PrincipalArn": ["arn:aws:iam::*:role/AWSControlTowerExecution", "arn:aws:iam::*:role/cdk-hnb659fds-cfn-exec-role-*"] } }
+      "Condition": {
+        "ArnNotLike": {
+          "aws:PrincipalArn": [
+            "arn:aws:iam::*:role/AWSControlTowerExecution",
+            "arn:aws:iam::*:role/cdk-hnb659fds-cfn-exec-role-*",
+            "arn:aws:iam::*:role/AWSControlTower*",
+            "arn:aws:iam::*:role/aws-controltower-*",
+            "arn:aws:iam::*:role/stacksets-exec-*"
+          ]
+        }
+      }
     },
     {
       "Sid": "DenyKmsKeyDestruction",
       "Effect": "Deny",
-      "Action": ["kms:ScheduleKeyDeletion", "kms:DisableKey", "kms:PutKeyPolicy"],
+      "Action": [
+        "kms:ScheduleKeyDeletion",
+        "kms:DisableKey",
+        "kms:PutKeyPolicy"
+      ],
       "Resource": "*",
-      "Condition": { "ArnNotLike": { "aws:PrincipalArn": ["arn:aws:iam::*:role/AWSControlTowerExecution", "arn:aws:iam::*:role/cdk-hnb659fds-cfn-exec-role-*", "arn:aws:iam::*:role/AWSReservedSSO_BreakGlass_*"] } }
+      "Condition": {
+        "ArnNotLike": {
+          "aws:PrincipalArn": [
+            "arn:aws:iam::*:role/AWSControlTowerExecution",
+            "arn:aws:iam::*:role/cdk-hnb659fds-cfn-exec-role-*",
+            "arn:aws:iam::*:role/AWSReservedSSO_BreakGlass_*",
+            "arn:aws:iam::*:role/AWSControlTower*",
+            "arn:aws:iam::*:role/aws-controltower-*",
+            "arn:aws:iam::*:role/stacksets-exec-*"
+          ]
+        }
+      }
     },
     {
       "Sid": "DenyBackupVaultTamper",
       "Effect": "Deny",
-      "Action": ["backup:DeleteBackupVault", "backup:DeleteBackupVaultLockConfiguration", "backup:DeleteRecoveryPoint", "backup:PutBackupVaultAccessPolicy"],
+      "Action": [
+        "backup:DeleteBackupVault",
+        "backup:DeleteBackupVaultLockConfiguration",
+        "backup:DeleteRecoveryPoint",
+        "backup:PutBackupVaultAccessPolicy"
+      ],
       "Resource": "*",
-      "Condition": { "ArnNotLike": { "aws:PrincipalArn": ["arn:aws:iam::*:role/AWSControlTowerExecution", "arn:aws:iam::*:role/cdk-hnb659fds-cfn-exec-role-*"] } }
+      "Condition": {
+        "ArnNotLike": {
+          "aws:PrincipalArn": [
+            "arn:aws:iam::*:role/AWSControlTowerExecution",
+            "arn:aws:iam::*:role/cdk-hnb659fds-cfn-exec-role-*",
+            "arn:aws:iam::*:role/AWSControlTower*",
+            "arn:aws:iam::*:role/aws-controltower-*",
+            "arn:aws:iam::*:role/stacksets-exec-*"
+          ]
+        }
+      }
     }
   ]
 }
