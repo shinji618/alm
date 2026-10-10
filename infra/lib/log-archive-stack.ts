@@ -68,8 +68,13 @@ export class LogArchiveStack extends Stack {
         conditions: { ArnLike: { 'aws:PrincipalArn': `arn:aws:iam::${e.account}:role/*` } },
       }));
       audit.addToResourcePolicy(new iam.PolicyStatement({
-        principals: [new iam.AccountPrincipal(e.account)], actions: ['s3:ListBucket', 's3:GetBucketLocation', 's3:ListBucketMultipartUploads'],
+        principals: [new iam.AccountPrincipal(e.account)], actions: ['s3:ListBucket'],
         resources: [audit.bucketArn], conditions: { StringLike: { 's3:prefix': [`${e.name}/*`, ''] } },
+      }));
+      // s3:prefix 조건은 ListBucket에만 쓸 수 있다(다른 버킷 작업에 붙이면 정책 생성이 실패)
+      audit.addToResourcePolicy(new iam.PolicyStatement({
+        principals: [new iam.AccountPrincipal(e.account)], actions: ['s3:GetBucketLocation', 's3:ListBucketMultipartUploads'],
+        resources: [audit.bucketArn],
       }));
     }
 
