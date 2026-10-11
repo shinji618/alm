@@ -6,7 +6,8 @@
 
 | 대상 | 스택 | 계정 / 리전 | 파일 |
 | --- | --- | --- | --- |
-| 환경(`-c env=dev\|qa\|prd`) | `Alm-<Env>-Network` | 환경 계정 / us-east-1 | `lib/network-stack.ts` |
+| 환경(`-c env=dev\|qa\|prd`) | `Alm-<Env>-Dns` | 환경 계정 / us-east-1 | `lib/dns-stack.ts` (영역 `alm[-qa\|-dev].bsgapps.com`) |
+| | `Alm-<Env>-Network` | 〃 | `lib/network-stack.ts` |
 | | `Alm-<Env>-Data` | 〃 | `lib/data-stack.ts` |
 | | `Alm-<Env>-Auth` | 〃 | `lib/auth-stack.ts` |
 | | `Alm-<Env>-App` | 〃 | `lib/app-stack.ts` |
@@ -45,9 +46,9 @@ npx cdk deploy -c env=prd -c imageTag=<태그> --all
 | 값 | 현재(자리 값) | 바꿀 값 |
 | --- | --- | --- |
 | `ORG.accounts.*` | 111…~666… | Control Tower로 만든 계정 ID 6개 |
-| `ORG.hostedZoneId` | `Z000…` | `bsgglobal.com` Route 53 호스팅 영역 ID |
 | `ORG.workloadsOuId`, `securityOuId` | `ou-xxxx-…` | Control Tower OU ID |
 | `ORG.ssoInstanceArn` | `ssoins-000…` | IAM Identity Center 인스턴스 ARN |
+| `ORG.domain`, `ENVS.*.zoneName` | `bsgapps.com`, `alm[-qa\|-dev].bsgapps.com` | 앱 = 영역 최상위, 로그인 = `auth.<영역>`, 메일 = `no-reply@<영역>`(MAIL FROM `bounce.<영역>`) |
 | `ENVS.*.sapEgressCidrs` | 203.0.113.10/32(예시) | 고객 SAP 출구 IP(BASIS 회신) |
 | `ENVS.*.customerEgressCidrs` | 203.0.113.0/24(예시) | 고객사 사무실 출구 IP |
 | `ENVS.*.alarmEmail` | shinji@bsgglobal.com | 운영 메일(필요 시 그룹 주소) |
@@ -61,7 +62,8 @@ npx cdk deploy -c env=prd -c imageTag=<태그> --all
 2. `lib/config.ts` 자리 값 교체
 3. `cdk bootstrap` (계정·리전별)
 4. 계정 공통 스택: `cdk deploy -c env=global …`
-5. GitHub 환경·변수 설정 후 `DEPLOY_ENABLED=true` → main 푸시로 DEV 자동 배포
+5. 환경 DNS: 관리 계정 CloudShell에서 `bash infra/scripts/setup-dns.sh dev` — 환경 계정에 영역(`alm-dev.bsgapps.com`)을 만들고 상위 `bsgapps.com`(관리 계정)에 NS 위임. 위임 전에는 인증서 DNS 검증이 끝나지 않는다
+6. GitHub 환경·변수 설정 후 `DEPLOY_ENABLED=true` → main 푸시로 DEV 자동 배포
 
 ## 배포 파이프라인 (WBS 3.2)
 

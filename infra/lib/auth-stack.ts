@@ -2,13 +2,12 @@ import { Stack, StackProps, Duration, RemovalPolicy, SecretValue } from 'aws-cdk
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as route53 from 'aws-cdk-lib/aws-route53';
-import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as secrets from 'aws-cdk-lib/aws-secretsmanager';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import { Construct } from 'constructs';
-import { EnvConfig, ORG, fqdn } from './config';
+import { EnvConfig, appDomain, authDomain } from './config';
 
-export interface AuthProps extends StackProps { secretsKey: kms.IKey }
+export interface AuthProps extends StackProps { secretsKey: kms.IKey; zone: route53.IHostedZone }
 
 // 09 설계서 6장, 10 정의서 8.1: 환경별 사용자 풀 1개(Lite), 웹·PDA 앱 클라이언트, 리소스 서버.
 // 고객사 IdP(T-<테넌트>)와 SAP 클라이언트는 테넌트 추가 때 alm-cognito-admin Lambda가 만든다(CDK 밖).
@@ -23,9 +22,7 @@ export class AuthStack extends Stack {
 
   constructor(scope: Construct, id: string, cfg: EnvConfig, props: AuthProps) {
     super(scope, id, props);
-    const appUrl = `https://${fqdn(cfg.appHost)}`;
-    const authDomain = fqdn(cfg.authHost);
-    const zone = route53.HostedZone.fromHostedZoneAttributes(this, 'Zone', { hostedZoneId: ORG.hostedZoneId, zoneName: ORG.domain });
+    const appUrl = `https://${appDomain(cfg)}`;
 
     this.userPool = new cognito.UserPool(this, 'Pool', {
       userPoolName: `alm-${cfg.name}`,
@@ -39,9 +36,8 @@ export class AuthStack extends Stack {
       removalPolicy: cfg.name === 'prd' ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
     });
 
-    const cert = this.authCertificate = new acm.Certificate(this, 'AuthCert', { domainName: authDomain, validation: acm.CertificateValidation.fromDns(zone) });
-    const domain = this.userPool.addDomain('Domain', { customDomain: { domainName: authDomain, certificate: cert } });
-    new route53.ARecord(this, 'AuthAlias', { zone, recordName: authDomain, target: route53.RecordTarget.fromAlias(new targets.UserPoolDomainTarget(domain)) });
+    // 사용자 지정 도메인(auth.<영역>)은 상위 이름(영역 최상위)에 A 레코드가 있어야 만들어진다 → Edge 스택이 CloudFront 별칭 다음에 만든다
+    this.authCertificate = new acm.Certificate(this, 'AuthCert', { domainName: authDomain(cfg), validation: acm.CertificateValidation.fromDns(props.zone) });
 
     const sapScope = new cognito.ResourceServerScope({ scopeName: 'sap.api', scopeDescription: 'SAP 배치 연계' });
     this.userPool.addResourceServer('Api', { identifier: this.resourceServerId, scopes: [sapScope] });

@@ -18,7 +18,7 @@ import * as synthetics from 'aws-cdk-lib/aws-synthetics';
 import * as budgets from 'aws-cdk-lib/aws-budgets';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
-import { EnvConfig, ORG, fqdn, AUDIT_BUCKET } from './config';
+import { EnvConfig, ORG, appDomain, AUDIT_BUCKET } from './config';
 
 export interface ObservabilityProps extends StackProps {
   alb: elbv2.ApplicationLoadBalancer;
@@ -159,7 +159,7 @@ export class ObservabilityStack extends Stack {
     });
 
     // ---- 외형 감시(9.4): 5분마다 /api/v1/health 와 로그인 화면 ----
-    const appUrl = `https://${fqdn(cfg.appHost)}`;
+    const appUrl = `https://${appDomain(cfg)}`;
     const canaryBucket = new s3.Bucket(this, 'CanaryArtifacts', {
       bucketName: `alm-${env}-canary-${this.account}`, enforceSSL: true, encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL, lifecycleRules: [{ expiration: Duration.days(30) }],

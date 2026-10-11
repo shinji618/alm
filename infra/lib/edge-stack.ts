@@ -10,14 +10,18 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cr from 'aws-cdk-lib/custom-resources';
+import * as cognito from 'aws-cdk-lib/aws-cognito';
 import { Construct } from 'constructs';
-import { EnvConfig, ORG, fqdn, logBucketName } from './config';
+import { EnvConfig, appDomain as appDomainOf, authDomain as authDomainOf, logBucketName } from './config';
 
 export interface EdgeProps extends StackProps {
   alb: elbv2.IApplicationLoadBalancer;
   albSecurityGroup: ec2.ISecurityGroup;
   certificate: acm.ICertificate;
   vpc: ec2.IVpc;
+  zone: route53.IHostedZone;
+  userPool: cognito.IUserPool;
+  authCertificate: acm.ICertificate;
 }
 
 // 10 정의서 5장: CloudFront(웹 S3 + /api/* VPC 오리진), WAF, 응답 헤더, DNS
@@ -29,8 +33,9 @@ export class EdgeStack extends Stack {
   constructor(scope: Construct, id: string, cfg: EnvConfig, props: EdgeProps) {
     super(scope, id, props);
     const env = cfg.name;
-    const appDomain = fqdn(cfg.appHost);
-    const zone = route53.HostedZone.fromHostedZoneAttributes(this, 'Zone', { hostedZoneId: ORG.hostedZoneId, zoneName: ORG.domain });
+    const appDomain = appDomainOf(cfg);
+    const authDomain = authDomainOf(cfg);
+    const zone = props.zone;
 
     this.webBucket = new s3.Bucket(this, 'Web', {
       bucketName: `alm-${env}-web-${this.account}`, encryption: s3.BucketEncryption.S3_MANAGED, enforceSSL: true, versioned: true,
@@ -56,7 +61,7 @@ export class EdgeStack extends Stack {
         referrerPolicy: { referrerPolicy: cloudfront.HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN, override: true },
         contentSecurityPolicy: { override: true, contentSecurityPolicy: [
           "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob: https://*.amazonaws.com",
-          "font-src 'self'", `connect-src 'self' https://${fqdn(cfg.authHost)} https://*.s3.${this.region}.amazonaws.com http://localhost:9100 https://localhost:9101`,
+          "font-src 'self'", `connect-src 'self' https://${authDomain} https://*.s3.${this.region}.amazonaws.com http://localhost:9100 https://localhost:9101`,
           "frame-ancestors 'none'", "base-uri 'self'", "form-action 'self'"].join('; ') },
       },
     });
@@ -95,8 +100,15 @@ export class EdgeStack extends Stack {
       },
     });
 
-    new route53.ARecord(this, 'Alias', { zone, recordName: appDomain, target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(this.distribution)) });
+    const alias = new route53.ARecord(this, 'Alias', { zone, recordName: appDomain, target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(this.distribution)) });
     new route53.AaaaRecord(this, 'AliasV6', { zone, recordName: appDomain, target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(this.distribution)) });
+
+    // Cognito 사용자 지정 도메인(auth.<영역>): 상위 이름(영역 최상위)에 A 레코드가 있어야 하므로 위 별칭 다음에 만든다
+    const userPoolDomain = new cognito.UserPoolDomain(this, 'AuthDomain', {
+      userPool: props.userPool, customDomain: { domainName: authDomain, certificate: props.authCertificate },
+    });
+    userPoolDomain.node.addDependency(alias);
+    new route53.ARecord(this, 'AuthAlias', { zone, recordName: authDomain, target: route53.RecordTarget.fromAlias(new targets.UserPoolDomainTarget(userPoolDomain)) });
 
     new CfnOutput(this, 'DistributionId', { value: this.distribution.distributionId });
     new CfnOutput(this, 'WebBucketName', { value: this.webBucket.bucketName });

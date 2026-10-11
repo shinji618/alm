@@ -18,6 +18,19 @@ beforeAll(() => {
   for (const e of ['dev', 'prd'] as const) envs[e] = buildEnv(newApp(), e);
 });
 
+describe('DNS (환경 영역)', () => {
+  it('환경 계정에 자기 영역, 앱·로그인·메일 레코드는 그 영역에', () => {
+    tpl('dev', 'dns').hasResourceProperties('AWS::Route53::HostedZone', { Name: 'alm-dev.bsgapps.com.' });
+    tpl('prd', 'dns').hasResourceProperties('AWS::Route53::HostedZone', { Name: 'alm.bsgapps.com.' });
+    const edge = tpl('dev', 'edge');
+    edge.hasResourceProperties('AWS::Cognito::UserPoolDomain', { Domain: 'auth.alm-dev.bsgapps.com' });
+    edge.hasResourceProperties('AWS::Route53::RecordSet', Match.objectLike({ Name: 'alm-dev.bsgapps.com.', Type: 'A' }));
+    tpl('dev', 'app').hasResourceProperties('AWS::SES::EmailIdentity', Match.objectLike({ EmailIdentity: 'alm-dev.bsgapps.com',
+      MailFromAttributes: { MailFromDomain: 'bounce.alm-dev.bsgapps.com' } }));
+    tpl('dev', 'auth').resourceCountIs('AWS::Cognito::UserPoolDomain', 0);
+  });
+});
+
 describe('Network', () => {
   it('2개 AZ × 퍼블릭·앱·데이터 서브넷', () => {
     tpl('dev', 'network').resourceCountIs('AWS::EC2::Subnet', 6);
@@ -54,7 +67,7 @@ describe('Data', () => {
 describe('Auth (09 6장)', () => {
   it('웹 클라이언트 15분/8시간, 비밀 있음', () => {
     tpl('dev', 'auth').hasResourceProperties('AWS::Cognito::UserPoolClient', Match.objectLike({ ClientName: 'alm-web', GenerateSecret: true,
-      AccessTokenValidity: 15, RefreshTokenValidity: 480, CallbackURLs: ['https://alm-dev.bsgglobal.com/api/v1/auth/callback'] }));
+      AccessTokenValidity: 15, RefreshTokenValidity: 480, CallbackURLs: ['https://alm-dev.bsgapps.com/api/v1/auth/callback'] }));
   });
   it('PDA 클라이언트 60분/24시간, 비밀 없음', () => {
     tpl('dev', 'auth').hasResourceProperties('AWS::Cognito::UserPoolClient', Match.objectLike({ ClientName: 'alm-pda', GenerateSecret: false,
@@ -118,7 +131,7 @@ describe('Edge (10 5장)', () => {
     t.resourceCountIs('AWS::CloudFront::VpcOrigin', 1);
     const json = JSON.stringify(t.toJSON());
     expect(json).toContain('http://localhost:9100');
-    t.hasResourceProperties('AWS::CloudFront::Distribution', { DistributionConfig: Match.objectLike({ Aliases: ['alm.bsgglobal.com'],
+    t.hasResourceProperties('AWS::CloudFront::Distribution', { DistributionConfig: Match.objectLike({ Aliases: ['alm.bsgapps.com'],
       CacheBehaviors: Match.arrayWith([Match.objectLike({ PathPattern: '/api/*' })]) }) });
   });
 });

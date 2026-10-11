@@ -8,7 +8,7 @@ import * as backup from 'aws-cdk-lib/aws-backup';
 import * as events from 'aws-cdk-lib/aws-events';
 import { Construct } from 'constructs';
 import * as logs from 'aws-cdk-lib/aws-logs';
-import { EnvConfig, ORG, fqdn, drKeyAliasArn } from './config';
+import { EnvConfig, ORG, appDomain, drKeyAliasArn } from './config';
 
 export interface DataProps extends StackProps { vpc: ec2.IVpc }
 
@@ -98,7 +98,7 @@ export class DataStack extends Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL, objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_PREFERRED,
       lifecycleRules: [{ expiration: Duration.days(365) }], removalPolicy: retain, autoDeleteObjects: cfg.name !== 'prd',
     });
-    const appOrigin = `https://${fqdn(cfg.appHost)}`;
+    const appOrigin = `https://${appDomain(cfg)}`;
     this.filesBucket = new s3.Bucket(this, 'Files', {
       bucketName: `alm-${cfg.name}-files-${this.account}`,
       encryption: s3.BucketEncryption.KMS, encryptionKey: this.dataKey, bucketKeyEnabled: true,

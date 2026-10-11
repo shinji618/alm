@@ -22,7 +22,7 @@ import * as scheduler from 'aws-cdk-lib/aws-scheduler';
 import * as schedTargets from 'aws-cdk-lib/aws-scheduler-targets';
 import * as cw from 'aws-cdk-lib/aws-cloudwatch';
 import { Construct } from 'constructs';
-import { EnvConfig, ORG, fqdn, AUDIT_BUCKET, logBucketName } from './config';
+import { EnvConfig, ORG, appDomain as appDomainOf, authDomain, AUDIT_BUCKET, logBucketName } from './config';
 
 export interface AppProps extends StackProps {
   vpc: ec2.IVpc;
@@ -35,6 +35,7 @@ export interface AppProps extends StackProps {
   webClientSecret: secrets.ISecret;
   cookieKeySecret: secrets.ISecret;
   secretsKey: kms.IKey;
+  zone: route53.IHostedZone;
 }
 
 const CONTAINER_PORT = 3000;
@@ -54,8 +55,8 @@ export class AppStack extends Stack {
   constructor(scope: Construct, id: string, cfg: EnvConfig, props: AppProps) {
     super(scope, id, props);
     const env = cfg.name;
-    const zone = route53.HostedZone.fromHostedZoneAttributes(this, 'Zone', { hostedZoneId: ORG.hostedZoneId, zoneName: ORG.domain });
-    const appDomain = fqdn(cfg.appHost);
+    const zone = props.zone;
+    const appDomain = appDomainOf(cfg);
     // Data 스택 버킷은 정해진 이름으로 가져온다(스택 간 참조를 줄이고 IAM 정책 ARN을 고정 문자열로)
     const filesBucket = s3.Bucket.fromBucketAttributes(this, 'FilesRef', { bucketName: `alm-${env}-files-${this.account}`, encryptionKey: props.dataKey });
     const exportsBucket = s3.Bucket.fromBucketAttributes(this, 'ExportsRef', { bucketName: `alm-${env}-exports-${this.account}`, encryptionKey: props.dataKey });
@@ -76,10 +77,11 @@ export class AppStack extends Stack {
       enforceSSL: true, deadLetterQueue: { queue: this.jobsDlq, maxReceiveCount: 5 } });
 
     // ---- SES (8.2) ----
-    const mailDomain = `mail.${ORG.domain}`;
+    // 환경 영역 자체가 발신 도메인(no-reply@<영역>). DKIM·MAIL FROM(bounce.<영역>) 레코드는 영역에 자동 생성
+    const mailDomain = cfg.zoneName;
     new ses.EmailIdentity(this, 'MailIdentity', {
-      identity: ses.Identity.publicHostedZone(route53.HostedZone.fromHostedZoneAttributes(this, 'MailZone', { hostedZoneId: ORG.hostedZoneId, zoneName: ORG.domain })),
-      mailFromDomain: `bounce.${ORG.domain}`,
+      identity: ses.Identity.publicHostedZone(zone),
+      mailFromDomain: `bounce.${cfg.zoneName}`,
     });
     const sesTopic = new sns.Topic(this, 'SesTopic', { topicName: `alm-${env}-ses-events`, masterKey: props.dataKey, enforceSSL: true });
     sesTopic.addSubscription(new subs.SqsSubscription(sesEvents, { rawMessageDelivery: true }));
@@ -144,7 +146,7 @@ export class AppStack extends Stack {
       NODE_ENV: 'production', ALM_ENV: env, AWS_REGION: this.region,
       DB_HOST: props.db.dbInstanceEndpointAddress, DB_PORT: props.db.dbInstanceEndpointPort, DB_NAME: 'alm',
       COGNITO_USER_POOL_ID: props.userPool.userPoolId, COGNITO_WEB_CLIENT_ID: props.webClient.userPoolClientId,
-      COGNITO_PDA_CLIENT_ID: props.pdaClient.userPoolClientId, COGNITO_DOMAIN: fqdn(cfg.authHost),
+      COGNITO_PDA_CLIENT_ID: props.pdaClient.userPoolClientId, COGNITO_DOMAIN: authDomain(cfg),
       APP_ORIGIN: `https://${appDomain}`, JOBS_QUEUE_URL: this.jobsQueue.queueUrl,
       FILES_BUCKET: filesBucket.bucketName, EXPORTS_BUCKET: exportsBucket.bucketName,
       CACHE_ENDPOINT: cache.attrEndpointAddress, CACHE_USER: appUserId, SES_CONFIG_SET: configSet.configurationSetName,

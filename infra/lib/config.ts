@@ -7,8 +7,7 @@ export interface OrgConfig {
   region: string;            // 주 리전
   backupRegion: string;      // 백업 리전
   accounts: { management: string; audit: string; logArchive: string; shared: string; backup: string; dev: string; qa: string; prd: string };
-  domain: string;            // 서비스 도메인 (A-03)
-  hostedZoneId: string;      // Route 53 호스팅 영역 ID (domain)
+  domain: string;            // 상위 도메인(관리 계정 Route 53 등록·호스팅 영역). 환경 영역은 여기서 NS 위임(scripts/delegate-zones.sh)
   githubRepo: string;        // OIDC 신뢰 대상
   ecrRepositoryName: string;
   backupVaultArn: string;    // backup 계정 볼트(Vault Lock 준수 모드)
@@ -22,8 +21,7 @@ export interface OrgConfig {
 export interface EnvConfig {
   name: EnvName;
   account: string;
-  appHost: string;           // alm / alm-qa / alm-dev
-  authHost: string;          // auth / auth-qa / auth-dev
+  zoneName: string;          // 환경 호스팅 영역(환경 계정 소유). 앱 = 영역 최상위, 로그인 = auth.<영역>, 메일 = no-reply@<영역>
   vpcCidr: string;
   azs: string[];             // 계정 조회 없이 합성하려고 고정(계정마다 AZ 이름↔ID 매핑이 다르니 배포 전 확인)
   natGateways: number;
@@ -53,8 +51,8 @@ export const ORG: OrgConfig = {
     shared: '631237958461', backup: '262325793971',
     dev: '236501162716', qa: '428477779499', prd: '482545366457',
   },
-  domain: 'bsgglobal.com',          // 서비스는 alm.<도메인> (A-03)
-  hostedZoneId: 'Z0000000000000000000',
+  // 2026-10-10 Route 53 등록(관리 계정). ALM은 alm[-qa|-dev].bsgapps.com 영역을 환경 계정에 두고 위임받는다
+  domain: 'bsgapps.com',
   githubRepo: 'shinji618/alm',
   ecrRepositoryName: 'alm',
   backupVaultArn: 'arn:aws:backup:us-east-1:262325793971:backup-vault:alm-backup-vault',
@@ -74,7 +72,7 @@ const common = {
 
 export const ENVS: Record<EnvName, EnvConfig> = {
   dev: {
-    ...common, name: 'dev', account: ORG.accounts.dev, appHost: 'alm-dev', authHost: 'auth-dev',
+    ...common, name: 'dev', account: ORG.accounts.dev, zoneName: 'alm-dev.bsgapps.com',
     vpcCidr: '10.42.0.0/16', natGateways: 1, interfaceEndpoints: false, flowLogs: false,
     db: { instanceClass: 't4g.medium', multiAz: false, allocatedGb: 20, maxAllocatedGb: 100, backupDays: 1,
           performanceInsights: false, monitoringSeconds: 0, deletionProtection: false },
@@ -84,7 +82,7 @@ export const ENVS: Record<EnvName, EnvConfig> = {
     alarmEmail: 'shinji@bsgglobal.com', monthlyBudgetUsd: 200,
   },
   qa: {
-    ...common, name: 'qa', account: ORG.accounts.qa, appHost: 'alm-qa', authHost: 'auth-qa',
+    ...common, name: 'qa', account: ORG.accounts.qa, zoneName: 'alm-qa.bsgapps.com',
     vpcCidr: '10.41.0.0/16', natGateways: 1, interfaceEndpoints: false, flowLogs: false,
     db: { instanceClass: 't4g.medium', multiAz: false, allocatedGb: 50, maxAllocatedGb: 200, backupDays: 7,
           performanceInsights: true, monitoringSeconds: 0, deletionProtection: true },
@@ -94,7 +92,7 @@ export const ENVS: Record<EnvName, EnvConfig> = {
     alarmEmail: 'shinji@bsgglobal.com', monthlyBudgetUsd: 200,
   },
   prd: {
-    ...common, name: 'prd', account: ORG.accounts.prd, appHost: 'alm', authHost: 'auth',
+    ...common, name: 'prd', account: ORG.accounts.prd, zoneName: 'alm.bsgapps.com',
     vpcCidr: '10.40.0.0/16', natGateways: 2, interfaceEndpoints: true, flowLogs: true,
     db: { instanceClass: 'm7g.large', multiAz: true, allocatedGb: 100, maxAllocatedGb: 1000, backupDays: 35,
           performanceInsights: true, monitoringSeconds: 60, deletionProtection: true,
@@ -106,7 +104,8 @@ export const ENVS: Record<EnvName, EnvConfig> = {
   },
 };
 
-export const fqdn = (host: string) => `${host}.${ORG.domain}`;
+export const appDomain = (cfg: EnvConfig) => cfg.zoneName;
+export const authDomain = (cfg: EnvConfig) => `auth.${cfg.zoneName}`;
 // us-east-2 재해 복구 키(Dr 스택). RDS 자동 백업 복제에 별칭 ARN으로 넘긴다
 export const drKeyAlias = (env: EnvName) => `alias/alm/${env}/dr`;
 export const drKeyAliasArn = (cfg: EnvConfig) => `arn:aws:kms:${ORG.backupRegion}:${cfg.account}:${drKeyAlias(cfg.name)}`;
