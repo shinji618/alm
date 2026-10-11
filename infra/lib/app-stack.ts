@@ -83,7 +83,14 @@ export class AppStack extends Stack {
       identity: ses.Identity.publicHostedZone(zone),
       mailFromDomain: `bounce.${cfg.zoneName}`,
     });
-    const sesTopic = new sns.Topic(this, 'SesTopic', { topicName: `alm-${env}-ses-events`, masterKey: props.dataKey, enforceSSL: true });
+    // SES가 주제에 게시하려면 키 정책에 SES 권한이 있어야 한다 → Data 키 대신 이 주제 전용 키(알림 주제와 같은 방식)
+    const sesKey = new kms.Key(this, 'SesEventsKey', { alias: `alm/${env}/ses-events`, enableKeyRotation: true,
+      removalPolicy: env === 'prd' ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY });
+    sesKey.addToResourcePolicy(new iam.PolicyStatement({ principals: [new iam.ServicePrincipal('ses.amazonaws.com')],
+      actions: ['kms:Decrypt', 'kms:GenerateDataKey*'], resources: ['*'], conditions: { StringEquals: { 'aws:SourceAccount': this.account } } }));
+    const sesTopic = new sns.Topic(this, 'SesTopic', { topicName: `alm-${env}-ses-events`, masterKey: sesKey, enforceSSL: true });
+    sesTopic.addToResourcePolicy(new iam.PolicyStatement({ principals: [new iam.ServicePrincipal('ses.amazonaws.com')],
+      actions: ['sns:Publish'], resources: [sesTopic.topicArn], conditions: { StringEquals: { 'aws:SourceAccount': this.account } } }));
     sesTopic.addSubscription(new subs.SqsSubscription(sesEvents, { rawMessageDelivery: true }));
     const configSet = new ses.ConfigurationSet(this, 'ConfigSet', { configurationSetName: `alm-${env}`, reputationMetrics: true });
     configSet.addEventDestination('Bounces', { destination: ses.EventDestination.snsTopic(sesTopic),
