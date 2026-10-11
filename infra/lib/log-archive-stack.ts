@@ -88,9 +88,13 @@ export class LogArchiveStack extends Stack {
       });
       b.addToResourcePolicy(new iam.PolicyStatement({ principals: [new iam.AccountPrincipal(ELB_ACCOUNT_US_EAST_1)],
         actions: ['s3:PutObject'], resources: [b.arnForObjects(`alb/AWSLogs/${e.account}/*`)] }));
+      // CloudWatch Logs 전송(v2) 계정 간 S3: x-amz-acl 조건은 넣지 않는다(버킷 소유자 강제라 ACL 헤더가 없을 수 있음 → 전송 생성이 AccessDenied)
+      const fromEnvDelivery = { StringEquals: { 'aws:SourceAccount': e.account },
+        ArnLike: { 'aws:SourceArn': `arn:aws:logs:${ORG.region}:${e.account}:delivery-source:*` } };
       b.addToResourcePolicy(new iam.PolicyStatement({ principals: [new iam.ServicePrincipal('delivery.logs.amazonaws.com')],
-        actions: ['s3:PutObject'], resources: [b.arnForObjects('cloudfront/*')],
-        conditions: { StringEquals: { 'aws:SourceAccount': e.account, 's3:x-amz-acl': 'bucket-owner-full-control' } } }));
+        actions: ['s3:PutObject'], resources: [b.arnForObjects('cloudfront/*')], conditions: fromEnvDelivery }));
+      b.addToResourcePolicy(new iam.PolicyStatement({ principals: [new iam.ServicePrincipal('delivery.logs.amazonaws.com')],
+        actions: ['s3:GetBucketAcl', 's3:ListBucket'], resources: [b.bucketArn], conditions: fromEnvDelivery }));
     }
   }
 }
