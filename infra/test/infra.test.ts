@@ -141,7 +141,7 @@ describe('Ci (10 11장)', () => {
     const t = tpl('prd', 'ci');
     t.hasResourceProperties('AWS::IAM::Role', Match.objectLike({ RoleName: 'alm-deploy-prd', MaxSessionDuration: 3600,
       AssumeRolePolicyDocument: Match.objectLike({ Statement: [Match.objectLike({ Condition: Match.objectLike({
-        StringLike: { 'token.actions.githubusercontent.com:sub': ['repo:shinji618/alm:environment:prd'] } }) })] }) }));
+        StringLike: { 'token.actions.githubusercontent.com:sub': ['repo:shinji618@335630296/alm@1409332069:environment:prd', 'repo:shinji618/alm:environment:prd'] } }) })] }) }));
   });
 });
 

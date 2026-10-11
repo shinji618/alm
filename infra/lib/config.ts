@@ -9,6 +9,7 @@ export interface OrgConfig {
   accounts: { management: string; audit: string; logArchive: string; shared: string; backup: string; dev: string; qa: string; prd: string };
   domain: string;            // 상위 도메인(관리 계정 Route 53 등록·호스팅 영역). 환경 영역은 여기서 NS 위임(scripts/delegate-zones.sh)
   githubRepo: string;        // OIDC 신뢰 대상
+  githubRepoIds: string;     // GitHub OIDC sub의 불변 ID 형식(owner@ownerId/repo@repoId). 2026-10 확인: sub = repo:<이것>:ref:…
   ecrRepositoryName: string;
   backupVaultArn: string;    // backup 계정 볼트(Vault Lock 준수 모드)
   costCenter: string;
@@ -54,6 +55,7 @@ export const ORG: OrgConfig = {
   // 2026-10-10 Route 53 등록(관리 계정). ALM은 alm[-qa|-dev].bsgapps.com 영역을 환경 계정에 두고 위임받는다
   domain: 'bsgapps.com',
   githubRepo: 'shinji618/alm',
+  githubRepoIds: 'shinji618@335630296/alm@1409332069',
   ecrRepositoryName: 'alm',
   backupVaultArn: 'arn:aws:backup:us-east-1:262325793971:backup-vault:alm-backup-vault',
   costCenter: 'ALM',

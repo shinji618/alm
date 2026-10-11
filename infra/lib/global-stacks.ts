@@ -14,9 +14,12 @@ const GITHUB_OIDC = 'https://token.actions.githubusercontent.com';
 const githubProvider = (scope: Construct) => new iam.OidcProviderNative(scope, 'GitHubOidc', {
   url: GITHUB_OIDC, clientIds: ['sts.amazonaws.com'],
 });
-const githubPrincipal = (provider: iam.OidcProviderNative, subjects: string[]) => new iam.WebIdentityPrincipal(provider.oidcProviderArn, {
+// suffixes: 'ref:refs/heads/main', 'environment:dev' 등. GitHub는 sub를 불변 ID 형식(repo:owner@id/repo@id:…)으로 보낸다.
+// 이름 형식(repo:owner/repo:…)도 함께 허용한다(저장소 설정에 따라 바뀔 수 있음)
+const githubPrincipal = (provider: iam.OidcProviderNative, suffixes: string[]) => new iam.WebIdentityPrincipal(provider.oidcProviderArn, {
   StringEquals: { 'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com' },
-  StringLike: { 'token.actions.githubusercontent.com:sub': subjects },
+  StringLike: { 'token.actions.githubusercontent.com:sub':
+    suffixes.flatMap((x) => [`repo:${ORG.githubRepoIds}:${x}`, `repo:${ORG.githubRepo}:${x}`]) },
 });
 
 // alm-shared 계정: ECR(이미지 1개, 다이제스트 승격), CI 빌드 역할
@@ -37,7 +40,7 @@ export class SharedStack extends Stack {
     const provider = githubProvider(this);
     const ci = new iam.Role(this, 'CiRole', {
       roleName: 'alm-ci-build', maxSessionDuration: Duration.hours(1),
-      assumedBy: githubPrincipal(provider, [`repo:${ORG.githubRepo}:ref:refs/heads/main`, `repo:${ORG.githubRepo}:ref:refs/tags/v*`]),
+      assumedBy: githubPrincipal(provider, ['ref:refs/heads/main', 'ref:refs/tags/v*']),
       description: 'GitHub Actions image build/push (main, release tags)',
     });
     repo.grantPullPush(ci);
@@ -97,8 +100,8 @@ export class CiStack extends Stack {
     const Env = cfg.name[0].toUpperCase() + cfg.name.slice(1);
     // DEV는 main 브랜치, QA·PRD는 GitHub 환경(PRD는 승인 규칙)
     const subjects = cfg.name === 'dev'
-      ? [`repo:${ORG.githubRepo}:ref:refs/heads/main`, `repo:${ORG.githubRepo}:environment:dev`]
-      : [`repo:${ORG.githubRepo}:environment:${cfg.name}`];
+      ? ['ref:refs/heads/main', 'environment:dev']
+      : [`environment:${cfg.name}`];
     const role = new iam.Role(this, 'DeployRole', { roleName: `alm-deploy-${cfg.name}`, maxSessionDuration: Duration.hours(1),
       assumedBy: githubPrincipal(provider, subjects), description: `GitHub Actions deploy (${cfg.name})` });
     role.addToPolicy(new iam.PolicyStatement({ sid: 'CdkBootstrapRoles', actions: ['sts:AssumeRole'],
