@@ -250,7 +250,8 @@ export class AppStack extends Stack {
       scalingSteps: [{ upper: 60, change: 0 }, { lower: 60, change: +1 }, { lower: 300, change: +2 }], adjustmentType: undefined });
 
     // ---- 예약 작업(6.3) ----
-    const group = new scheduler.ScheduleGroup(this, 'Schedules', { scheduleGroupName: `alm-${env}` });
+    const group = new scheduler.ScheduleGroup(this, 'Schedules', { scheduleGroupName: `alm-${env}`,
+      removalPolicy: env === 'prd' ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY });
     const tz = 'America/New_York';
     const tzObj = TimeZone.AMERICA_NEW_YORK;
     const cronTz = (id: string, cron: string, type: string) => new scheduler.Schedule(this, id, {
