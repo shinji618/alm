@@ -61,11 +61,18 @@ sync_idps() {
   if [[ "$(jq -r .ok "$out")" != "true" ]]; then echo "테넌트 IdP 동기화 실패" >&2; exit 1; fi
 }
 
-if [[ -n "$(out "Alm-${Env}-App" MigrateFamily)" && "$(out "Alm-${Env}-App" MigrateFamily)" != "None" ]]; then
+# 현재 migrate 작업 정의에 마스터 비밀(DB_MASTER_PASSWORD)이 없으면(첫 배포, 자리 이미지 시절 정의) 인프라를 먼저 갱신한다
+migrate_ready() {
+  local fam; fam=$(out "Alm-${Env}-App" MigrateFamily)
+  [[ -n "$fam" && "$fam" != "None" ]] || return 1
+  aws ecs describe-task-definition --task-definition "$fam" \
+    --query "taskDefinition.containerDefinitions[?name=='app'].secrets[].name" --output text 2>/dev/null | grep -qw DB_MASTER_PASSWORD
+}
+if migrate_ready; then
   run_migrate
   cdk_deploy
 else
-  echo "첫 배포: 인프라를 먼저 만든다"
+  echo "migrate 작업 정의 준비 전: 인프라를 먼저 갱신한다"
   cdk_deploy
   run_migrate
 fi

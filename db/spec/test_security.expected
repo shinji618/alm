@@ -24,7 +24,7 @@ psql:test_security.sql:16: ERROR:  unrecognized configuration parameter "app.ten
 BEGIN
 SET
 psql:test_security.sql:19: ERROR:  audit: app.actor_type is not set for application session tester
-CONTEXT:  PL/pgSQL function audit_row() line 23 at RAISE
+CONTEXT:  PL/pgSQL function audit_row() line 24 at RAISE
 ROLLBACK
 --- 3. bad correlation id does not break write; tenant row visible only own
 BEGIN

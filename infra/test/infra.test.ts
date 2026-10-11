@@ -110,6 +110,16 @@ describe('App (10 6장)', () => {
     const edge = Object.keys(tpl('dev', 'edge').toJSON().Outputs ?? {});
     for (const k of ['DistributionId', 'WebBucketName']) expect(edge).toContain(k);
   });
+  it('RDS 마스터 비밀은 migrate 작업에만(부트스트랩·seed)', () => {
+    const tds = tpl('dev', 'app').findResources('AWS::ECS::TaskDefinition');
+    const secretsOf = (fam: string) => {
+      const td = Object.values(tds).find((r: any) => r.Properties.Family === fam) as any;
+      return (td.Properties.ContainerDefinitions[0].Secrets ?? []).map((x: any) => x.Name).sort();
+    };
+    expect(secretsOf('alm-dev-migrate')).toEqual(['DB_MASTER_PASSWORD', 'DB_MASTER_USER']);
+    expect(secretsOf('alm-dev-api')).toEqual(['COGNITO_WEB_CLIENT_SECRET', 'COOKIE_KEY']);
+    for (const f of ['alm-dev-worker', 'alm-dev-audit-archive', 'alm-dev-partman']) expect(secretsOf(f)).toEqual([]);
+  });
   it('작업 역할은 자기 DB 사용자로만 rds-db:connect', () => {
     const json = JSON.stringify(tpl('prd', 'app').toJSON());
     for (const u of ['alm_app_login', 'alm_owner_iam', 'alm_archive_login']) expect(json).toContain(`/${u}`);

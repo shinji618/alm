@@ -55,7 +55,8 @@ BEGIN
   IF actor IS NULL AND EXISTS (SELECT 1 FROM pg_auth_members m
                                  JOIN pg_roles r ON r.oid = m.roleid
                                  JOIN pg_roles u ON u.oid = m.member
-                                WHERE r.rolname = 'alm_app' AND u.rolname = session_user) THEN
+                                WHERE r.rolname = 'alm_app' AND u.rolname = session_user
+                                  AND (m.inherit_option OR m.set_option)) THEN  -- PG16: CREATEROLE 생성자의 ADMIN 전용 멤버십(RDS 마스터)은 제외
     RAISE EXCEPTION 'audit: app.actor_type is not set for application session %', session_user;
   END IF;
   IF TG_OP = 'UPDATE' THEN

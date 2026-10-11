@@ -3,7 +3,7 @@
   "private": true,
   "description": "Asset Lifecycle Manager (BSG America) monorepo",
   "workspaces": [
-    "apps/*"
+    "apps/web"
   ],
   "scripts": {
     "dev": "npm run dev -w apps/web",

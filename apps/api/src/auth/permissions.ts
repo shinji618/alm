@@ -1,0 +1,43 @@
+// 권한 카탈로그(api/permissions.json, 09 정의서 4장). 역할 → 권한 키 → 범위(ALL·CC·OWN·TASK, '-'는 범위 없음)
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+export type Scope = 'ALL' | 'CC' | 'OWN' | 'TASK' | '-';
+export interface Catalog {
+  roles: { code: string; name: string }[];
+  permissions: { key: string }[];
+  grants: Record<string, Record<string, Scope>>;
+  operations: Record<string, string | null>;
+  implicit: { role: string; excludedIf: string[] };
+  exclusiveRoles: string[];
+}
+
+let cached: Catalog | undefined;
+export function catalog(path = join(__dirname, '..', 'permissions.json')): Catalog {
+  return (cached ??= JSON.parse(readFileSync(path, 'utf8')) as Catalog);
+}
+
+// 유효 역할: 감사인(배타 역할)이 있으면 감사인만, 아니면 부여 역할 + 암묵 EMPLOYEE
+export function effectiveRoles(assigned: string[], c = catalog()): string[] {
+  const set = new Set(assigned);
+  const exclusive = c.exclusiveRoles.find((r) => set.has(r));
+  if (exclusive) return [exclusive];
+  if (!c.implicit.excludedIf.some((r) => set.has(r))) set.add(c.implicit.role);
+  return [...set];
+}
+
+// 권한 키 → 범위 목록. 같은 키에 ALL이 있으면 ALL 하나로 줄인다
+export function permissionsOf(roles: string[], c = catalog()): Map<string, Scope[]> {
+  const m = new Map<string, Scope[]>([['auth', ['-']]]);
+  for (const r of roles) for (const [k, s] of Object.entries(c.grants[r] ?? {})) {
+    const cur = m.get(k) ?? [];
+    if (!cur.includes(s)) cur.push(s);
+    m.set(k, cur.includes('ALL') ? ['ALL'] : cur);
+  }
+  return m;
+}
+
+// operationId → 필요한 권한 키. null이면 인증 없이 호출(로그인 단계), undefined면 카탈로그에 없는 작업(배포 오류)
+export function permissionFor(operationId: string, c = catalog()): string | null | undefined {
+  return operationId in c.operations ? c.operations[operationId] : undefined;
+}

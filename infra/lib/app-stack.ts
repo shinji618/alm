@@ -213,6 +213,14 @@ export class AppStack extends Stack {
 
     // migrate(배포 때 1회 RunTask) — 소유자 로그인. 시작 스크립트가 IAM 토큰으로 URL을 만든다
     const migrate = makeTask('migrate', 512, 1024, ['sh', 'scripts/migrate.sh'], 'alm_owner_iam', lg('migrate'));
+    // 부트스트랩(로그인 계정 생성·이벤트 트리거)에 rds_superuser가 필요해 마스터로 접속한다. 같은 작업 정의로 seed도 실행(런북 13)
+    // ARN으로 가져온다(키를 모르게): 실제 비밀을 쓰면 실행 역할 권한이 Data 키 정책에 붙어 스택 순환이 생긴다(auth-stack 쿠키 키와 같은 이유)
+    if (!props.db.secret) throw new Error('RDS 마스터 비밀이 없다');
+    const master = secrets.Secret.fromSecretAttributes(this, 'DbMasterSecret', { secretCompleteArn: props.db.secret.secretArn });
+    migrate.c.addSecret('DB_MASTER_USER', ecs.Secret.fromSecretsManager(master, 'username'));
+    migrate.c.addSecret('DB_MASTER_PASSWORD', ecs.Secret.fromSecretsManager(master, 'password'));
+    migrate.td.obtainExecutionRole().addToPrincipalPolicy(new iam.PolicyStatement({ actions: ['kms:Decrypt'], resources: [props.secretsKey.keyArn],
+      conditions: { StringEquals: { 'kms:ViaService': `secretsmanager.${this.region}.amazonaws.com` } } }));
 
     // audit-archive(월 1회 Scheduler RunTask) — 보관 계정 로그인, log-archive 감사 버킷 쓰기
     const archive = makeTask('audit-archive', 512, 1024, ['node', 'dist/main', 'audit-archive'], 'alm_archive_login', lg('audit-archive'));
