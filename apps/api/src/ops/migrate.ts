@@ -51,10 +51,10 @@ export async function bootstrap(c: Client): Promise<void> {
     }
     if (rdsIam) await c.query(`GRANT rds_iam TO ${login}`);
   }
-  // 이후 마이그레이션이 만드는 테이블에도 같은 권한(0001은 직접 GRANT)
-  await c.query(`ALTER DEFAULT PRIVILEGES FOR ROLE ${me} IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO alm_app`);
-  await c.query(`ALTER DEFAULT PRIVILEGES FOR ROLE ${me} IN SCHEMA public GRANT SELECT ON TABLES TO alm_readonly`);
-  await c.query(`ALTER DEFAULT PRIVILEGES FOR ROLE ${me} IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO alm_app`);
+  // 이후 마이그레이션이 만드는 테이블에도 같은 권한(0001은 직접 GRANT). FOR ROLE 생략 = 현재 접속 계정(소유자)
+  await c.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO alm_app`);
+  await c.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO alm_readonly`);
+  await c.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO alm_app`);
   const pgaudit = (await c.query(`SELECT 1 FROM pg_available_extensions WHERE name = 'pgaudit'`)).rowCount === 1;
   if (pgaudit) await c.query('CREATE EXTENSION IF NOT EXISTS pgaudit');
   await c.query(`CREATE TABLE IF NOT EXISTS schema_migrations (

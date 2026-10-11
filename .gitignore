@@ -15,3 +15,6 @@ api/spec/out/
 
 # DB 보안 시험 결과(비교용 임시 파일)
 db/spec/test_security.actual
+
+# 원격 작업용 임시 폴더(워크플로 사본·패치)
+_pending_workflows/

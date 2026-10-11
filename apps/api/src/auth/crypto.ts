@@ -6,7 +6,7 @@ const V = 1;
 
 export function seal(keys: Buffer[], purpose: string, payload: object, ttlSec: number): string {
   const iv = randomBytes(12);
-  const c = createCipheriv('aes-256-gcm', keys[0], iv);
+  const c = createCipheriv('aes-256-gcm', keys[0], iv, { authTagLength: 16 });
   c.setAAD(Buffer.from(purpose));          // 쿠키끼리 바꿔 끼우기 방지(alm_pkce 값을 alm_rt에 넣는 등)
   const body = Buffer.from(JSON.stringify({ ...payload, exp: Math.floor(Date.now() / 1000) + ttlSec }));
   const ct = Buffer.concat([c.update(body), c.final()]);
@@ -21,7 +21,7 @@ export function open<T extends object>(keys: Buffer[], purpose: string, value: s
   const iv = buf.subarray(1, 13), tag = buf.subarray(13, 29), ct = buf.subarray(29);
   for (const k of keys) {
     try {
-      const d = createDecipheriv('aes-256-gcm', k, iv);
+      const d = createDecipheriv('aes-256-gcm', k, iv, { authTagLength: 16 });   // 짧은 태그 위조 방지
       d.setAAD(Buffer.from(purpose));
       d.setAuthTag(tag);
       const p = JSON.parse(Buffer.concat([d.update(ct), d.final()]).toString()) as T & { exp: number };
