@@ -22,6 +22,7 @@ import * as scheduler from 'aws-cdk-lib/aws-scheduler';
 import * as schedTargets from 'aws-cdk-lib/aws-scheduler-targets';
 import * as cw from 'aws-cdk-lib/aws-cloudwatch';
 import { Construct } from 'constructs';
+import * as path from 'path';
 import { EnvConfig, ORG, appDomain as appDomainOf, authDomain, AUDIT_BUCKET, logBucketName } from './config';
 
 export interface AppProps extends StackProps {
@@ -136,18 +137,19 @@ export class AppStack extends Stack {
     });
     cache.addResourceDependency(userGroup);
 
-    // ---- Cognito 관리 Lambda(6.2): SAP 클라이언트 생성·비밀 교체, IdP 등록. 본문은 3.3에서 구현 ----
+    // ---- Cognito 관리 Lambda(6.2, WBS 3.3): 테넌트 IdP 등록·삭제, 웹·PDA IdP 목록 맞추기, SAP 클라이언트·비밀 교체 ----
     const cognitoAdmin = new lambda.Function(this, 'CognitoAdmin', {
       functionName: `alm-${env}-cognito-admin`, runtime: lambda.Runtime.NODEJS_24_X, architecture: lambda.Architecture.ARM_64,
-      handler: 'index.handler', timeout: Duration.seconds(30),
-      code: lambda.Code.fromInline("exports.handler = async () => ({ statusCode: 501, body: 'implemented in WBS 3.3' });"),
-      environment: { USER_POOL_ID: props.userPool.userPoolId },
+      handler: 'index.handler', timeout: Duration.seconds(30), memorySize: 256,
+      code: lambda.Code.fromAsset(path.join(__dirname, '..', 'lambda', 'cognito-admin')),
+      environment: { USER_POOL_ID: props.userPool.userPoolId, WEB_CLIENT_ID: props.webClient.userPoolClientId,
+        PDA_CLIENT_ID: props.pdaClient.userPoolClientId },
     });
     cognitoAdmin.addToRolePolicy(new iam.PolicyStatement({
       actions: ['cognito-idp:CreateUserPoolClient', 'cognito-idp:UpdateUserPoolClient', 'cognito-idp:DeleteUserPoolClient',
         'cognito-idp:DescribeUserPoolClient', 'cognito-idp:AddUserPoolClientSecret', 'cognito-idp:DeleteUserPoolClientSecret',
         'cognito-idp:ListUserPoolClientSecrets', 'cognito-idp:CreateIdentityProvider', 'cognito-idp:UpdateIdentityProvider',
-        'cognito-idp:DescribeIdentityProvider', 'cognito-idp:DeleteIdentityProvider'],
+        'cognito-idp:DescribeIdentityProvider', 'cognito-idp:DeleteIdentityProvider', 'cognito-idp:ListIdentityProviders'],
       resources: [props.userPool.userPoolArn],
     }));
 

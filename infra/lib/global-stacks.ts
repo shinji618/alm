@@ -107,6 +107,9 @@ export class CiStack extends Stack {
       assumedBy: githubPrincipal(provider, subjects), description: `GitHub Actions deploy (${cfg.name})` });
     role.addToPolicy(new iam.PolicyStatement({ sid: 'CdkBootstrapRoles', actions: ['sts:AssumeRole'],
       resources: [`arn:aws:iam::${this.account}:role/cdk-hnb659fds-*-${this.account}-*`] }));
+    // 배포 뒤 웹·PDA 클라이언트에 테넌트 IdP를 다시 붙인다(scripts/deploy.sh → alm-cognito-admin syncIdps)
+    role.addToPolicy(new iam.PolicyStatement({ sid: 'SyncTenantIdps', actions: ['lambda:InvokeFunction'],
+      resources: [`arn:aws:lambda:${this.region}:${this.account}:function:alm-${cfg.name}-cognito-admin`] }));
     role.addToPolicy(new iam.PolicyStatement({ sid: 'ReadStackOutputs', actions: ['cloudformation:DescribeStacks'],
       resources: [`arn:aws:cloudformation:${this.region}:${this.account}:stack/Alm-${Env}-*/*`] }));
     role.addToPolicy(new iam.PolicyStatement({ sid: 'Migrate', actions: ['ecs:DescribeTaskDefinition', 'ecs:RegisterTaskDefinition', 'ecs:RunTask',

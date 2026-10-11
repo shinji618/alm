@@ -49,6 +49,16 @@ cdk_deploy() {
   echo "::group::cdk deploy ($ENV, imageTag=$TAG)"
   (cd "$ROOT/infra" && npx cdk deploy --all -c env="$ENV" -c imageTag="$TAG" --require-approval never --progress events)
   echo "::endgroup::"
+  sync_idps
+}
+
+# CloudFormation이 웹·PDA 클라이언트를 갱신하면 IdP 목록이 템플릿 값으로 돌아간다 → 테넌트 IdP(T-*)를 다시 붙인다
+sync_idps() {
+  local out; out=$(mktemp)
+  aws lambda invoke --function-name "alm-${ENV}-cognito-admin" --cli-binary-format raw-in-base64-out \
+    --payload '{"action":"syncIdps"}' "$out" >/dev/null
+  echo "syncIdps: $(cat "$out")"
+  if [[ "$(jq -r .ok "$out")" != "true" ]]; then echo "테넌트 IdP 동기화 실패" >&2; exit 1; fi
 }
 
 if [[ -n "$(out "Alm-${Env}-App" MigrateFamily)" && "$(out "Alm-${Env}-App" MigrateFamily)" != "None" ]]; then

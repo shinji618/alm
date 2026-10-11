@@ -80,9 +80,13 @@ npx cdk deploy -c env=prd -c imageTag=<태그> --all
 - 작업 정의 환경 변수: `APP_ROLE`, `DB_HOST/PORT/NAME`, `DB_IAM_USER`, `CACHE_ENDPOINT`, `CACHE_USER`, `JOBS_QUEUE_URL`, `FILES_BUCKET`, `EXPORTS_BUCKET`, `COGNITO_*`, `SES_CONFIG_SET`, `MAIL_FROM`, `COGNITO_ADMIN_FUNCTION`. 비밀: `COOKIE_KEY`, `COGNITO_WEB_CLIENT_SECRET`.
 - 아직 없는 것: PR의 `cdk diff` 댓글(읽기 전용 역할 필요), 매일 드리프트 점검, 라이선스 검사(3.7).
 
+## Cognito 관리 (3.3)
+
+- `lambda/cognito-admin/`: `alm-<env>-cognito-admin` 본문(테넌트 IdP·SAP 클라이언트·비밀 교체, 배포 뒤 `syncIdps`). 시험 `test/cognito-admin.test.mjs`
+- `scripts/cognito-admin.sh <env> info|<JSON>`: 관리 계정 CloudShell에서 호출. 절차는 산출물 `13_테넌트_SSO_등록_런북.md`
+
 ## 3.3 이후에 이어서 할 것
 
-- `alm-<env>-cognito-admin` Lambda 본문(지금은 501 반환 자리).
 - 앱: RDS IAM 토큰 접속, Valkey IAM 인증 토큰(SigV4) 생성, EMF 지표 `ALM/SapOverdue`·`SapPostingFailed`·`SapAuthFailed`·`Requests(TenantId)`.
 - DB 로그인 역할(`alm_app_login`, `alm_owner_iam`, `alm_archive_login`)과 `rds_iam` 부여는 migrate가 `db/ddl` 보안 스크립트로 만든다.
 - 배포 때 확인: Firehose가 Object Lock 감사 버킷에 쓰는지(실패하면 `<env>/pgaudit-errors/`에 남는다), CloudFront 표준 로그 v2의 계정 간 S3 전송, VPC 오리진 보안 그룹 이름 조회.
