@@ -12,7 +12,7 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import { Construct } from 'constructs';
-import { EnvConfig, appDomain as appDomainOf, authDomain as authDomainOf, logBucketName } from './config';
+import { EnvConfig, appDomain as appDomainOf, authDomain as authDomainOf, cdnLogDestinationArn } from './config';
 
 export interface EdgeProps extends StackProps {
   alb: elbv2.IApplicationLoadBalancer;
@@ -113,11 +113,9 @@ export class EdgeStack extends Stack {
     new CfnOutput(this, 'DistributionId', { value: this.distribution.distributionId });
     new CfnOutput(this, 'WebBucketName', { value: this.webBucket.bucketName });
 
-    // CloudFront 표준 로그 v2 → log-archive 버킷(ACL 불필요)
+    // CloudFront 표준 로그 v2 → log-archive 버킷. 전송 대상은 log-archive 계정의 Alm-LogArchive가 만든다(계정 간)
     const src = new logs.CfnDeliverySource(this, 'CdnLogSource', { name: `alm-${env}-cdn`, logType: 'ACCESS_LOGS', resourceArn: this.distribution.distributionArn });
-    const dst = new logs.CfnDeliveryDestination(this, 'CdnLogDest', { name: `alm-${env}-cdn-s3`,
-      destinationResourceArn: `arn:aws:s3:::${logBucketName(env)}/cloudfront`, outputFormat: 'parquet' });
-    const delivery = new logs.CfnDelivery(this, 'CdnLogDelivery', { deliverySourceName: src.name, deliveryDestinationArn: dst.attrArn });
+    const delivery = new logs.CfnDelivery(this, 'CdnLogDelivery', { deliverySourceName: src.name, deliveryDestinationArn: cdnLogDestinationArn(env) });
     delivery.addResourceDependency(src);
 
     // ALB 보안 그룹: AWS가 VPC 오리진용으로 만드는 'CloudFront-VPCOrigins-Service-SG'에서 443만 허용

@@ -113,3 +113,7 @@ export const drKeyAlias = (env: EnvName) => `alias/alm/${env}/dr`;
 export const drKeyAliasArn = (cfg: EnvConfig) => `arn:aws:kms:${ORG.backupRegion}:${cfg.account}:${drKeyAlias(cfg.name)}`;
 export const AUDIT_BUCKET = `alm-audit-archive-${ORG.accounts.logArchive}`;
 export const logBucketName = (env: EnvName) => `alm-logs-${env}-${ORG.accounts.logArchive}`;
+// CloudFront 표준 로그 v2 계정 간 전송: 전송 대상은 대상 계정(log-archive)에 있어야 한다
+export const cdnLogDestinationName = (env: EnvName) => `alm-${env}-cdn-s3`;
+export const cdnLogDestinationArn = (env: EnvName) =>
+  `arn:aws:logs:${ORG.region}:${ORG.accounts.logArchive}:delivery-destination:${cdnLogDestinationName(env)}`;

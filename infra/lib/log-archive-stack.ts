@@ -2,8 +2,9 @@ import { Stack, StackProps, Duration, RemovalPolicy } from 'aws-cdk-lib';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
-import { ORG, ENVS, EnvName, AUDIT_BUCKET, logBucketName } from './config';
+import { ORG, ENVS, EnvName, AUDIT_BUCKET, logBucketName, cdnLogDestinationName, cdnLogDestinationArn } from './config';
 
 const AUDIT_YEARS_DAYS = 3653;           // 10년(SOX 감사 보관, 09 9장)
 const ELB_ACCOUNT_US_EAST_1 = '127311923021';
@@ -95,6 +96,16 @@ export class LogArchiveStack extends Stack {
         actions: ['s3:PutObject'], resources: [b.arnForObjects('cloudfront/*')], conditions: fromEnvDelivery }));
       b.addToResourcePolicy(new iam.PolicyStatement({ principals: [new iam.ServicePrincipal('delivery.logs.amazonaws.com')],
         actions: ['s3:GetBucketAcl', 's3:ListBucket'], resources: [b.bucketArn], conditions: fromEnvDelivery }));
+      // 전송 대상(이 계정) + 환경 계정이 여기로 전송을 만들 수 있게 하는 대상 정책
+      const destName = cdnLogDestinationName(e.name as EnvName);
+      new logs.CfnDeliveryDestination(this, `CdnLogDest-${e.name}`, {
+        name: destName, destinationResourceArn: `${b.bucketArn}/cloudfront`, outputFormat: 'parquet',
+        deliveryDestinationPolicy: { deliveryDestinationName: destName, deliveryDestinationPolicy: {
+          Version: '2012-10-17',
+          Statement: [{ Sid: 'AllowEnvAccountCreateDelivery', Effect: 'Allow', Principal: { AWS: e.account },
+            Action: 'logs:CreateDelivery', Resource: cdnLogDestinationArn(e.name as EnvName) }],
+        } },
+      }).node.addDependency(b);
     }
   }
 }
