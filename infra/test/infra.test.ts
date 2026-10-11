@@ -94,7 +94,8 @@ describe('App (10 6장)', () => {
   it('Valkey Serverless: default 사용자 끔, 앱 사용자 IAM 인증', () => {
     const t = tpl('dev', 'app');
     t.hasResourceProperties('AWS::ElastiCache::ServerlessCache', Match.objectLike({ Engine: 'valkey' }));
-    t.hasResourceProperties('AWS::ElastiCache::User', Match.objectLike({ UserName: 'default', AccessString: 'off -@all' }));
+    t.hasResourceProperties('AWS::ElastiCache::User', Match.objectLike({ UserName: 'default', AccessString: 'off -@all',
+      AuthenticationMode: Match.objectLike({ Type: 'password' }), NoPasswordRequired: Match.absent() }));
     t.hasResourceProperties('AWS::ElastiCache::User', Match.objectLike({ UserName: 'alm-dev-app', AuthenticationMode: { Type: 'iam' } }));
   });
   it('예약 작업은 동부 시간대, 야간 정지는 DEV·QA만', () => {

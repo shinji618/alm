@@ -108,8 +108,14 @@ export class AppStack extends Stack {
 
     // ---- Valkey(6.4): 호출 제한 카운터·사용자 상태 캐시. TLS + IAM 인증 사용자 ----
     const cacheName = `alm-${env}`;
+    // 사용자 그룹에는 'default' 사용자가 있어야 한다. Valkey는 비밀번호 없는 사용자를 허용하지 않으므로
+    // 쓰지 않는 무작위 비밀번호를 주고 꺼 둔다(off -@all). 앱은 IAM 인증 사용자만 쓴다
+    const defaultUserPw = new secrets.Secret(this, 'CacheDefaultUserPassword', {
+      secretName: `alm/${env}/cache-default-user`, description: 'Valkey default user (disabled, off -@all) - not used by the app',
+      generateSecretString: { passwordLength: 32, excludePunctuation: true },
+    });
     const defaultUser = new elasticache.CfnUser(this, 'CacheDefaultUser', { engine: 'valkey', userId: `alm-${env}-default`, userName: 'default',
-      accessString: 'off -@all', noPasswordRequired: true });
+      accessString: 'off -@all', authenticationMode: { Type: 'password', Passwords: [defaultUserPw.secretValue.unsafeUnwrap()] } });
     const appUserId = `alm-${env}-app`;
     const appUser = new elasticache.CfnUser(this, 'CacheAppUser', { engine: 'valkey', userId: appUserId, userName: appUserId,
       accessString: 'on ~* +@all -@dangerous', authenticationMode: { Type: 'iam' } });

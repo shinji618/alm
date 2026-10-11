@@ -28,6 +28,7 @@ const RULES: Rule[] = [
   ['Auth', 'AwsSolutions-IAM5', 'UserPoolDomain CloudFront 이름 조회 사용자 지정 리소스(DescribeUserPoolDomain은 리소스 수준 권한 없음)'],
 
   // ---- App ----
+  ['App', 'AwsSolutions-SMG4', 'Valkey default 사용자 비밀번호: 사용자는 off -@all로 꺼져 있어 접속에 쓰이지 않는 자리 값. 교체 대상 아님'],
   ['App', 'AwsSolutions-ECS2', '환경 변수는 비밀이 아닌 구성값(엔드포인트·이름·ID)만. 비밀(쿠키 키·클라이언트 비밀)은 Secrets Manager secrets로 주입'],
   ['App', 'AwsSolutions-IAM5', [
     'ecr:GetAuthorizationToken·ssmmessages(ECS Exec, DEV만)·logs는 리소스 수준 권한이 없다.',
