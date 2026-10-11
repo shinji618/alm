@@ -44,6 +44,7 @@ export class SharedStack extends Stack {
       description: 'GitHub Actions image build/push (main, release tags)',
     });
     repo.grantPullPush(ci);
+    repo.grant(ci, 'ecr:DescribeImages');   // deploy.yml이 태그가 이미 있는지 확인(태그 불변이라 다시 올리면 실패)
     ecr.AuthorizationToken.grantRead(ci);
   }
 }
