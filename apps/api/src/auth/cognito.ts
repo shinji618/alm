@@ -54,7 +54,7 @@ export class Cognito {
 
   async exchangeCode(code: string, verifier: string): Promise<TokenSet> {
     const r = await this.post('/oauth2/token', { grant_type: 'authorization_code', code, redirect_uri: this.redirectUri, code_verifier: verifier });
-    if (!r.ok) throw new AlmError(400, 'ALM-E400', '로그인 코드가 만료되었거나 잘못되었습니다', { status: r.status, error: await errorOf(r) });
+    if (!r.ok) throw new AlmError(400, 'ALM-E100', '로그인 코드가 만료되었거나 잘못되었습니다', { status: r.status, error: await errorOf(r) });
     return (await r.json()) as TokenSet;
   }
 

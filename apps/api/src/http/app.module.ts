@@ -9,6 +9,7 @@ import { ProblemFilter } from './problem.filter';
 import { AuthController } from './auth.controller';
 import { MeController } from './me.controller';
 import { HealthController } from './health.controller';
+import { AdminController } from './admin.controller';
 import { CONFIG, COGNITO, DB, PRINCIPALS } from './tokens';
 
 @Module({})
@@ -16,7 +17,7 @@ export class AppModule {
   static create(deps: { cfg: Config; db: Db; cognito: Cognito; principals?: PrincipalCache }): DynamicModule {
     return {
       module: AppModule,
-      controllers: [HealthController, AuthController, MeController],
+      controllers: [HealthController, AuthController, MeController, AdminController],
       providers: [
         { provide: CONFIG, useValue: deps.cfg },
         { provide: DB, useValue: deps.db },

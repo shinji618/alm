@@ -47,7 +47,7 @@ export class AuthGuard implements CanActivate {
         return u ? loadPrincipal(c, u.id) : undefined;
       });
     });
-    if (!principal) throw E.unauthenticated('사용할 수 없는 사용자입니다');
+    if (!principal) throw E.loginDenied('사용할 수 없는 사용자입니다(미등록·비활성·유효한 역할 없음)');   // openapi patchUser: 비활성은 403 ALM-E405
     req.alm.principal = principal;
 
     if (!principal.permissions.has(perm)) {

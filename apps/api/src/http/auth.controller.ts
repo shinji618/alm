@@ -62,7 +62,7 @@ export class AuthController {
                  @Req() req: AlmRequest, @Res() res: Response) {
     const pk = open<PkceCookie>(this.cfg.cookieKeys, PKCE, req.cookies?.[PKCE]);
     this.clear(res, PKCE, 'lax');
-    if (error) throw new AlmError(400, 'ALM-E400', '로그인이 취소되었거나 IdP에서 거부되었습니다', { error });
+    if (error) throw new AlmError(400, 'ALM-E100', '로그인이 취소되었거나 IdP에서 거부되었습니다', { error });
     if (!pk || typeof state !== 'string' || pk.s !== state) throw E.badRequest('로그인 시간이 지났습니다. 다시 로그인하세요');
     if (typeof code !== 'string' || !code) throw E.badRequest('인가 코드가 없습니다');
 

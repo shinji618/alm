@@ -16,7 +16,7 @@ def tschema(t):
     base = {'string': {'type': 'string'}, 'int': {'type': 'integer'}, 'number': {'type': 'number'},
             'bool': {'type': 'boolean'}, 'date': {'type': 'string', 'format': 'date'},
             'datetime': {'type': 'string', 'format': 'date-time'}, 'uuid': {'type': 'string', 'format': 'uuid'},
-            'object': {'type': 'object', 'additionalProperties': True}}
+            'object': {'type': 'object', 'additionalProperties': True}, 'any': {}}
     if t in base: return dict(base[t])
     assert t in S, t
     return {'$ref': f'#/components/schemas/{t}'}

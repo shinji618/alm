@@ -6826,7 +6826,7 @@ paths:
       description: '관리 · 테이블: app_user
 
 
-        - SSO 첫 로그인 때 idp_subject를 연결한다. 이메일 중복 409.'
+        - SSO 첫 로그인 때 idp_subject를 연결한다. 이메일 중복 409 ALM-E321.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       responses:
@@ -6865,6 +6865,10 @@ paths:
       description: '관리 · 테이블: app_user
 
 
+        - 보낸 필드만 바꾼다. 이메일 중복 409 ALM-E321.
+
+        - 자기 자신은 비활성화할 수 없다(403 ALM-E403). 마지막 SYS_ADMIN을 비활성화하면 409 ALM-E319.
+
         - isActive=false면 60초 안에 모든 요청이 403 ALM-E405(사용자 상태 캐시).
 
         - email은 idp_subject가 아직 연결되지 않은 사용자만 바꿀 수 있다. 역할이 있는 미연결 사용자의 이메일을 바꾸면 역할을 모두 지운다(다른 계정에 역할이 넘어가는 것을 막음).
@@ -6888,8 +6892,12 @@ paths:
                 $ref: '#/components/schemas/UserRow'
         '400':
           $ref: '#/components/responses/E400'
+        '403':
+          $ref: '#/components/responses/E403'
         '404':
           $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
         '429':
           $ref: '#/components/responses/E429'
         '500':
@@ -7262,7 +7270,7 @@ paths:
       description: '관리 · 테이블: setting, audit_log
 
 
-        - 키별 값 형식 검사.'
+        - 키별 값 형식 검사(SettingRow.value 설명). 모르는 키는 400 ALM-E100.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       - name: key
@@ -14501,9 +14509,7 @@ components:
           maxLength: 60
           description: '키 (예: license.over_threshold, asset.capitalization_threshold, sap.posting_blackout)'
         value:
-          type: object
-          additionalProperties: true
-          description: 값
+          description: '값(JSON). 키별 형식: license.over_threshold 숫자(0~1), asset.capitalization_threshold 숫자(0 이상), sap.posting_blackout {from, to}(일시, 비우면 끔), pda.device_approval 참·거짓'
         description:
           type: string
           description: 설명

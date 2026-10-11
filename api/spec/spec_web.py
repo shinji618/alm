@@ -1298,7 +1298,7 @@ items | [CodeGroup] | Y | 그룹
 ''')
 schema('SettingRow', '설정', '''
 key | string(60) | Y | 키 (예: license.over_threshold, asset.capitalization_threshold, sap.posting_blackout)
-value | object | Y | 값
+value | any | Y | 값(JSON). 키별 형식: license.over_threshold 숫자(0~1), asset.capitalization_threshold 숫자(0 이상), sap.posting_blackout {from, to}(일시, 비우면 끔), pda.device_approval 참·거짓
 description | string | N | 설명
 ''')
 schema('SettingList', '설정 목록', '''
@@ -1318,8 +1318,8 @@ correlationId | string | N | 추적 ID
 lst('AuditRow', '감사 로그')
 MT = ('type','path','enum(sites,rooms,categories,models,vendors,printers)','Y','마스터 종류')
 W('관리','GET','/admin/users','listUsers','사용자 목록',SA,None,'UserRowList','200','app_user, user_role','관리',[ '-'],params=[('q','query','string','N','이름·이메일'),('role','query','string','N','역할')]+PG)
-W('관리','POST','/admin/users','createUser','사용자 등록',SA,'UserInput','UserRow','201, 400, 409','app_user','관리',[ 'SSO 첫 로그인 때 idp_subject를 연결한다. 이메일 중복 409.'],ok='201')
-W('관리','PATCH','/admin/users/{id}','patchUser','사용자 수정',SA,'UserInput','UserRow','200, 400, 404','app_user','관리',[ 'isActive=false면 60초 안에 모든 요청이 403 ALM-E405(사용자 상태 캐시).', 'email은 idp_subject가 아직 연결되지 않은 사용자만 바꿀 수 있다. 역할이 있는 미연결 사용자의 이메일을 바꾸면 역할을 모두 지운다(다른 계정에 역할이 넘어가는 것을 막음).', '연결된 사용자의 idp_subject 해제·재연결은 security_event로 남긴다.'],params=CI)
+W('관리','POST','/admin/users','createUser','사용자 등록',SA,'UserInput','UserRow','201, 400, 409','app_user','관리',[ 'SSO 첫 로그인 때 idp_subject를 연결한다. 이메일 중복 409 ALM-E321.'],ok='201')
+W('관리','PATCH','/admin/users/{id}','patchUser','사용자 수정',SA,'UserInput','UserRow','200, 400, 403, 404, 409','app_user','관리',[ '보낸 필드만 바꾼다. 이메일 중복 409 ALM-E321.', '자기 자신은 비활성화할 수 없다(403 ALM-E403). 마지막 SYS_ADMIN을 비활성화하면 409 ALM-E319.', 'isActive=false면 60초 안에 모든 요청이 403 ALM-E405(사용자 상태 캐시).', 'email은 idp_subject가 아직 연결되지 않은 사용자만 바꿀 수 있다. 역할이 있는 미연결 사용자의 이메일을 바꾸면 역할을 모두 지운다(다른 계정에 역할이 넘어가는 것을 막음).', '연결된 사용자의 idp_subject 해제·재연결은 security_event로 남긴다.'],params=CI)
 W('관리','PUT','/admin/users/{id}/roles','putUserRoles','역할·범위 지정',SA,'RoleAssign','UserRow','200, 400, 403, 404, 409','user_role, audit_log','관리',
   ['전체 교체. 자기 자신의 역할은 바꿀 수 없다(403 ALM-E403, 다른 시스템 관리자가 처리).', '마지막 SYS_ADMIN을 빼면 409 ALM-E319.', 'AUDITOR는 다른 역할과 함께 줄 수 없다(400).',
    'DEPT_MANAGER는 costCenterCode, AUDITOR는 validUntil(최대 1년)이 필수(400).', '직무 충돌 조합(09 설계서 5.2)은 저장하되 응답 헤더 X-SoD-Warning과 /admin/sod-conflicts에 표시.'],params=CI)
@@ -1329,7 +1329,7 @@ W('관리','PATCH','/admin/masters/{type}/{id}','patchMaster','마스터 수정'
 W('관리','GET','/admin/codes','listCodes','공통 코드',SA,None,'CodeGroupList','200','code','관리',[ '-'])
 W('관리','PUT','/admin/codes/{group}','putCodeGroup','코드 그룹 저장',SA,'CodeGroup','CodeGroup','200, 400','code','관리',[ '그룹 전체 교체. 쓰이는 코드는 지우지 않고 isActive=false.'],params=[('group','path','string(30)','Y','그룹')])
 W('관리','GET','/admin/settings','listSettings',  '설정',SA,None,'SettingList','200','setting','관리',[ '-'])
-W('관리','PUT','/admin/settings/{key}','putSetting','설정 저장',SA,'SettingRow','SettingRow','200, 400','setting, audit_log','관리',[ '키별 값 형식 검사.'],params=[('key','path','string(60)','Y','키')])
+W('관리','PUT','/admin/settings/{key}','putSetting','설정 저장',SA,'SettingRow','SettingRow','200, 400','setting, audit_log','관리',[ '키별 값 형식 검사(SettingRow.value 설명). 모르는 키는 400 ALM-E100.'],params=[('key','path','string(60)','Y','키')])
 W('관리','GET','/admin/audit-logs','listAuditLogs','감사 로그 조회','SYS_ADMIN, ASSET_ACCOUNTANT',None,'AuditRowList','200','audit_log','관리',[ '10년 보관. 13개월 지난 기간은 보관 저장소에서 비동기 조회(내보내기로 안내).'],
   params=[('tableName','query','string','N','테이블'),('rowId','query','uuid','N','행'),('actorId','query','uuid','N','처리자'),('from','query','date','N','시작'),('to','query','date','N','종료')]+PG)
 

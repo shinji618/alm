@@ -56,4 +56,6 @@ export class PrincipalCache {
     return p;
   }
   clear(key?: string) { if (key) this.m.delete(key); else this.m.clear(); }
+  // 관리 화면에서 사용자·역할을 바꾸면 이 인스턴스의 캐시는 바로 지운다(다른 api 작업은 60초 안에 반영)
+  clearUser(userId: string) { for (const [k, v] of this.m) if (v.p?.userId === userId) this.m.delete(k); }
 }
