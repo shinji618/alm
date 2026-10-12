@@ -158,7 +158,7 @@ export class ObservabilityStack extends Stack {
       })),
     });
 
-    // ---- 외형 감시(9.4): 5분마다 /api/v1/health 와 로그인 화면 ----
+    // ---- 외형 감시(9.4): 5분마다 /api/v1/health/ready(DB까지) 와 로그인 화면 ----
     const appUrl = `https://${appDomain(cfg)}`;
     const canaryBucket = new s3.Bucket(this, 'CanaryArtifacts', {
       bucketName: `alm-${env}-canary-${this.account}`, enforceSSL: true, encryption: s3.BucketEncryption.S3_MANAGED,
@@ -240,7 +240,7 @@ const synthetics = require('Synthetics');
 exports.handler = async () => {
   const base = process.env.APP_URL;
   const page = await synthetics.getPage();
-  for (const [step, path] of [['health', '/api/v1/health'], ['login', '/login']]) {
+  for (const [step, path] of [['health', '/api/v1/health/ready'], ['login', '/login']]) {
     await synthetics.executeStep(step, async () => {
       const resp = await page.goto(base + path, { waitUntil: 'domcontentloaded', timeout: 30000 });
       if (!resp || resp.status() !== 200) throw new Error(step + ' ' + (resp && resp.status()));

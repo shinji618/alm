@@ -81,19 +81,19 @@ status() {
     --attribute-names ApproximateNumberOfMessages --query 'Attributes.ApproximateNumberOfMessages' --output text)건"
 
   h "3. pgaudit → Firehose → 감사 버킷 (최근 3일)"
-  local lg="/aws/rds/instance/${DB}/postgresql" n
-  n=$(aws logs filter-log-events --log-group-name "$lg" --filter-pattern '"AUDIT:"' --start-time "$(ms_ago 259200)" \
-    --max-items 1000 --query 'length(events)' --output text 2>/dev/null || echo 0)
-  echo "  RDS 로그의 AUDIT 줄: ${n}건(최대 1000까지 셈)"
-  aws logs filter-log-events --log-group-name "$lg" --filter-pattern '"AUDIT:"' --start-time "$(ms_ago 259200)" --max-items 1 \
-    --query 'events[0].message' --output text 2>/dev/null | cut -c1-160 | sed 's/^/  예: /'
-  echo "  구독 필터: $(aws logs describe-subscription-filters --log-group-name "$lg" --query 'subscriptionFilters[0].[filterName,filterPattern]' --output text)"
+  local lg="/aws/rds/instance/${DB}/postgresql" fname
+  # 로그 검색(filter-log-events)은 로그가 많으면 오래 걸려 지표로 본다: 구독 필터가 Firehose로 넘긴 건수
+  fname=$(aws logs describe-subscription-filters --log-group-name "$lg" --query 'subscriptionFilters[0].filterName' --output text 2>/dev/null || echo None)
+  echo "  구독 필터: ${fname} ($(aws logs describe-subscription-filters --log-group-name "$lg" --query 'subscriptionFilters[0].filterPattern' --output text 2>/dev/null || true))"
+  [[ "$fname" != None ]] && echo "  구독 필터 전달(ForwardedLogEvents): $(aws cloudwatch get-metric-statistics --namespace AWS/Logs \
+    --metric-name ForwardedLogEvents --dimensions Name=LogGroupName,Value="$lg" Name=DestinationType,Value=Firehose Name=FilterName,Value="$fname" \
+    --start-time "$(iso_ago 259200)" --end-time "$(now_iso)" --period 86400 --statistics Sum --query 'sum(Datapoints[].Sum)' --output text)건"
   echo "  Firehose 상태: $(aws firehose describe-delivery-stream --delivery-stream-name "alm-${ENV}-pgaudit" --query 'DeliveryStreamDescription.DeliveryStreamStatus' --output text)"
   for m in IncomingRecords DeliveryToS3.Records DeliveryToS3.Success; do
     local st=Sum; [[ $m == DeliveryToS3.Success ]] && st=Average
     printf '  %-22s %s\n' "$m" "$(aws cloudwatch get-metric-statistics --namespace AWS/Firehose --metric-name "$m" \
       --dimensions Name=DeliveryStreamName,Value="alm-${ENV}-pgaudit" --start-time "$(iso_ago 259200)" --end-time "$(now_iso)" \
-      --period 259200 --statistics "$st" --query "Datapoints[0].${st}" --output text)"
+      --period 86400 --statistics "$st" --query "Datapoints[].${st}" --output text | tr '\t' ' ')"
   done
   echo "  Firehose 오류 로그(3일): $(aws logs filter-log-events --log-group-name "/alm/${ENV}/firehose-pgaudit" --start-time "$(ms_ago 259200)" \
     --max-items 100 --query 'length(events)' --output text 2>/dev/null || echo 0)건"
