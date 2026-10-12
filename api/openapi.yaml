@@ -14509,7 +14509,8 @@ components:
           maxLength: 60
           description: '키 (예: license.over_threshold, asset.capitalization_threshold, sap.posting_blackout)'
         value:
-          description: '값(JSON). 키별 형식: license.over_threshold 숫자(0~1), asset.capitalization_threshold 숫자(0 이상), sap.posting_blackout {from, to}(일시, 비우면 끔), pda.device_approval 참·거짓'
+          description: '값(JSON). 키별 형식: license.over_threshold 숫자(0~1), asset.capitalization_threshold 숫자(0 이상), sap.posting_blackout {from, to}(일시, 비우면 끔), pda.device_approval 참·거짓, pda.min_app_version
+            문자열(x.y.z), pda.offline_hours 정수(1~24)'
         description:
           type: string
           description: 설명

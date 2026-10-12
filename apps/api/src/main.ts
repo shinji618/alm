@@ -22,6 +22,7 @@ export async function createApi(deps: Parameters<typeof AppModule.create>[0]) {
   app.use(contextMiddleware);
   app.use(cookieParser());
   app.useBodyParser('json', { limit: '1mb' });
+  app.useBodyParser('urlencoded', { extended: false, limit: '10kb' });   // /oauth/token(SAP, x-www-form-urlencoded)
   app.enableShutdownHooks();
   return app;
 }

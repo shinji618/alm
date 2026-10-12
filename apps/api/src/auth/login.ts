@@ -11,19 +11,20 @@ export interface IdentityIn {
   name?: string;
   idpType: 'SAML' | 'OIDC' | string;
 }
-export interface RequestMeta { clientId: string; ip?: string; userAgent?: string; correlationId: string }
+export interface RequestMeta { clientId: string; ip?: string; userAgent?: string; correlationId: string; channel?: 'WEB' | 'PDA' }
 export type LoginResult =
   | { ok: true; principal: Principal; created: boolean; linked: boolean }
   | { ok: false; reason: 'NO_USER' | 'INACTIVE' | 'NO_VALID_ROLE' | 'EMAIL_UNVERIFIED' };
 
 export async function securityEvent(c: PoolClient, e: {
-  tenantId: string; type: 'LOGIN' | 'LOGIN_DENIED' | 'LOGOUT' | 'ACCESS_DENIED'; actorId?: string; meta: Partial<RequestMeta>;
+  tenantId: string; type: 'LOGIN' | 'LOGIN_DENIED' | 'LOGOUT' | 'ACCESS_DENIED' | 'DEVICE_BLOCKED' | 'SAP_AUTH_FAILED'; actorId?: string; meta: Partial<RequestMeta>;
+  actorType?: 'USER' | 'SAP' | 'PDA';
   target?: string; detail?: Record<string, unknown>; channel?: 'WEB' | 'PDA' | 'SAP';
 }) {
   await c.query(
     `INSERT INTO security_event (id, tenant_id, event_type, actor_id, actor_type, channel, client_id, ip_address, user_agent, target, detail, correlation_id)
-     VALUES ($1, $2, $3, $4, 'USER', $5, $6, $7, $8, $9, $10, $11)`,
-    [randomUUID(), e.tenantId, e.type, e.actorId ?? null, e.channel ?? 'WEB', e.meta.clientId ?? null, validIp(e.meta.ip),
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    [randomUUID(), e.tenantId, e.type, e.actorId ?? null, e.actorType ?? 'USER', e.channel ?? 'WEB', e.meta.clientId ?? null, validIp(e.meta.ip),
       e.meta.userAgent?.slice(0, 300) ?? null, e.target ?? null, e.detail ? JSON.stringify(e.detail) : null, validUuid(e.meta.correlationId)],
   );
 }
@@ -32,7 +33,7 @@ const validUuid = (s?: string) => (s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0
 const validIp = (s?: string) => (s && /^[0-9a-f.:]+$/i.test(s) ? s.replace(/^::ffff:/, '') : null);
 
 export async function completeLogin(db: Db, t: TenantMatch, id: IdentityIn, meta: RequestMeta): Promise<LoginResult> {
-  return db.withTx({ tenantId: t.tenant_id, actorType: 'USER', correlationId: meta.correlationId, clientIp: validIp(meta.ip) ?? undefined }, async (c) => {
+  return db.withTx({ tenantId: t.tenant_id, actorType: meta.channel === 'PDA' ? 'PDA' : 'USER', correlationId: meta.correlationId, clientIp: validIp(meta.ip) ?? undefined }, async (c) => {
     let created = false, linked = false;
     let user = (await c.query('SELECT id, is_active FROM app_user WHERE idp_subject = $1', [t.idp_subject])).rows[0];
     if (!user && id.email) {
@@ -56,13 +57,13 @@ export async function completeLogin(db: Db, t: TenantMatch, id: IdentityIn, meta
         WHERE id = $1`, [user.id, t.idp_subject, id.email ?? null, id.name ?? null]);
     const principal = await loadPrincipal(c, user.id);
     if (!principal) return deny(c, t, meta, 'NO_VALID_ROLE', id, user.id);
-    await securityEvent(c, { tenantId: t.tenant_id, type: 'LOGIN', actorId: user.id, meta, detail: { created, linked, idp: id.idpType } });
+    await securityEvent(c, { tenantId: t.tenant_id, type: 'LOGIN', actorId: user.id, meta, channel: meta.channel, detail: { created, linked, idp: id.idpType } });
     return { ok: true, principal, created, linked } as const;
   });
 }
 
 async function deny(c: PoolClient, t: TenantMatch, meta: RequestMeta, reason: Extract<LoginResult, { ok: false }>['reason'], id: IdentityIn, userId?: string) {
-  await securityEvent(c, { tenantId: t.tenant_id, type: 'LOGIN_DENIED', actorId: userId, meta,
+  await securityEvent(c, { tenantId: t.tenant_id, type: 'LOGIN_DENIED', actorId: userId, meta, channel: meta.channel,
     target: id.email ? id.email.replace(/^(.).*@/, '$1***@') : undefined, detail: { reason, idp: id.idpType } });
   return { ok: false, reason } as const;
 }

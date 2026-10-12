@@ -66,6 +66,8 @@ export const SETTINGS: Record<string, { description: string; check: Validator }>
       if (!isoTime(o.from) || !isoTime(o.to)) return 'from·to는 ISO 일시(예: 2026-10-30T18:00:00-04:00)';
       return Date.parse(o.from as string) < Date.parse(o.to as string) ? undefined : 'from이 to보다 앞서야 합니다';
     } },
+  'pda.min_app_version': { description: 'PDA 앱 최소 버전(낮으면 업데이트 안내)', check: (v) => (typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v) ? undefined : '버전 x.y.z') },
+  'pda.offline_hours': { description: 'PDA 오프라인 허용 시간(기본 24, 리프레시 토큰 이하)', check: num(1, 24) },
   'pda.device_approval': { description: '처음 보는 PDA를 관리자 승인 전까지 막음(파일럿 false)', check: (v) => (typeof v === 'boolean' ? undefined : '참·거짓') },
 };
 

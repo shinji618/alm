@@ -1298,7 +1298,7 @@ items | [CodeGroup] | Y | 그룹
 ''')
 schema('SettingRow', '설정', '''
 key | string(60) | Y | 키 (예: license.over_threshold, asset.capitalization_threshold, sap.posting_blackout)
-value | any | Y | 값(JSON). 키별 형식: license.over_threshold 숫자(0~1), asset.capitalization_threshold 숫자(0 이상), sap.posting_blackout {from, to}(일시, 비우면 끔), pda.device_approval 참·거짓
+value | any | Y | 값(JSON). 키별 형식: license.over_threshold 숫자(0~1), asset.capitalization_threshold 숫자(0 이상), sap.posting_blackout {from, to}(일시, 비우면 끔), pda.device_approval 참·거짓, pda.min_app_version 문자열(x.y.z), pda.offline_hours 정수(1~24)
 description | string | N | 설명
 ''')
 schema('SettingList', '설정 목록', '''

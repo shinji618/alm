@@ -42,12 +42,12 @@ test('권한: 암묵 EMPLOYEE·감사인 배타·ALL 우선', () => {
   assert.equal(cat.permissions.length, 39);
 });
 
-// PDA·SAP 작업은 openapi x-permission(채널 전용)으로 판정 — 3.4 2차에서 가드에 연결. 웹 작업은 모두 카탈로그에 있어야 한다
-test('권한 카탈로그가 openapi의 웹 operationId를 모두 덮는다', () => {
+test('권한 카탈로그가 openapi의 모든 operationId(웹·PDA·SAP)를 덮는다', () => {
   const yaml = readFileSync(join(__dirname, '..', '..', '..', '..', 'api', 'openapi.yaml'), 'utf8');
   const ops = [...yaml.matchAll(/operationId:\s*(\w+)/g)].map((m) => m[1]);
   assert.ok(ops.length > 100);
-  assert.deepEqual(ops.filter((o) => !(o in cat.operations) && !/^(pda|sap)[A-Z]/.test(o)), []);
+  assert.deepEqual(ops.filter((o) => !(o in cat.operations)), []);
+  assert.equal(cat.operations.sapToken, null); assert.equal(cat.operations.sapPing, 'sap.api'); assert.equal(cat.operations.pdaGetMe, 'count.scan');
 });
 
 test('returnTo·이메일 도메인·채널', () => {

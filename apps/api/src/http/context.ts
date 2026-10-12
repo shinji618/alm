@@ -5,8 +5,15 @@ import { createParamDecorator, ExecutionContext, SetMetadata } from '@nestjs/com
 import type { Principal } from '../auth/principal';
 import type { AccessClaims } from '../auth/cognito';
 import type { TxContext } from '../db/pool';
+import type { SapConn } from '../auth/sap';
 
-export interface AlmContext { correlationId: string; ip?: string; userAgent?: string; claims?: AccessClaims; principal?: Principal }
+export interface AlmContext {
+  correlationId: string; ip?: string; userAgent?: string; claims?: AccessClaims; principal?: Principal;
+  channel?: 'WEB' | 'PDA' | 'SAP';
+  sap?: SapConn;                                      // SAP 채널: 연결(테넌트·회사코드)
+  device?: { id?: string; serial: string };           // PDA 채널: X-Device-Id
+  loginRecorded?: boolean;                            // 이 요청에서 이미 LOGIN을 남김(PDA 첫 로그인)
+}
 export type AlmRequest = Request & { alm: AlmContext };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -36,7 +43,8 @@ export const Public = () => SetMetadata(PUBLIC, true);
 export const Ctx = createParamDecorator((_: unknown, ctx: ExecutionContext) => ctx.switchToHttp().getRequest<AlmRequest>().alm);
 
 export function txOf(c: AlmContext): TxContext {
+  if (c.sap) return { tenantId: c.sap.tenantId, actorType: 'SAP', correlationId: c.correlationId, clientIp: c.ip };
   if (!c.principal) throw new Error('인증 주체 없음');
-  return { tenantId: c.principal.tenantId, userId: c.principal.userId, actorType: c.claims?.client_id && c.claims.client_id === process.env.COGNITO_PDA_CLIENT_ID ? 'PDA' : 'USER',
+  return { tenantId: c.principal.tenantId, userId: c.principal.userId, actorType: c.channel === 'PDA' ? 'PDA' : 'USER',
     correlationId: c.correlationId, clientIp: c.ip };
 }

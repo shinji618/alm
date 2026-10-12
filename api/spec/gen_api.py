@@ -198,5 +198,5 @@ if __name__ == '__main__':
     secs['errors'] = '\n'.join(err)
     secs['problem'] = md_fields('Problem') + '\n\n' + md_fields('FieldError')
     json.dump(secs, open('out/md_parts.json', 'w'), ensure_ascii=False, indent=1)
-    json.dump(perm.catalog(), open('out/permissions.json', 'w'), ensure_ascii=False, indent=1)
+    json.dump(perm.catalog(E), open('out/permissions.json', 'w'), ensure_ascii=False, indent=1)
     print(len(E), 'endpoints', len(S), 'schemas')

@@ -208,10 +208,12 @@ def apply(E):
             probs.append('perm granted to nobody: ' + p)
     return probs
 
-def catalog():
-    """Machine-readable catalog for backend/frontend (packages/shared)."""
+def catalog(E=()):
+    """Machine-readable catalog for backend/frontend (packages/shared). PDA·SAP 작업도 operations에 넣는다(백엔드 가드가 같은 표로 판정)."""
+    ops = dict(OPS)
+    ops.update({e['op']: e['perm'] for e in E if e['group'] in ('pda', 'sap')})
     return {'roles': [{'code': r, 'name': n, 'summary': d} for r, n, d in ROLES],
             'permissions': [{'key': k, 'area': a, 'description': d} for k, (a, d) in PERMS.items()],
-            'grants': GRANTS, 'operations': OPS,
+            'grants': GRANTS, 'operations': ops,
             'implicit': {'role': IMPLICIT_ROLE, 'excludedIf': IMPLICIT_EXCLUDED_IF}, 'exclusiveRoles': EXCLUSIVE_ROLES,
             'paramPermissions': [{'operation': o, 'when': c, 'permission': p} for (o, c), p in PARAM_PERMS.items()]}
