@@ -75,6 +75,7 @@ const common = {
 export const ENVS: Record<EnvName, EnvConfig> = {
   dev: {
     ...common, name: 'dev', account: ORG.accounts.dev, zoneName: 'alm-dev.bsgapps.com',
+    sapEgressCidrs: ['108.79.59.91/32'],     // BSG SAP 개발기(bsgs4hana) 출구 IP — SM59 checkip 확인 2026-10-12
     vpcCidr: '10.42.0.0/16', natGateways: 1, interfaceEndpoints: false, flowLogs: false,
     db: { instanceClass: 't4g.medium', multiAz: false, allocatedGb: 20, maxAllocatedGb: 100, backupDays: 1,
           performanceInsights: false, monitoringSeconds: 0, deletionProtection: false },

@@ -12,6 +12,10 @@ export interface SeedInput {
   tenant: { code: string; name: string; idpType: 'SAML' | 'OIDC'; jitProvision?: boolean; timeZone?: string };
   domains: string[];
   users?: { email: string; displayName: string; locale?: 'en' | 'ko'; roles: string[]; validUntil?: string }[];
+  // 회사코드: 원래 SAP 마스터 수신(IF-MD-01)으로 들어온다. 그 전 시험용으로만 넣는다(있으면 이름만 갱신)
+  companies?: { code: string; name: string }[];
+  // SAP 연결: client_id는 cognito-admin createSapClient로 발급한 값(비밀은 넣지 않음). 연결 관리 화면(7.x) 전까지 사용
+  sapConnections?: { systemId: string; companyCode: string; clientId: string; allowedCidrs?: string[] }[];
 }
 
 export function parseSeed(raw: string | undefined): SeedInput {
@@ -26,6 +30,15 @@ export function parseSeed(raw: string | undefined): SeedInput {
     if (!/^[^@\s]+@[^@\s]+$/.test(u.email)) throw new Error(`users.email: ${u.email}`);
     for (const r of u.roles) if (!(ROLES as readonly string[]).includes(r)) throw new Error(`users.roles: ${r}`);
     if (u.roles.includes('AUDITOR') && !u.validUntil) throw new Error('AUDITOR는 validUntil이 필요하다');
+  }
+  for (const co of s.companies ?? []) {
+    if (!/^[A-Z0-9]{1,4}$/.test(co.code)) throw new Error(`companies.code: ${co.code}는 SAP 회사코드(대문자·숫자 1~4자)`);
+    if (!co.name || co.name.length > 25) throw new Error('companies.name: 1~25자');
+  }
+  for (const c of s.sapConnections ?? []) {
+    if (!/^[A-Z0-9]{3}-\d{3}$/.test(c.systemId)) throw new Error(`sapConnections.systemId: ${c.systemId}는 SID-클라이언트(예: S4D-100)`);
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(c.clientId)) throw new Error('sapConnections.clientId: Cognito 앱 클라이언트 ID');
+    for (const cidr of c.allowedCidrs ?? []) if (!/^[0-9a-fA-F.:]+(\/\d{1,3})?$/.test(cidr)) throw new Error(`sapConnections.allowedCidrs: ${cidr}`);
   }
   return s;
 }
@@ -64,8 +77,24 @@ export async function seed(c: Client, s: SeedInput): Promise<{ tenantId: string;
           [randomUUID(), tenantId, userId, role, u.validUntil ?? null]);
       }
     }
+    for (const co of s.companies ?? []) {
+      await c.query(
+        `INSERT INTO company (id, tenant_id, company_code, name) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (tenant_id, company_code) DO UPDATE SET name = EXCLUDED.name, updated_at = now()`,
+        [randomUUID(), tenantId, co.code, co.name]);
+    }
+    for (const sc of s.sapConnections ?? []) {
+      const co = (await c.query('SELECT id FROM company WHERE tenant_id = $1 AND company_code = $2', [tenantId, sc.companyCode])).rows[0];
+      if (!co) throw new Error(`sapConnections: 회사코드 ${sc.companyCode}가 없다(companies에 함께 넣는다)`);
+      await c.query(
+        `INSERT INTO sap_connection (id, tenant_id, system_id, company_id, oauth_client_id, allowed_cidrs) VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (tenant_id, system_id, company_id) DO UPDATE SET oauth_client_id = EXCLUDED.oauth_client_id,
+           allowed_cidrs = EXCLUDED.allowed_cidrs, is_active = true, updated_at = now()`,
+        [randomUUID(), tenantId, sc.systemId, co.id, sc.clientId, JSON.stringify(sc.allowedCidrs ?? [])]);
+    }
     await c.query('COMMIT');
-    log.info('seed done', { tenant: t.code, tenantId, domains: s.domains, users: (s.users ?? []).map((u) => u.email.replace(/^(.).*@/, '$1***@')) });
+    log.info('seed done', { tenant: t.code, tenantId, domains: s.domains, users: (s.users ?? []).map((u) => u.email.replace(/^(.).*@/, '$1***@')),
+      companies: (s.companies ?? []).map((x) => x.code), sapConnections: (s.sapConnections ?? []).map((x) => `${x.systemId}/${x.companyCode}`) });
     return { tenantId, users: s.users?.length ?? 0 };
   } catch (e) {
     await c.query('ROLLBACK').catch(() => undefined);

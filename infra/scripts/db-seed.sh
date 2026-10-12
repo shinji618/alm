@@ -4,6 +4,9 @@
 #
 #   bash db-seed.sh dev '{"tenant":{"code":"TEST","name":"Okta 시험","idpType":"OIDC"},"domains":["example.com"],
 #                         "users":[{"email":"me@example.com","displayName":"홍길동","roles":["SYS_ADMIN","ASSET_MANAGER"]}]}'
+# SAP 연결(시험용, 7.x 연결 관리 화면 전까지):
+#   ... ,"companies":[{"code":"1000","name":"BSG US"}],
+#   "sapConnections":[{"systemId":"S4D-100","companyCode":"1000","clientId":"<createSapClient의 clientId>","allowedCidrs":["108.79.59.91/32"]}]
 set -euo pipefail
 ENV=${1:?dev|qa|prd}; JSON=${2:?seed JSON}
 case "$ENV" in

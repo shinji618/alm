@@ -73,6 +73,10 @@ test('seed 입력 검증', () => {
   assert.throws(() => parseSeed('{"tenant":{"code":"T","name":"t","idpType":"OIDC"},"domains":["Example.com"]}'));
   assert.throws(() => parseSeed('{"tenant":{"code":"T","name":"t","idpType":"OIDC"},"domains":["e.com"],"users":[{"email":"a@e.com","displayName":"A","roles":["AUDITOR"]}]}'));
   assert.throws(() => parseSeed(undefined));
+  const base = '"tenant":{"code":"T","name":"t","idpType":"OIDC"},"domains":["e.com"]';
+  assert.throws(() => parseSeed(`{${base},"sapConnections":[{"systemId":"S4D100","companyCode":"1000","clientId":"abc"}]}`), /systemId/);
+  assert.throws(() => parseSeed(`{${base},"companies":[{"code":"10000","name":"x"}]}`), /companies.code/);
+  assert.equal(parseSeed(`{${base},"companies":[{"code":"1000","name":"BSG"}],"sapConnections":[{"systemId":"S4D-100","companyCode":"1000","clientId":"abc","allowedCidrs":["1.2.3.4/32"]}]}`).sapConnections?.length, 1);
 });
 
 test('작업 큐: 처리기 없는 유형·깨진 메시지는 지우고, 처리기 오류는 남긴다', async () => {

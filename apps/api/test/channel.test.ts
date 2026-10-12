@@ -191,3 +191,17 @@ test('SAP API: /sap/ping, 범위·연결·시스템 ID·회사코드·허용 IP,
   // CloudFront가 붙인 접속 IP를 쓴다
   assert.equal((await call('/sap/ping', { auth: tok('sapclient2', 'sapclient2', SAP), headers: { 'cloudfront-viewer-address': '10.9.8.7:51234' } })).status, 200);
 });
+
+test('seed: 회사코드·SAP 연결 등록(멱등) → auth_sap_client로 조회', { skip }, async () => {
+  const { sapConnection } = await import('../src/auth/sap');
+  const input = { tenant: { code: 'CHN', name: 'Channel test', idpType: 'OIDC' as const }, domains: ['chan.test'],
+    companies: [{ code: '1000', name: 'BSG US' }, { code: '2000', name: 'BSG CA' }],
+    sapConnections: [{ systemId: 'S4D-100', companyCode: '2000', clientId: 'sapclient3', allowedCidrs: ['108.79.59.91/32'] }] };
+  await seed(owner, input);
+  await seed(owner, { ...input, sapConnections: [{ ...input.sapConnections[0], clientId: 'sapclient3b' }] });
+  const c = await sapConnection(app, 'sapclient3b');
+  assert.ok(c);
+  assert.deepEqual([c!.systemId, c!.companyCode, c!.tenantCode, c!.allowedCidrs], ['S4D-100', '2000', 'CHN', ['108.79.59.91/32']]);
+  assert.equal(await sapConnection(app, 'sapclient3'), undefined, '같은 시스템·회사코드는 client_id 교체');
+  await assert.rejects(seed(owner, { ...input, sapConnections: [{ systemId: 'S4D-100', companyCode: '9999', clientId: 'x' }] }), /9999/);
+});
