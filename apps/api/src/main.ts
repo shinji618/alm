@@ -36,6 +36,7 @@ async function main(role: string) {
   switch (role) {
     case 'api': {
       const db = new Db(createPool(cfg));
+      if (!cfg.cache && process.env.CACHE_ENDPOINT) log.warn('CACHE_USER·CACHE_NAME 없음: 호출 제한을 작업 메모리로 센다');
       const limiter = new SharedLimiter(cfg.cache ? await connectCounterStore(cfg.cache, cfg.region) : new MemoryCounterStore());
       const files = cfg.filesBucket ? await s3FileStore(cfg.filesBucket, cfg.region) : undefined;
       const app = await createApi({ cfg, db, cognito: new Cognito(cfg), limiter, files });

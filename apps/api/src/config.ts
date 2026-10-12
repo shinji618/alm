@@ -56,7 +56,10 @@ export function loadConfig(role: string): Config {
     auditBucket: opt('AUDIT_BUCKET'),
     filesBucket: opt('FILES_BUCKET'),
     filesScanRequired: process.env.FILES_SCAN === 'required',
-    cache: opt('CACHE_ENDPOINT') ? { endpoint: req('CACHE_ENDPOINT'), user: req('CACHE_USER'), name: req('CACHE_NAME') } : undefined,
+    // 역할별 부가 설정은 없어도 시작한다(migrate는 배포 첫 단계라 이전 작업 정의의 환경 변수로 새 이미지를 돌린다).
+    // 셋 중 하나라도 없으면 작업 메모리로 센다
+    cache: opt('CACHE_ENDPOINT') && opt('CACHE_USER') && opt('CACHE_NAME')
+      ? { endpoint: req('CACHE_ENDPOINT'), user: req('CACHE_USER'), name: req('CACHE_NAME') } : undefined,
     mail: opt('MAIL_FROM') ? { from: req('MAIL_FROM'), configSet: opt('SES_CONFIG_SET'), eventsQueueUrl: opt('SES_EVENTS_QUEUE_URL') } : undefined,
   };
 }

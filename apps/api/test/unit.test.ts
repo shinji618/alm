@@ -9,6 +9,7 @@ import { stripTx } from '../src/ops/migrate';
 import { parseSeed } from '../src/ops/seed';
 import { Worker, parseJob } from '../src/worker/worker';
 import { channelOfPath } from '../src/http/auth.guard';
+import { loadConfig } from '../src/config';
 
 const k1 = Buffer.alloc(32, 1), k2 = Buffer.alloc(32, 2);
 const cat = catalog(join(__dirname, '..', '..', '..', '..', 'api', 'permissions.json'));
@@ -98,4 +99,17 @@ test('작업 큐: 처리기 없는 유형·깨진 메시지는 지우고, 처리
   assert.equal(await w.pollOnce(0), 3);
   assert.deepEqual(deleted.sort(), ['r1', 'r2', 'r4']);
   assert.deepEqual(ran, ['ok']);
+});
+
+test('설정: 이전 작업 정의(CACHE_NAME 없음)로 새 이미지를 돌려도 migrate가 시작한다', () => {
+  const keep = { ...process.env };
+  try {
+    Object.assign(process.env, { DB_HOST: 'h', DB_MASTER_PASSWORD: 'x', CACHE_ENDPOINT: 'c.cache.amazonaws.com', CACHE_USER: 'u', MAIL_FROM: 'no-reply@x.test' });
+    delete process.env.CACHE_NAME; delete process.env.DB_IAM_USER;
+    const c = loadConfig('migrate');
+    assert.equal(c.cache, undefined);
+    assert.equal(c.db.user, 'alm_owner');
+    process.env.CACHE_NAME = 'alm-dev';
+    assert.deepEqual(loadConfig('migrate').cache, { endpoint: 'c.cache.amazonaws.com', user: 'u', name: 'alm-dev' });
+  } finally { process.env = keep; }
 });
