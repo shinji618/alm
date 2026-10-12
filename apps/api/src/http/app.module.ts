@@ -17,6 +17,7 @@ import { CONFIG, COGNITO, DB, FILES, LIMITER, MAILER, PRINCIPALS, SAP_CONNS } fr
 import type { Mailer } from '../notify/mail';
 import { MemoryCounterStore, SharedLimiter } from '../common/shared';
 import { FilesController } from './files.controller';
+import { AssetsController } from './assets.controller';
 import type { FileStore } from '../files/files';
 
 @Module({})
@@ -24,7 +25,7 @@ export class AppModule {
   static create(deps: { cfg: Config; db: Db; cognito: Cognito; principals?: PrincipalCache; limiter?: SharedLimiter; files?: FileStore; mailer?: Mailer }): DynamicModule {
     return {
       module: AppModule,
-      controllers: [HealthController, AuthController, MeController, AdminController, PdaController, SapController, FilesController],
+      controllers: [HealthController, AuthController, MeController, AdminController, PdaController, SapController, FilesController, AssetsController],
       providers: [
         { provide: CONFIG, useValue: deps.cfg },
         { provide: DB, useValue: deps.db },

@@ -41,6 +41,25 @@ export class Check {
     return v;
   }
 
+  // 금액 등 숫자(소수 2자리로 반올림)
+  num(o: Record<string, unknown>, k: string, opt: { min?: number; max?: number; field?: string } = {}): number | undefined {
+    const f = opt.field ?? k, v = o[k];
+    if (v === undefined || v === null) return undefined;
+    if (typeof v !== 'number' || !Number.isFinite(v)) { this.fail(f, '숫자여야 합니다'); return undefined; }
+    if ((opt.min !== undefined && v < opt.min) || (opt.max !== undefined && v > opt.max)) { this.fail(f, '범위를 벗어났습니다'); return undefined; }
+    return Math.round(v * 100) / 100;
+  }
+
+  uuid(o: Record<string, unknown>, k: string, opt: { required?: boolean; field?: string } = {}): string | undefined {
+    return this.str(o, k, { ...opt, pattern: UUID });
+  }
+
+  oneOf<T extends string>(o: Record<string, unknown>, k: string, values: readonly T[], field = k): T | undefined {
+    const v = this.str(o, k, { field });
+    if (v !== undefined && !values.includes(v as T)) { this.fail(field, `${values.join(', ')} 중 하나`); return undefined; }
+    return v as T | undefined;
+  }
+
   date(o: Record<string, unknown>, k: string, field = k): string | undefined {
     const v = this.str(o, k, { field, pattern: /^\d{4}-\d{2}-\d{2}$/ });
     if (v && Number.isNaN(Date.parse(`${v}T00:00:00Z`))) { this.fail(field, '날짜가 올바르지 않습니다'); return undefined; }

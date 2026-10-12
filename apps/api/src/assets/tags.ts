@@ -1,12 +1,29 @@
-// 자산태그 자동 채번: AT-nnnnnn(테넌트별 일련번호, 6자리, 넘으면 자리 늘림). 05 테이블 정의서 asset.asset_tag
-// 같은 테넌트의 동시 채번은 트랜잭션 잠금(pg_advisory_xact_lock)으로 줄을 세운다. 커밋되면 풀린다
+// 번호 채번(number_sequence, 테넌트별). 행 잠금(UPDATE … RETURNING)으로 동시 채번을 줄 세운다. 커밋 전 롤백되면 그 번호는 다시 쓴다.
+//   asset_tag     AT-nnnnnn  (05 테이블 정의서 asset.asset_tag = SAP INVNR)
+//   asset_request AR-nnnnn
+import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 
-export async function nextAssetTags(c: PoolClient, tenantId: string, n: number): Promise<string[]> {
+const SEQ = {
+  asset_tag: { prefix: 'AT-', padding: 6,
+    existing: `SELECT coalesce(max(substring(asset_tag FROM 4)::bigint), 0) AS n FROM asset WHERE asset_tag ~ '^AT-[0-9]{6,12}$'` },
+  asset_request: { prefix: 'AR-', padding: 5,
+    existing: `SELECT coalesce(max(substring(request_no FROM 4)::bigint), 0) AS n FROM asset_request WHERE request_no ~ '^AR-[0-9]{5,9}$'` },
+} as const;
+export type SeqName = keyof typeof SEQ;
+
+export async function nextNumbers(c: PoolClient, tenantId: string, name: SeqName, n = 1): Promise<string[]> {
   if (n <= 0) return [];
-  await c.query(`SELECT pg_advisory_xact_lock(hashtext('asset_tag:' || $1))`, [tenantId]);
-  const max = (await c.query(`SELECT coalesce(max(substring(asset_tag FROM 4)::bigint), 0)::bigint AS n FROM asset
-     WHERE asset_tag ~ '^AT-[0-9]{6,12}$'`)).rows[0].n;
-  const start = Number(max) + 1;
-  return Array.from({ length: n }, (_, i) => `AT-${String(start + i).padStart(6, '0')}`);
+  const s = SEQ[name];
+  // 처음이면 이미 쓰인 번호(이 채번 도입 전 데이터) 다음부터
+  if (!(await c.query('SELECT 1 FROM number_sequence WHERE seq_name = $1', [name])).rowCount) {
+    const used = Number((await c.query(s.existing)).rows[0].n);
+    await c.query(`INSERT INTO number_sequence (id, tenant_id, seq_name, prefix, next_value, padding) VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (tenant_id, seq_name) DO NOTHING`, [randomUUID(), tenantId, name, s.prefix, used + 1, s.padding]);
+  }
+  const r = (await c.query(`UPDATE number_sequence SET next_value = next_value + $2, updated_at = now(), version = version + 1
+    WHERE seq_name = $1 RETURNING next_value - $2 AS first, prefix, padding`, [name, n])).rows[0];
+  return Array.from({ length: n }, (_, i) => `${r.prefix}${String(Number(r.first) + i).padStart(r.padding, '0')}`);
 }
+
+export const nextAssetTags = (c: PoolClient, tenantId: string, n: number) => nextNumbers(c, tenantId, 'asset_tag', n);
