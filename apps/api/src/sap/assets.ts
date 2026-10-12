@@ -78,18 +78,25 @@ async function upsertOne(c: PoolClient, conn: SapConn, a: AssetIn): Promise<'OK'
     return 'OK';
   }
 
-  const changes: Record<string, { before: unknown; after: unknown }> = {};
-  for (const k of Object.keys(want) as (keyof Fields)[]) if ((cur[k] ?? null) !== (want[k] ?? null)) changes[k] = { before: cur[k] ?? null, after: want[k] };
-  if (linked) changes.sap_asset_no = { before: null, after: `${a.assetNo}/${a.subNo}` };
-  if (retire) changes.status = { before: cur.status, after: 'RETIRED' };
-  if (!Object.keys(changes).length) return 'SKIPPED';
+  // 비교 대상은 고정 목록(필드 이름을 입력에서 받지 않는다)
+  const pairs: [string, unknown, unknown][] = [
+    ['asset_class_id', cur.asset_class_id, want.asset_class_id], ['description', cur.description, want.description],
+    ['sap_cap_date', cur.sap_cap_date, want.sap_cap_date], ['sap_deact_date', cur.sap_deact_date, want.sap_deact_date],
+    ['cost_center_id', cur.cost_center_id, want.cost_center_id], ['last_count_date', cur.last_count_date, want.last_count_date],
+    ['last_count_note', cur.last_count_note, want.last_count_note], ['is_capitalized', cur.is_capitalized, want.is_capitalized],
+  ];
+  const changes = new Map<string, { before: unknown; after: unknown }>();
+  for (const [name, before, after] of pairs) if ((before ?? null) !== (after ?? null)) changes.set(name, { before: before ?? null, after });
+  if (linked) changes.set('sap_asset_no', { before: null, after: `${a.assetNo}/${a.subNo}` });
+  if (retire) changes.set('status', { before: cur.status, after: 'RETIRED' });
+  if (!changes.size) return 'SKIPPED';
   await c.query(`UPDATE asset SET asset_class_id = $2, description = $3, sap_cap_date = $4, sap_deact_date = $5, cost_center_id = $6,
       last_count_date = $7, last_count_note = $8, is_capitalized = $9, sap_asset_no = $10, sap_sub_no = $11,
       status = CASE WHEN $12 THEN 'RETIRED'::asset_status ELSE status END, sap_synced_at = now(), updated_at = now(), version = version + 1
     WHERE id = $1`,
     [cur.id, cls, a.description, want.sap_cap_date, want.sap_deact_date, cc, want.last_count_date, want.last_count_note, want.is_capitalized,
       a.assetNo, a.subNo, !!retire]);
-  await event(c, conn, cur.id, 'SAP_SYNCED', changes, a.changedAt);
+  await event(c, conn, cur.id, 'SAP_SYNCED', Object.fromEntries(changes), a.changedAt);
   if (retire) await event(c, conn, cur.id, 'RETIRED', { reason: 'SAP 비활성일(DEAKT)', deactDate: a.deactDate }, a.changedAt);
   return 'OK';
 }
