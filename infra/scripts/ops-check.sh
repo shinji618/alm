@@ -5,6 +5,9 @@
 #   bash ops-check.sh dev restore-start     # RDS 복원 시험 1/3: 최신 복원 가능 시점으로 alm-<env>-restore-test 생성(10~20분)
 #   bash ops-check.sh dev restore-verify    # 2/3: 생성 완료를 기다린 뒤 원본·복원본에서 같은 질의를 돌려 비교, 걸린 시간 출력
 #   bash ops-check.sh dev restore-delete    # 3/3: 복원본 삭제(alm-<env>-restore-test만 지운다)
+#   bash ops-check.sh dev mail-test <주소>   # 3.4 2차-4: worker가 SES로 시험 메일을 보낸다(DEV·QA는 SES 샌드박스 → 확인된 주소만)
+#   bash ops-check.sh dev mail-verify <주소>  # 샌드박스에서 받을 주소 등록(SES가 확인 메일을 보낸다 → 링크 클릭)
+#   bash ops-check.sh dev mail-status         # SES 발신 도메인(DKIM)·샌드박스·확인된 주소, 최근 worker 메일 로그
 #
 # 복원 시험은 CloudShell이 오래 기다리다 끊기지 않게 세 단계로 나눴다. 시험 인스턴스는 야간 정지 대상이 아니므로 그날 지운다.
 set -euo pipefail
@@ -164,10 +167,44 @@ restore_delete() {
   echo "삭제 요청 완료(5~10분 뒤 사라짐)"
 }
 
+mail_test() {
+  local to=${1:?받는 주소}
+  [[ "$to" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[a-zA-Z]{2,}$ ]] || { echo "이메일 주소 형식이 아니다" >&2; exit 2; }
+  assume "$acct" alm-mail-test
+  local q; q=$(aws sqs get-queue-url --queue-name "alm-${ENV}-jobs" --query QueueUrl --output text)
+  aws sqs send-message --queue-url "$q" --message-body "$(jq -cn --arg to "$to" '{type:"mail-test",to:$to,source:"ops-check"}')" --query MessageId --output text >/dev/null
+  echo "시험 메일 작업을 큐에 넣었다 → 1분 안에 받은편지함(스팸함 포함) 확인. 결과 로그: bash ops-check.sh ${ENV} mail-status"
+}
+
+mail_verify() {
+  local to=${1:?등록할 주소}
+  assume "$acct" alm-mail-verify
+  aws sesv2 create-email-identity --email-identity "$to" --query VerifiedForSendingStatus --output text >/dev/null
+  echo "SES가 ${to}로 확인 메일(Amazon Web Services – Email Address Verification Request)을 보냈다 → 24시간 안에 링크를 누른 뒤 mail-test"
+}
+
+mail_status() {
+  assume "$acct" alm-mail-status
+  local zone; zone=$(aws sesv2 list-email-identities --query "EmailIdentities[?IdentityType=='DOMAIN'].IdentityName | [0]" --output text)
+  h "SES 계정·발신 도메인"
+  aws sesv2 get-account --query '[ProductionAccessEnabled,SendingEnabled,SendQuota.Max24HourSend,SendQuota.SentLast24Hours]' --output text \
+    | awk '{printf "  운영 승인(샌드박스 해제) %s, 발송 가능 %s, 24시간 한도 %s, 최근 24시간 %s건\n",$1,$2,$3,$4}'
+  aws sesv2 get-email-identity --email-identity "$zone" --query '[VerifiedForSendingStatus,DkimAttributes.Status,MailFromAttributes.MailFromDomainStatus]' --output text \
+    | awk -v z="$zone" '{printf "  %s: 발신 확인 %s, DKIM %s, MAIL FROM %s\n",z,$1,$2,$3}'
+  echo "  확인된 받는 주소(샌드박스용): $(aws sesv2 list-email-identities --query "EmailIdentities[?IdentityType=='EMAIL_ADDRESS'].[IdentityName,VerificationStatus]" --output text | tr '\t\n' ': ' )"
+  h "worker 메일 로그(최근 2시간)"
+  aws logs filter-log-events --log-group-name "/alm/${ENV}/worker" --start-time "$(ms_ago 7200)" \
+    --filter-pattern '?"mail-test" ?"mail sent" ?"mail rejected" ?"ses event" ?"send-email"' --max-items 20 \
+    --query 'events[].message' --output text | tr '\t' '\n' | cut -c1-220
+}
+
 case "$CMD" in
   status) status ;;
   restore-start) restore_start ;;
   restore-verify) restore_verify ;;
   restore-delete) restore_delete ;;
-  *) echo "명령: status | restore-start | restore-verify | restore-delete" >&2; exit 2 ;;
+  mail-test) mail_test "${3:-}" ;;
+  mail-verify) mail_verify "${3:-}" ;;
+  mail-status) mail_status ;;
+  *) echo "명령: status | restore-start | restore-verify | restore-delete | mail-verify <주소> | mail-test <주소> | mail-status" >&2; exit 2 ;;
 esac

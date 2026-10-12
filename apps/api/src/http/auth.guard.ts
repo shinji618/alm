@@ -10,9 +10,11 @@ import { completeLogin, securityEvent } from '../auth/login';
 import { ipAllowed, sapConnection, SapConn } from '../auth/sap';
 import { AlmError, E } from '../common/errors';
 import { TtlCache } from '../common/cache';
+import { LIMITS, SharedLimiter } from '../common/shared';
 import { log } from '../common/log';
 import { AlmRequest, OPERATION, PUBLIC } from './context';
-import { CONFIG, COGNITO, DB, PRINCIPALS, SAP_CONNS } from './tokens';
+import { CONFIG, COGNITO, DB, LIMITER, PRINCIPALS, SAP_CONNS } from './tokens';
+import type { Response } from 'express';
 
 export type Channel = 'WEB' | 'PDA' | 'SAP';
 export const channelOfPath = (path: string): Channel =>
@@ -24,7 +26,7 @@ const DEVICE = /^[A-Za-z0-9._:-]{1,40}$/;
 export class AuthGuard implements CanActivate {
   constructor(private reflector: Reflector, @Inject(CONFIG) private cfg: Config, @Inject(DB) private db: Db,
               @Inject(COGNITO) private cognito: Cognito, @Inject(PRINCIPALS) private cache: PrincipalCache,
-              @Inject(SAP_CONNS) private sapConns: TtlCache<SapConn>) {}
+              @Inject(SAP_CONNS) private sapConns: TtlCache<SapConn>, @Inject(LIMITER) private limiter: SharedLimiter) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const op = this.reflector.get<string>(OPERATION, ctx.getHandler());
@@ -42,7 +44,7 @@ export class AuthGuard implements CanActivate {
     const channel = channelOfPath(req.path);
     req.alm.channel = channel;
 
-    if (channel === 'SAP') return this.sap(req, claims, perm);
+    if (channel === 'SAP') return this.sap(req, claims, perm, ctx.switchToHttp().getResponse<Response>());
 
     // 웹 → alm-web, /pda/* → alm-pda (ST03: PDA 토큰으로 웹 API 403 ALM-E407)
     const expected = channel === 'PDA' ? this.cfg.cognito.pdaClientId : this.cfg.cognito.webClientId;
@@ -54,6 +56,9 @@ export class AuthGuard implements CanActivate {
     req.alm.principal = principal;
 
     if (channel === 'PDA') await this.device(req, principal, claims, op);
+    await this.limit(ctx.switchToHttp().getResponse<Response>(), [
+      [`u:${channel === 'PDA' ? 'pda' : 'web'}:${principal.userId}`, channel === 'PDA' ? LIMITS.pdaUser : LIMITS.webUser],
+      [`t:${principal.tenantId}`, LIMITS.tenant]]);
 
     if (!principal.permissions.has(perm)) {
       log.warn('access denied', { op, perm, userId: principal.userId, correlationId: req.alm.correlationId });
@@ -101,7 +106,7 @@ export class AuthGuard implements CanActivate {
   }
 
   // 09 6.6: 토큰 범위 sap.api → client_id로 연결 → 허용 IP·시스템 ID·회사코드
-  private async sap(req: AlmRequest, claims: AccessClaims, perm: string): Promise<boolean> {
+  private async sap(req: AlmRequest, claims: AccessClaims, perm: string, res: Response): Promise<boolean> {
     const scopes = (claims.scope ?? '').split(' ');
     if (!scopes.includes(SAP_SCOPE)) throw E.channel();
     const conn = await this.sapConns.get(claims.client_id, () => sapConnection(this.db, claims.client_id));
@@ -119,7 +124,19 @@ export class AuthGuard implements CanActivate {
     const cc = req.header('x-company-code')?.trim();
     if (cc && cc !== conn.companyCode) await deny('COMPANY_MISMATCH', '이 연결에 허용되지 않은 회사코드입니다');
     if (perm !== 'sap.api') throw E.forbidden();
+    await this.limit(res, [[`sap:${conn.clientId}`, LIMITS.sapClient], [`t:${conn.tenantId}`, LIMITS.tenant]]);
     return true;
+  }
+
+  // 10 정의서 6.4: 사용자·SAP 클라이언트·테넌트 분당 한도. 모든 api 작업이 같은 카운터(Valkey)를 본다
+  private async limit(res: Response, checks: [string, number][]) {
+    for (const [key, max] of checks) {
+      const wait = await this.limiter.hit(key, max);
+      if (wait) {
+        res.setHeader('Retry-After', String(wait));
+        throw new AlmError(429, 'ALM-E429', `호출이 너무 많습니다. ${wait}초 뒤 다시 시도하세요`, { retryAfter: wait });
+      }
+    }
   }
 
   private event(tenantId: string, req: AlmRequest, e: Omit<Parameters<typeof securityEvent>[1], 'tenantId' | 'meta'>) {

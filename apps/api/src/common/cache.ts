@@ -14,7 +14,7 @@ export class TtlCache<T> {
   clear() { this.m.clear(); }
 }
 
-// 고정 창 호출 제한(예: /oauth/token 클라이언트당 분당 10회). 작업마다 따로 센다 → 공유 카운터(Valkey)는 3.4 2차-4
+// 작업 안에서만 세는 고정 창 호출 제한. API 호출 제한은 모든 작업이 함께 세는 common/shared.ts(Valkey)를 쓴다
 export class RateLimiter {
   private m = new Map<string, { n: number; start: number }>();
   constructor(private limit: number, private windowMs: number) {}

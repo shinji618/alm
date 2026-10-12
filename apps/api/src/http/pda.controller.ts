@@ -1,18 +1,20 @@
 // PDA 공통(openapi PDA-01 pdaGetMe·pdaRegisterDevice, 09 6.5). 업무 API(실사)는 5.x에서 추가
-import { Body, Controller, Get, Inject, Param, Put } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Db } from '../db/pool';
 import { securityEvent } from '../auth/login';
 import { AlmError, E } from '../common/errors';
 import { Check } from '../common/validate';
 import { AlmContext, Ctx, Operation, txOf } from './context';
-import { DB } from './tokens';
+import { DB, FILES } from './tokens';
+import { FileStore, presignPda } from '../files/files';
+import { needStore } from './files.controller';
 
 const meta = (ctx: AlmContext) => ({ clientId: ctx.claims?.client_id, ip: ctx.ip, userAgent: ctx.userAgent, correlationId: ctx.correlationId });
 
 @Controller('pda')
 export class PdaController {
-  constructor(@Inject(DB) private db: Db) {}
+  constructor(@Inject(DB) private db: Db, @Inject(FILES) private files: FileStore | null) {}
 
   @Get('me')
   @Operation('pdaGetMe')
@@ -69,5 +71,14 @@ export class PdaController {
     if (!r.is_active) throw new AlmError(403, 'ALM-E406', '관리자 승인을 기다리는 기기입니다');
     if (!r.id) throw E.notFound();
     return { deviceId: r.id, lastSyncAt: (r.last_sync_at as Date).toISOString() };
+  }
+
+  // PDA-05·06 실사 사진. 스캔·미등록 전송(4.8)에서 attachmentId로 연결한다
+  @Post('attachments\\:presign')
+  @HttpCode(200)
+  @Operation('pdaPresignPhoto')
+  presignPhoto(@Ctx() ctx: AlmContext, @Body() body: unknown) {
+    const store = needStore(this.files);
+    return this.db.withTx(txOf(ctx), (c) => presignPda(c, store, ctx.principal!, body));
   }
 }

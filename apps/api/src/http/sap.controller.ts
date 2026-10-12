@@ -5,10 +5,11 @@ import { Db } from '../db/pool';
 import { Cognito } from '../auth/cognito';
 import { ipAllowed, sapConnection, SapConn } from '../auth/sap';
 import { securityEvent } from '../auth/login';
-import { RateLimiter, TtlCache } from '../common/cache';
+import { TtlCache } from '../common/cache';
+import { LIMITS, SharedLimiter } from '../common/shared';
 import { log } from '../common/log';
 import { AlmContext, AlmRequest, Ctx, Operation } from './context';
-import { COGNITO, DB, SAP_CONNS } from './tokens';
+import { COGNITO, DB, LIMITER, SAP_CONNS } from './tokens';
 
 // RFC 6749 5.2 오류(SAP OAuth 클라이언트가 읽음) + ALM 공통 오류 필드
 function oauthError(res: Response, req: AlmRequest, status: number, error: string, description: string, code: string) {
@@ -20,8 +21,8 @@ function oauthError(res: Response, req: AlmRequest, status: number, error: strin
 
 @Controller()
 export class SapController {
-  private limiter = new RateLimiter(10, 60_000);   // 09 6.6: 클라이언트당 분당 10회
-  constructor(@Inject(DB) private db: Db, @Inject(COGNITO) private cognito: Cognito, @Inject(SAP_CONNS) private conns: TtlCache<SapConn>) {}
+  constructor(@Inject(DB) private db: Db, @Inject(COGNITO) private cognito: Cognito, @Inject(SAP_CONNS) private conns: TtlCache<SapConn>,
+              @Inject(LIMITER) private limiter: SharedLimiter) {}
 
   @Post('oauth/token')
   @HttpCode(200)
@@ -41,7 +42,7 @@ export class SapController {
     } else if (typeof b.client_id === 'string' && typeof b.client_secret === 'string') { id = b.client_id; secret = b.client_secret; }
     if (!id || !secret) return oauthError(res, req, 401, 'invalid_client', '클라이언트 인증 정보가 없습니다', 'ALM-E402');
 
-    const wait = this.limiter.hit(id);
+    const wait = await this.limiter.hit(`sap-token:${id.slice(0, 64)}`, LIMITS.sapToken);   // 09 6.6: 클라이언트당 분당 10회(모든 작업 합계)
     if (wait) { res.setHeader('Retry-After', String(wait)); return oauthError(res, req, 429, 'slow_down', '토큰 발급 호출이 너무 많습니다', 'ALM-E429'); }
 
     const conn = await sapConnection(this.db, id);

@@ -8622,7 +8622,7 @@ components:
         expiresAt:
           type: string
           format: date-time
-          description: URL 만료(발급 + 15분)
+          description: URL 만료(웹 발급 + 5분, PDA 발급 + 15분)
       required:
       - attachmentId
       - uploadUrl

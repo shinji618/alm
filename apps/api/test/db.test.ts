@@ -17,6 +17,7 @@ import { createApi } from '../src/main';
 import type { Config } from '../src/config';
 import { AuthGuard } from '../src/http/auth.guard';
 import { TtlCache } from '../src/common/cache';
+import { MemoryCounterStore, SharedLimiter } from '../src/common/shared';
 import { OPERATION } from '../src/http/context';
 import { AlmError } from '../src/common/errors';
 
@@ -225,11 +226,12 @@ test('HTTP: 로그인 → 콜백 → 갱신 → /me → 로그아웃', { skip },
 test('가드: 권한 없는 작업은 403 ALM-E401 + ACCESS_DENIED 기록, 작업 ID 없는 경로는 기본 거부', { skip }, async () => {
   const t = (await tenantOf(app, 'T-ACME_oid-1'))!;
   assert.ok((await completeLogin(app, t, { username: 'T-ACME_oid-1', email: 'new@acme.com', emailVerified: true, idpType: 'SAML' }, meta)).ok);
-  const guardFor = (meta: Record<string, unknown>) => new AuthGuard({ get: (k: string) => meta[k] } as never, cfg, app, fakeCognito as never, new PrincipalCache(), new TtlCache());
+  const guardFor = (meta: Record<string, unknown>) => new AuthGuard({ get: (k: string) => meta[k] } as never, cfg, app, fakeCognito as never, new PrincipalCache(), new TtlCache(),
+    new SharedLimiter(new MemoryCounterStore()));
   const ctx = (path: string) => {
     const req = { path, method: 'GET', header: (h: string) => (h === 'authorization' ? 'Bearer at:T-ACME_oid-1:web' : undefined),
       alm: { correlationId: randomUUID(), ip: '198.51.100.1' } };
-    return { getHandler: () => null, switchToHttp: () => ({ getRequest: () => req }) } as never;
+    return { getHandler: () => null, switchToHttp: () => ({ getRequest: () => req, getResponse: () => ({ setHeader: () => undefined }) }) } as never;
   };
   assert.equal(await guardFor({ [OPERATION]: 'getMe' }).canActivate(ctx('/api/v1/me')), true);
   await assert.rejects(guardFor({ [OPERATION]: 'listUsers' }).canActivate(ctx('/api/v1/admin/users')), (e: AlmError) => e.code === 'ALM-E401');

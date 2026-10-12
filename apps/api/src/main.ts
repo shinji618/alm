@@ -14,6 +14,9 @@ import { runMigrate, ownerClient } from './ops/migrate';
 import { parseSeed, seed } from './ops/seed';
 import { Worker } from './worker/worker';
 import { maintainPartitions, archiveAll, s3Store } from './ops/archive';
+import { connectCounterStore, MemoryCounterStore, SharedLimiter } from './common/shared';
+import { s3FileStore } from './files/files';
+import { MailSender, parseSesEvent } from './notify/mail';
 
 export async function createApi(deps: Parameters<typeof AppModule.create>[0]) {
   const app = await NestFactory.create<NestExpressApplication>(AppModule.create(deps), { logger: ['error', 'warn'], bodyParser: true });
@@ -33,16 +36,25 @@ async function main(role: string) {
   switch (role) {
     case 'api': {
       const db = new Db(createPool(cfg));
-      const app = await createApi({ cfg, db, cognito: new Cognito(cfg) });
+      const limiter = new SharedLimiter(cfg.cache ? await connectCounterStore(cfg.cache, cfg.region) : new MemoryCounterStore());
+      const files = cfg.filesBucket ? await s3FileStore(cfg.filesBucket, cfg.region) : undefined;
+      const app = await createApi({ cfg, db, cognito: new Cognito(cfg), limiter, files });
       await app.listen(cfg.port, '0.0.0.0');
       log.info('api listening', { port: cfg.port, env: cfg.env });
       return;
     }
     case 'worker': {
       if (!cfg.jobsQueueUrl) throw new Error('JOBS_QUEUE_URL이 없다');
-      const w = new Worker(new SQSClient({ region: cfg.region }), cfg.jobsQueueUrl);
-      for (const s of ['SIGTERM', 'SIGINT'] as const) process.once(s, () => w.stop());
-      await w.run();
+      const sqs = new SQSClient({ region: cfg.region });
+      const db = new Db(createPool(cfg, { max: 5 }));
+      const { SESv2Client } = await import('@aws-sdk/client-sesv2');
+      const mail = cfg.mail ? new MailSender(new SESv2Client({ region: cfg.region }), db, { ...cfg.mail, env: cfg.env, appOrigin: cfg.appOrigin }) : undefined;
+      const workers = [new Worker(sqs, cfg.jobsQueueUrl, { ...mail?.handlers() })];
+      // SES 반송·수신 거부 이벤트 큐(같은 작업이 함께 읽는다)
+      if (mail && cfg.mail?.eventsQueueUrl) workers.push(new Worker(sqs, cfg.mail.eventsQueueUrl, { 'ses-event': (j) => mail.onEvent(j) }, parseSesEvent));
+      for (const s of ['SIGTERM', 'SIGINT'] as const) process.once(s, () => workers.forEach((w) => w.stop()));
+      await Promise.all(workers.map((w) => w.run()));
+      await db.close();
       return;
     }
     case 'migrate':

@@ -48,7 +48,7 @@ export async function bootstrap(c: Client): Promise<void> {
   // alm_owner_iam(3.4 1차의 partman용 소유자 로그인)은 쓰지 않는다: 파티션 관리는 보관 계정이 함수로 한다(0002). 남아 있으면 지운다
   if (await hasRole('alm_owner_iam')) {
     await c.query('SAVEPOINT d');
-    try { await c.query('DROP ROLE alm_owner_iam'); await c.query('RELEASE SAVEPOINT d'); log.info('role dropped', { role: 'alm_owner_iam' }); }
+    try { await c.query('DROP ROLE alm_owner_iam'); await c.query('RELEASE SAVEPOINT d'); log.info('role dropped', { dropped: 'alm_owner_iam' }); }
     catch (e) { await c.query('ROLLBACK TO SAVEPOINT d'); log.warn('alm_owner_iam drop skipped', { err: String(e) }); }
   }
   // 이후 마이그레이션이 만드는 테이블에도 같은 권한(0001은 직접 GRANT). FOR ROLE 생략 = 현재 접속 계정(소유자)

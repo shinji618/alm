@@ -120,7 +120,7 @@ describe('App (10 6장)', () => {
     expect(secretsOf('alm-dev-api')).toEqual(['COGNITO_WEB_CLIENT_SECRET', 'COOKIE_KEY']);
     for (const f of ['alm-dev-worker', 'alm-dev-audit-archive', 'alm-dev-partman']) expect(secretsOf(f)).toEqual([]);
   });
-  it('감사 보관·파티션 관리: 정지 환경은 DB가 켜진 시간, 보관 작업에 감사 버킷', () => {
+  it('감사 보관·파티션 관리·공유 카운터·메일 설정', () => {
     const sched = (env: 'dev' | 'prd') => Object.fromEntries(Object.values(tpl(env, 'app').findResources('AWS::Scheduler::Schedule'))
       .filter((r: any) => r.Properties.Target?.EcsParameters).map((r: any) => [r.Properties.Target.EcsParameters.TaskDefinitionArn.Ref ?? '', r.Properties.ScheduleExpression]));
     expect(Object.values(sched('dev')).sort()).toEqual(['cron(0 8 ? * MON#1 *)', 'cron(30 7 ? * MON-FRI *)']);
@@ -131,6 +131,11 @@ describe('App (10 6장)', () => {
     expect(env('alm-dev-audit-archive').AUDIT_BUCKET).toBe('alm-audit-archive-085462181410');
     expect(env('alm-dev-audit-archive').DB_IAM_USER).toBe('alm_archive_login');
     expect(env('alm-dev-migrate').DB_IAM_USER).toBeUndefined();
+    // 3.4 2차-4: 공유 카운터(IAM 토큰에 캐시 이름), SES 이벤트 큐, 억제 목록
+    expect(env('alm-dev-api').CACHE_NAME).toBe('alm-dev');
+    expect(env('alm-dev-worker').SES_EVENTS_QUEUE_URL).toBeDefined();
+    tpl('dev', 'app').hasResourceProperties('AWS::SES::ConfigurationSet', Match.objectLike({ Name: 'alm-dev',
+      SuppressionOptions: { SuppressedReasons: ['BOUNCE', 'COMPLAINT'] } }));
   });
   it('작업 역할은 자기 DB 사용자로만 rds-db:connect', () => {
     const json = JSON.stringify(tpl('prd', 'app').toJSON());

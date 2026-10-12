@@ -33,7 +33,23 @@ NestJS 11 · Node 24 · PostgreSQL 16(RDS, IAM 인증). 이미지 1개를 역할
 | SAP | `POST /api/v1/oauth/token` | client_credentials(Basic 또는 본문). `auth_sap_client`로 연결 확인 → 허용 IP → Cognito에 그대로 요청(비밀 저장 안 함). 실패 SAP_AUTH_FAILED, 클라이언트당 분당 10회 |
 | SAP | `/api/v1/sap/*` | 범위 `alm-api/sap.api` + 등록된 연결의 client_id. 허용 IP·`X-SAP-System`·`X-Company-Code` 확인 |
 
-호출 제한 카운터는 작업(프로세스)마다 따로 센다. 여러 작업이 공유하는 카운터(Valkey)는 2차-4.
+호출 제한은 모든 api 작업이 같은 Valkey 카운터로 센다(2차-4, 아래).
+
+## 첨부·메일·공유 호출 제한(3.4 2차-4)
+
+| 항목 | 내용 |
+| --- | --- |
+| 첨부 올리기 | `POST /attachments:presign`(웹, 최대 25 MB, 대상 쓰기 권한·대상 존재 확인, 발급 때 연결) · `POST /pda/attachments:presign`(JPEG·PNG 5 MB, 대상 없이 발급 → 4.8 스캔·미등록 전송 때 연결). `attachment` 행을 만들고 S3 사전 서명 PUT URL(웹 5분·PDA 15분)을 준다. Content-Type·Content-Length·SHA-256 체크섬을 서명에 넣어 신고와 다른 파일은 S3가 거절한다. 실행 파일 형식·이름은 받지 않는다 |
+| 첨부 내려받기 | `GET /attachments/{id}:download` → 연결된 첨부만, 대상 조회 권한, S3에 올라왔는지·체크섬 확인, `FILES_SCAN=required`면 GuardDuty 검사 태그 `NO_THREATS_FOUND`만 → 사전 서명 GET 5분(원래 파일 이름으로 저장) |
+| 범위 | 지금은 범위가 테넌트 전체(ALL)인 권한만 통과한다. 본인·담당 코스트센터·배정 범위는 4.x ScopeService가 붙을 때까지 거부(기본 거부) |
+| S3 키 | `tenant/<테넌트 id>/<대상 종류>/<첨부 id>`(파일 이름은 DB에만) |
+| 메일 | 업무 트랜잭션에서 `queueEmail()` → `notification`(EMAIL, QUEUED, dedupe_key로 중복 방지) → 커밋 뒤 `Mailer.enqueue()` → worker `send-email` → SES(구성 세트, 태그 tenant·notification) → SENT. 영구 오류는 FAILED, 제한·일시 오류는 재시도(5회 뒤 DLQ) |
+| 반송 | SES 반송·수신 거부·거절 → SNS → `alm-<env>-ses-events` → worker가 해당 알림 FAILED. 같은 주소로 다시 보내지 않는 것은 구성 세트 억제 목록 |
+| 템플릿 | `src/notify/templates.ts`: TEST, APPROVAL_REQUESTED·DECIDED, EXPIRY, COUNT_ASSIGNED, SAP_POSTING_FAILED(ko·en). 값은 HTML 이스케이프, 제목 줄바꿈 제거, 링크는 앱 안 경로만 |
+| 호출 제한 | 웹 사용자 분당 600, PDA 120, SAP 클라이언트 300(토큰 발급 10), 테넌트 3,000 → 429 ALM-E429 + Retry-After. Valkey 고정 창(`rl:<키>:<분>`, INCR + EXPIRE NX). Valkey 장애면 제한을 건너뛴다(fail-open) |
+| Valkey 접속 | TLS + IAM 인증: SigV4로 서명한 `connect` 토큰(15분)을 비밀번호로 쓰고 10분마다 다음 재연결용으로 바꾼다. `CACHE_ENDPOINT`·`CACHE_USER`·`CACHE_NAME`이 없으면(로컬) 작업 메모리로 센다 |
+| 사용자 상태 캐시 | 작업별 60초 캐시를 그대로 쓴다. 비활성화 반영 기준(60초)을 이미 만족하고, 권한 판단은 DB가 근거라 공유 캐시로 옮기지 않았다 |
+| 운영 확인 | `infra/scripts/ops-check.sh <env> mail-verify <주소>`(샌드박스 수신 주소 등록) → `mail-test <주소>` → `mail-status` |
 
 ## 감사 기록 보관(3.4 2차-3, 09 8.3)
 

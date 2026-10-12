@@ -93,7 +93,9 @@ export class AppStack extends Stack {
     sesTopic.addToResourcePolicy(new iam.PolicyStatement({ principals: [new iam.ServicePrincipal('ses.amazonaws.com')],
       actions: ['sns:Publish'], resources: [sesTopic.topicArn], conditions: { StringEquals: { 'aws:SourceAccount': this.account } } }));
     sesTopic.addSubscription(new subs.SqsSubscription(sesEvents, { rawMessageDelivery: true }));
-    const configSet = new ses.ConfigurationSet(this, 'ConfigSet', { configurationSetName: `alm-${env}`, reputationMetrics: true });
+    // 반송·수신 거부된 주소는 SES가 이 구성 세트로 다시 보내지 않는다(억제 목록). 앱은 이벤트로 알림 상태만 FAILED로 바꾼다
+    const configSet = new ses.ConfigurationSet(this, 'ConfigSet', { configurationSetName: `alm-${env}`, reputationMetrics: true,
+      suppressionReasons: ses.SuppressionReasons.BOUNCES_AND_COMPLAINTS });
     configSet.addEventDestination('Bounces', { destination: ses.EventDestination.snsTopic(sesTopic),
       events: [ses.EmailSendingEvent.BOUNCE, ses.EmailSendingEvent.COMPLAINT, ses.EmailSendingEvent.REJECT] });
 
@@ -164,7 +166,7 @@ export class AppStack extends Stack {
       COGNITO_PDA_CLIENT_ID: props.pdaClient.userPoolClientId, COGNITO_DOMAIN: authDomain(cfg),
       APP_ORIGIN: `https://${appDomain}`, JOBS_QUEUE_URL: this.jobsQueue.queueUrl,
       FILES_BUCKET: filesBucket.bucketName, EXPORTS_BUCKET: exportsBucket.bucketName,
-      CACHE_ENDPOINT: cache.attrEndpointAddress, CACHE_USER: appUserId, SES_CONFIG_SET: configSet.configurationSetName,
+      CACHE_ENDPOINT: cache.attrEndpointAddress, CACHE_USER: appUserId, CACHE_NAME: cacheName, SES_CONFIG_SET: configSet.configurationSetName,
       MAIL_FROM: `no-reply@${mailDomain}`, COGNITO_ADMIN_FUNCTION: cognitoAdmin.functionName,
     };
     const dbUserArn = (user: string) => `arn:aws:rds-db:${this.region}:${this.account}:dbuser:${props.db.instanceResourceId}/${user}`;
@@ -206,6 +208,7 @@ export class AppStack extends Stack {
     const worker = makeTask('worker', cfg.worker.cpu, cfg.worker.memoryMiB, ['node', 'dist/main', 'worker'], 'alm_app_login', lg('worker'));
     this.jobsQueue.grantConsumeMessages(worker.td.taskRole);
     sesEvents.grantConsumeMessages(worker.td.taskRole);
+    worker.c.addEnvironment('SES_EVENTS_QUEUE_URL', sesEvents.queueUrl);
     filesBucket.grantRead(worker.td.taskRole);
     exportsBucket.grantReadWrite(worker.td.taskRole);
     worker.td.addToTaskRolePolicy(new iam.PolicyStatement({ actions: ['ses:SendEmail', 'ses:SendRawEmail'],

@@ -18,7 +18,8 @@ export function parseJob(body: string | undefined): Job | undefined {
 
 export class Worker {
   private stopping = false;
-  constructor(private sqs: Pick<SQSClient, 'send'>, private queueUrl: string, private handlers: Record<string, Handler> = {}) {}
+  constructor(private sqs: Pick<SQSClient, 'send'>, private queueUrl: string, private handlers: Record<string, Handler> = {},
+              private parse: (body: string | undefined) => Job | undefined = parseJob) {}
 
   stop() { this.stopping = true; }
 
@@ -28,7 +29,7 @@ export class Worker {
       MessageSystemAttributeNames: ['ApproximateReceiveCount'] }));
     const done: Message[] = [];
     for (const m of r.Messages ?? []) {
-      const job = parseJob(m.Body);
+      const job = this.parse(m.Body);
       if (!job) { log.warn('job malformed, dropped', { messageId: m.MessageId }); done.push(m); continue; }
       const h = this.handlers[job.type];
       if (!h) {

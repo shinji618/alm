@@ -207,7 +207,7 @@ schema('PresignResponse', '사진 업로드 URL', '''
 attachmentId | uuid | Y | attachment.id. 스캔·미등록 전송에 사용
 uploadUrl | string | Y | S3 presigned PUT URL
 headers | object | Y | PUT 시 함께 보낼 헤더(Content-Type, x-amz-checksum-sha256)
-expiresAt | datetime | Y | URL 만료(발급 + 15분)
+expiresAt | datetime | Y | URL 만료(웹 발급 + 5분, PDA 발급 + 15분)
 ''')
 
 # ---------------- SAP ----------------
