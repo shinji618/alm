@@ -80,7 +80,8 @@ export async function connectCounterStore(c: { endpoint: string; user: string; n
   const token = () => elasticacheIamToken({ cacheName: c.name, userId: c.user, region, credentials });
   const r = new Redis({
     host: c.endpoint, port: 6379, tls: { servername: c.endpoint }, username: c.user, password: await token(),
-    connectTimeout: 2_000, commandTimeout: 300, maxRetriesPerRequest: 0, enableOfflineQueue: false,
+    connectTimeout: 2_000, commandTimeout: 500, maxRetriesPerRequest: 0, enableOfflineQueue: false,
+    enableReadyCheck: false,   // 시작 시 INFO 확인이 TLS·IAM 인증 직후 시간 초과로 경고를 남기던 것 방지(카운터는 실패 시 허용)
     retryStrategy: (n) => Math.min(n * 500, 5_000),
   });
   r.on('error', (e) => log.warn('valkey error', { err: String(e) }));

@@ -1,5 +1,5 @@
-// SAP 연계 인증(openapi sapToken·sapPing, 09 6.6, 08 4.4). 업무 API(IF-xx)는 7.x에서 추가
-import { Controller, Get, HttpCode, Inject, Post, Req, Res } from '@nestjs/common';
+// SAP 연계(openapi sapToken·sapPing·수신 IF, 09 6.6, 08 4.3~5.3). 수신 1차: IF-MD-01·IF-AA-01·IF-AA-02(WBS 4.7)
+import { Body, Controller, Get, Headers, HttpCode, Inject, Post, Req, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { Db } from '../db/pool';
 import { Cognito } from '../auth/cognito';
@@ -8,7 +8,11 @@ import { securityEvent } from '../auth/login';
 import { TtlCache } from '../common/cache';
 import { LIMITS, SharedLimiter } from '../common/shared';
 import { log } from '../common/log';
-import { AlmContext, AlmRequest, Ctx, Operation } from './context';
+import { AlmContext, AlmRequest, Ctx, Operation, txOf } from './context';
+import { Batch, batchBody, idempotent, logRun } from '../sap/inbound';
+import { postMasterData } from '../sap/master';
+import { postAssetValues, retryPendingAssets, upsertAssets } from '../sap/assets';
+import type { PoolClient } from 'pg';
 import { COGNITO, DB, LIMITER, SAP_CONNS } from './tokens';
 
 // RFC 6749 5.2 오류(SAP OAuth 클라이언트가 읽음) + ALM 공통 오류 필드
@@ -80,5 +84,53 @@ export class SapController {
   ping(@Ctx() ctx: AlmContext) {
     const s = ctx.sap!;
     return { status: 'UP', serverTime: new Date().toISOString(), tenantCode: s.tenantCode, companyCodes: [s.companyCode] };
+  }
+
+  // ---- 수신(SAP → ALM). 공통: Idempotency-Key, sap_if_run 기록, 오류가 있으면 207(08 4.3) ----
+  private async inbound(ctx: AlmContext, res: Response, o: { endpoint: string; iface: string; key?: string; body: unknown; max: number;
+    run: (c: PoolClient, b: Record<string, unknown>, records: Record<string, unknown>[], batch: Batch) => Promise<void>;
+    after?: (c: PoolClient, b: Record<string, unknown>) => Promise<void> }) {
+    const conn = ctx.sap!;
+    const startedAt = new Date();
+    const out = await this.db.withTx(txOf(ctx), (c) => idempotent(c, conn.tenantId, o.endpoint, o.key, o.body, async () => {
+      const { batchId, b, records } = batchBody(o.body, o.max);
+      const batch = new Batch(batchId, records.length);
+      await o.run(c, b, records, batch);
+      await logRun(c, conn, { interfaceId: o.iface, batchId, correlationId: ctx.correlationId, startedAt, batch });
+      await o.after?.(c, b);
+      log.info('sap inbound', { iface: o.iface, batchId, received: batch.received, failed: batch.failed, ms: Date.now() - startedAt.getTime(),
+        correlationId: ctx.correlationId });
+      return { status: batch.http(), body: batch.body() };
+    }));
+    res.status(out.status);
+    return out.body;
+  }
+
+  @Post('sap/master-data')
+  @Operation('sapPostMasterData')
+  masterData(@Ctx() ctx: AlmContext, @Body() body: unknown, @Headers('idempotency-key') key: string | undefined, @Res({ passthrough: true }) res: Response) {
+    return this.inbound(ctx, res, { endpoint: 'sapPostMasterData', iface: 'IF-MD-01', key, body, max: 5000,
+      run: (c, b, records, batch) => postMasterData(c, ctx.sap!, b, records, batch),
+      // 코스트센터·자산클래스를 다 받았으면 그것 때문에 실패했던 자산(최근 3일)을 다시 처리
+      after: async (c, b) => {
+        if (b.isLast === true && (b.type === 'COST_CENTER' || b.type === 'ASSET_CLASS')) {
+          const r = await retryPendingAssets(c, ctx.sap!, ctx.correlationId);
+          if (r) log.info('sap asset retry', { batchId: r.batchId, received: r.received, failed: r.failed });
+        }
+      } });
+  }
+
+  @Post('sap/assets\\:upsert')
+  @Operation('sapUpsertAssets')
+  upsertAssets(@Ctx() ctx: AlmContext, @Body() body: unknown, @Headers('idempotency-key') key: string | undefined, @Res({ passthrough: true }) res: Response) {
+    return this.inbound(ctx, res, { endpoint: 'sapUpsertAssets', iface: 'IF-AA-01', key, body, max: 1000,
+      run: (c, _b, records, batch) => upsertAssets(c, ctx.sap!, records, batch) });
+  }
+
+  @Post('sap/asset-values')
+  @Operation('sapPostAssetValues')
+  assetValues(@Ctx() ctx: AlmContext, @Body() body: unknown, @Headers('idempotency-key') key: string | undefined, @Res({ passthrough: true }) res: Response) {
+    return this.inbound(ctx, res, { endpoint: 'sapPostAssetValues', iface: 'IF-AA-02', key, body, max: 1000,
+      run: (c, b, records, batch) => postAssetValues(c, ctx.sap!, b, records, batch) });
   }
 }
