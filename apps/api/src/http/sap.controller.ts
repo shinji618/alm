@@ -1,5 +1,5 @@
 // SAP 연계(openapi sapToken·sapPing·수신 IF, 09 6.6, 08 4.3~5.3). 수신 1차: IF-MD-01·IF-AA-01·IF-AA-02(WBS 4.7)
-import { Body, Controller, Get, Headers, HttpCode, Inject, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Req, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { Db } from '../db/pool';
 import { Cognito } from '../auth/cognito';
@@ -12,8 +12,11 @@ import { AlmContext, AlmRequest, Ctx, Operation, txOf } from './context';
 import { Batch, batchBody, idempotent, logRun } from '../sap/inbound';
 import { postMasterData } from '../sap/master';
 import { postAssetValues, retryPendingAssets, upsertAssets } from '../sap/assets';
+import { claimPostings, Mail, pickRunRequests, postResult } from '../sap/postings';
+import { Mailer, queueEmail, SendEmailJob } from '../notify/mail';
+import type { Config } from '../config';
 import type { PoolClient } from 'pg';
-import { COGNITO, DB, LIMITER, SAP_CONNS } from './tokens';
+import { CONFIG, COGNITO, DB, LIMITER, MAILER, SAP_CONNS } from './tokens';
 
 // RFC 6749 5.2 오류(SAP OAuth 클라이언트가 읽음) + ALM 공통 오류 필드
 function oauthError(res: Response, req: AlmRequest, status: number, error: string, description: string, code: string) {
@@ -26,7 +29,7 @@ function oauthError(res: Response, req: AlmRequest, status: number, error: strin
 @Controller()
 export class SapController {
   constructor(@Inject(DB) private db: Db, @Inject(COGNITO) private cognito: Cognito, @Inject(SAP_CONNS) private conns: TtlCache<SapConn>,
-              @Inject(LIMITER) private limiter: SharedLimiter) {}
+              @Inject(LIMITER) private limiter: SharedLimiter, @Inject(MAILER) private mailer: Mailer | null, @Inject(CONFIG) private cfg: Config) {}
 
   @Post('oauth/token')
   @HttpCode(200)
@@ -132,5 +135,41 @@ export class SapController {
   assetValues(@Ctx() ctx: AlmContext, @Body() body: unknown, @Headers('idempotency-key') key: string | undefined, @Res({ passthrough: true }) res: Response) {
     return this.inbound(ctx, res, { endpoint: 'sapPostAssetValues', iface: 'IF-AA-02', key, body, max: 1000,
       run: (c, b, records, batch) => postAssetValues(c, ctx.sap!, b, records, batch) });
+  }
+
+  // ---- 전기(ALM → SAP). 결과에 따라 자산회계 메일: notification 행은 같은 트랜잭션, 큐 전송은 커밋 뒤 ----
+  private async posting(ctx: AlmContext, res: Response, endpoint: string, key: string | undefined, body: unknown,
+    run: (c: PoolClient) => Promise<{ status: number; body: unknown; mails: Mail[] }>) {
+    const jobs: SendEmailJob[] = [];
+    const out = await this.db.withTx(txOf(ctx), (c) => idempotent(c, ctx.sap!.tenantId, endpoint, key, body, async () => {
+      const r = await run(c);
+      for (const m of r.mails) { const j = await queueEmail(c, ctx.sap!.tenantId, m, this.cfg.appOrigin); if (j) jobs.push(j); }
+      return { status: r.status, body: r.body };
+    }));
+    for (const j of jobs) {
+      await this.mailer?.enqueue(j).catch((e) => log.error('mail enqueue failed', { notificationId: j.notificationId, err: String(e) }));
+    }
+    res.status(out.status);
+    return out.body;
+  }
+
+  @Post('sap/postings\\:claim')
+  @Operation('sapClaimPostings')
+  claim(@Ctx() ctx: AlmContext, @Body() body: unknown, @Headers('idempotency-key') key: string | undefined, @Res({ passthrough: true }) res: Response) {
+    return this.posting(ctx, res, 'sapClaimPostings', key, body, (c) => claimPostings(c, ctx.sap!, body));
+  }
+
+  @Post('sap/postings/:postingId/result')
+  @Operation('sapPostResult')
+  result(@Ctx() ctx: AlmContext, @Param('postingId') postingId: string, @Body() body: unknown, @Headers('idempotency-key') key: string | undefined,
+         @Res({ passthrough: true }) res: Response) {
+    return this.posting(ctx, res, 'sapPostResult', key, body, (c) => postResult(c, ctx.sap!, postingId, body, ctx.correlationId));
+  }
+
+  // IF-OP-01: 15분 잡이 처음에 부른다. PENDING → PICKED
+  @Get('sap/run-requests')
+  @Operation('sapGetRunRequests')
+  runRequests(@Ctx() ctx: AlmContext) {
+    return this.db.withTx(txOf(ctx), (c) => pickRunRequests(c, ctx.sap!));
   }
 }

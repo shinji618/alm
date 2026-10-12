@@ -6,3 +6,4 @@ export const PRINCIPALS = 'ALM_PRINCIPALS';
 export const SAP_CONNS = 'ALM_SAP_CONNS';
 export const LIMITER = 'ALM_LIMITER';
 export const FILES = 'ALM_FILES';
+export const MAILER = 'ALM_MAILER';

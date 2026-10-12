@@ -58,16 +58,23 @@ export async function idempotent(c: PoolClient, tenantId: string, endpoint: stri
 }
 
 // sap_if_run + 오류 메시지. 배치 하나 = 실행 1건
-export async function logRun(c: PoolClient, conn: SapConn, o: { interfaceId: string; batchId: string; correlationId?: string; startedAt: Date; batch: Batch }) {
+export async function logRun(c: PoolClient, conn: SapConn, o: { interfaceId: string; batchId: string; correlationId?: string; startedAt: Date; batch: Batch;
+  direction?: 'SAP_TO_ALM' | 'ALM_TO_SAP'; httpStatus?: number }) {
   const runId = randomUUID();
   const b = o.batch;
   const status = !b.failed ? 'SUCCESS' : b.failed >= b.received && b.received > 0 ? 'FAILED' : 'PARTIAL';
   await c.query(
     `INSERT INTO sap_if_run (id, tenant_id, interface_id, direction, batch_id, correlation_id, sap_system, http_status,
        record_count, success_count, error_count, status, started_at, finished_at)
-     VALUES ($1, $2, $3, 'SAP_TO_ALM', $4, $5, $6, $7, $8, $9, $10, $11, $12, now())`,
-    [runId, conn.tenantId, o.interfaceId, o.batchId.slice(0, 40), validUuid(o.correlationId), conn.systemId, b.http(),
-      b.received, b.received - b.failed, b.failed, status, o.startedAt]);
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now())`,
+    [runId, conn.tenantId, o.interfaceId, o.direction ?? 'SAP_TO_ALM', o.batchId.slice(0, 40), validUuid(o.correlationId), conn.systemId,
+      o.httpStatus ?? b.http(), b.received, b.received - b.failed, b.failed, status, o.startedAt]);
+  // IF-OP-01: 수동 실행 요청으로 돈 잡은 batchId 끝에 -REQ<요청 id 앞 8자리>를 붙인다(08 6.7) → 요청 DONE
+  const req = /-REQ([0-9a-f]{8})(?:-|$)/i.exec(o.batchId)?.[1];
+  if (req) {
+    await c.query(`UPDATE sap_run_request SET status = 'DONE', done_at = now(), sap_if_run_id = $1, updated_at = now(), version = version + 1
+      WHERE status IN ('PENDING', 'PICKED') AND interface_id = $2 AND id::text LIKE $3`, [runId, o.interfaceId, `${req.toLowerCase()}%`]);
+  }
   const rows = [...b.errors.map((e) => ({ key: e.key, result: 'ERROR', code: e.code, message: e.message, payload: e.payload })),
     ...b.extra.map((e) => ({ key: e.key, result: e.result, code: null, message: e.message ?? null, payload: e.payload }))];
   for (let i = 0; i < rows.length; i += 500) {

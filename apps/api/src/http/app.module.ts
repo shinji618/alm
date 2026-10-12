@@ -13,14 +13,15 @@ import { AdminController } from './admin.controller';
 import { PdaController } from './pda.controller';
 import { SapController } from './sap.controller';
 import { TtlCache } from '../common/cache';
-import { CONFIG, COGNITO, DB, FILES, LIMITER, PRINCIPALS, SAP_CONNS } from './tokens';
+import { CONFIG, COGNITO, DB, FILES, LIMITER, MAILER, PRINCIPALS, SAP_CONNS } from './tokens';
+import type { Mailer } from '../notify/mail';
 import { MemoryCounterStore, SharedLimiter } from '../common/shared';
 import { FilesController } from './files.controller';
 import type { FileStore } from '../files/files';
 
 @Module({})
 export class AppModule {
-  static create(deps: { cfg: Config; db: Db; cognito: Cognito; principals?: PrincipalCache; limiter?: SharedLimiter; files?: FileStore }): DynamicModule {
+  static create(deps: { cfg: Config; db: Db; cognito: Cognito; principals?: PrincipalCache; limiter?: SharedLimiter; files?: FileStore; mailer?: Mailer }): DynamicModule {
     return {
       module: AppModule,
       controllers: [HealthController, AuthController, MeController, AdminController, PdaController, SapController, FilesController],
@@ -32,6 +33,7 @@ export class AppModule {
         { provide: SAP_CONNS, useValue: new TtlCache() },
         { provide: LIMITER, useValue: deps.limiter ?? new SharedLimiter(new MemoryCounterStore()) },
         { provide: FILES, useValue: deps.files ?? null },
+        { provide: MAILER, useValue: deps.mailer ?? null },
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_FILTER, useClass: ProblemFilter },
       ],

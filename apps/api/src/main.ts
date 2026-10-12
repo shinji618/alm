@@ -16,7 +16,7 @@ import { Worker } from './worker/worker';
 import { maintainPartitions, archiveAll, s3Store } from './ops/archive';
 import { connectCounterStore, MemoryCounterStore, SharedLimiter } from './common/shared';
 import { s3FileStore } from './files/files';
-import { MailSender, parseSesEvent } from './notify/mail';
+import { Mailer, MailSender, parseSesEvent } from './notify/mail';
 
 export async function createApi(deps: Parameters<typeof AppModule.create>[0]) {
   const app = await NestFactory.create<NestExpressApplication>(AppModule.create(deps), { logger: ['error', 'warn'], bodyParser: true });
@@ -39,7 +39,9 @@ async function main(role: string) {
       if (!cfg.cache && process.env.CACHE_ENDPOINT) log.warn('CACHE_USER·CACHE_NAME 없음: 호출 제한을 작업 메모리로 센다');
       const limiter = new SharedLimiter(cfg.cache ? await connectCounterStore(cfg.cache, cfg.region) : new MemoryCounterStore());
       const files = cfg.filesBucket ? await s3FileStore(cfg.filesBucket, cfg.region) : undefined;
-      const app = await createApi({ cfg, db, cognito: new Cognito(cfg), limiter, files });
+      // 업무 메일은 트랜잭션 안에서 notification 행을 만들고, 커밋 뒤 작업 큐로 보낸다(worker가 SES 발송)
+      const mailer = cfg.jobsQueueUrl ? new Mailer(new SQSClient({ region: cfg.region }), cfg.jobsQueueUrl) : undefined;
+      const app = await createApi({ cfg, db, cognito: new Cognito(cfg), limiter, files, mailer });
       await app.listen(cfg.port, '0.0.0.0');
       log.info('api listening', { port: cfg.port, env: cfg.env });
       return;
