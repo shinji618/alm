@@ -13,6 +13,8 @@ import { Batch, batchBody, idempotent, logRun } from '../sap/inbound';
 import { postMasterData } from '../sap/master';
 import { postAssetValues, retryPendingAssets, upsertAssets } from '../sap/assets';
 import { claimPostings, Mail, pickRunRequests, postResult } from '../sap/postings';
+import { postGoodsReceipts, retryPendingReceipts, upsertPurchaseOrders } from '../sap/purchasing';
+import { postReconciliation } from '../sap/recon';
 import { Mailer, queueEmail, SendEmailJob } from '../notify/mail';
 import type { Config } from '../config';
 import type { PoolClient } from 'pg';
@@ -92,19 +94,22 @@ export class SapController {
   // ---- 수신(SAP → ALM). 공통: Idempotency-Key, sap_if_run 기록, 오류가 있으면 207(08 4.3) ----
   private async inbound(ctx: AlmContext, res: Response, o: { endpoint: string; iface: string; key?: string; body: unknown; max: number;
     run: (c: PoolClient, b: Record<string, unknown>, records: Record<string, unknown>[], batch: Batch) => Promise<void>;
-    after?: (c: PoolClient, b: Record<string, unknown>) => Promise<void> }) {
+    after?: (c: PoolClient, b: Record<string, unknown>, batch: Batch) => Promise<void> }) {
     const conn = ctx.sap!;
     const startedAt = new Date();
+    const jobs: SendEmailJob[] = [];
     const out = await this.db.withTx(txOf(ctx), (c) => idempotent(c, conn.tenantId, o.endpoint, o.key, o.body, async () => {
       const { batchId, b, records } = batchBody(o.body, o.max);
       const batch = new Batch(batchId, records.length);
       await o.run(c, b, records, batch);
       await logRun(c, conn, { interfaceId: o.iface, batchId, correlationId: ctx.correlationId, startedAt, batch });
-      await o.after?.(c, b);
+      await o.after?.(c, b, batch);
+      for (const m of batch.mails) { const j = await queueEmail(c, conn.tenantId, m, this.cfg.appOrigin); if (j) jobs.push(j); }
       log.info('sap inbound', { iface: o.iface, batchId, received: batch.received, failed: batch.failed, ms: Date.now() - startedAt.getTime(),
         correlationId: ctx.correlationId });
       return { status: batch.http(), body: batch.body() };
     }));
+    await this.enqueue(jobs);
     res.status(out.status);
     return out.body;
   }
@@ -146,11 +151,16 @@ export class SapController {
       for (const m of r.mails) { const j = await queueEmail(c, ctx.sap!.tenantId, m, this.cfg.appOrigin); if (j) jobs.push(j); }
       return { status: r.status, body: r.body };
     }));
+    await this.enqueue(jobs);
+    res.status(out.status);
+    return out.body;
+  }
+
+  // 커밋 뒤 메일 작업 큐로. 실패해도 응답은 그대로(notification 행은 QUEUED로 남는다)
+  private async enqueue(jobs: SendEmailJob[]) {
     for (const j of jobs) {
       await this.mailer?.enqueue(j).catch((e) => log.error('mail enqueue failed', { notificationId: j.notificationId, err: String(e) }));
     }
-    res.status(out.status);
-    return out.body;
   }
 
   @Post('sap/postings\\:claim')
@@ -171,5 +181,32 @@ export class SapController {
   @Operation('sapGetRunRequests')
   runRequests(@Ctx() ctx: AlmContext) {
     return this.db.withTx(txOf(ctx), (c) => pickRunRequests(c, ctx.sap!));
+  }
+
+  // ---- 구매·입고·대사(SAP → ALM) ----
+  @Post('sap/purchase-orders')
+  @Operation('sapPostPurchaseOrders')
+  purchaseOrders(@Ctx() ctx: AlmContext, @Body() body: unknown, @Headers('idempotency-key') key: string | undefined, @Res({ passthrough: true }) res: Response) {
+    return this.inbound(ctx, res, { endpoint: 'sapPostPurchaseOrders', iface: 'IF-MM-01', key, body, max: 1000,
+      run: (c, _b, records, batch) => upsertPurchaseOrders(c, ctx.sap!, records, batch),
+      // PO 항목이 없어 실패했던 입고(E202, 최근 3일)를 다시 처리
+      after: async (c, _b, batch) => {
+        const r = await retryPendingReceipts(c, ctx.sap!, ctx.correlationId);
+        if (r) { batch.mails.push(...r.mails); log.info('sap gr retry', { batchId: r.batchId, received: r.received, failed: r.failed }); }
+      } });
+  }
+
+  @Post('sap/goods-receipts')
+  @Operation('sapPostGoodsReceipts')
+  goodsReceipts(@Ctx() ctx: AlmContext, @Body() body: unknown, @Headers('idempotency-key') key: string | undefined, @Res({ passthrough: true }) res: Response) {
+    return this.inbound(ctx, res, { endpoint: 'sapPostGoodsReceipts', iface: 'IF-MM-03', key, body, max: 1000,
+      run: (c, _b, records, batch) => postGoodsReceipts(c, ctx.sap!, records, batch) });
+  }
+
+  @Post('sap/reconciliation')
+  @Operation('sapPostReconciliation')
+  reconciliation(@Ctx() ctx: AlmContext, @Body() body: unknown, @Headers('idempotency-key') key: string | undefined, @Res({ passthrough: true }) res: Response) {
+    return this.posting(ctx, res, 'sapPostReconciliation', key, body,
+      async (c) => ({ ...await postReconciliation(c, ctx.sap!, body, ctx.correlationId), mails: [] }));
   }
 }

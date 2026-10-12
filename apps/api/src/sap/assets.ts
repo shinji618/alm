@@ -107,8 +107,8 @@ async function event(c: PoolClient, conn: SapConn, assetId: string, type: string
 }
 
 // 새 SAP 자산의 카테고리: 그 자산클래스를 기본으로 둔 카테고리, 없으면 'SAP 미분류'(자산 관리자가 나중에 고친다)
-async function categoryFor(c: PoolClient, tenantId: string, classId: string): Promise<string> {
-  const hit = (await c.query('SELECT id FROM category WHERE default_asset_class_id = $1 AND is_active ORDER BY category_code LIMIT 1', [classId])).rows[0]?.id;
+export async function categoryFor(c: PoolClient, tenantId: string, classId: string | null): Promise<string> {
+  const hit = classId ? (await c.query('SELECT id FROM category WHERE default_asset_class_id = $1 AND is_active ORDER BY category_code LIMIT 1', [classId])).rows[0]?.id : undefined;
   if (hit) return hit;
   return (await c.query(`INSERT INTO category (id, tenant_id, category_code, name) VALUES ($1, $2, 'SAP-UNCLASSIFIED', 'SAP 미분류')
     ON CONFLICT (tenant_id, category_code) DO UPDATE SET is_active = true RETURNING id`, [randomUUID(), tenantId])).rows[0].id;

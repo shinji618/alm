@@ -52,6 +52,16 @@ export const TEMPLATES: Record<string, Tpl> = {
       en: (p) => [`You were assigned to physical count ${v(p, 'campaign')}.`, `Rooms: ${v(p, 'rooms')}`, `Due: ${v(p, 'dueDate')}`],
     },
   },
+  GR_CANCELLED: {
+    subject: { ko: (p) => `[ALM] 입고 취소: ${v(p, 'poNo')}`, en: (p) => `[ALM] Goods receipt reversed: ${v(p, 'poNo')}` },
+    lines: {
+      ko: (p) => [`PO ${v(p, 'poNo')}의 입고가 SAP에서 취소되었습니다(이동유형 ${v(p, 'movementType')}, 수량 ${v(p, 'quantity')}).`,
+        `입고 취소 표시한 자산: ${v(p, 'assets')}`, '자산을 확인하고 라벨·재고를 정리하세요.'],
+      en: (p) => [`A goods receipt for PO ${v(p, 'poNo')} was reversed in SAP (movement ${v(p, 'movementType')}, quantity ${v(p, 'quantity')}).`,
+        `Assets marked as reversed: ${v(p, 'assets')}`, 'Please check the assets and clean up labels and stock.'],
+    },
+    action: { ko: '자산 보기', en: 'Open assets' },
+  },
   SAP_POSTING_FAILED: {
     subject: { ko: (p) => `[ALM] SAP 전기 실패: ${v(p, 'reference')}`, en: (p) => `[ALM] SAP posting failed: ${v(p, 'reference')}` },
     lines: {

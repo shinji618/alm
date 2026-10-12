@@ -6,6 +6,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { AlmError } from '../common/errors';
 import type { SapConn } from '../auth/sap';
+import type { MailRequest } from '../notify/mail';
 
 export type ItemStatus = 'OK' | 'ERROR' | 'SKIPPED';
 export interface ItemResult { key: string; status: ItemStatus; code?: string; message?: string }
@@ -19,6 +20,7 @@ export class Batch {
   readonly results: ItemResult[] = [];
   readonly errors: { key: string; code: string; message: string; payload: unknown }[] = [];
   readonly extra: { key: string; result: string; message?: string; payload?: unknown }[] = [];   // 분할 기록 등
+  readonly mails: MailRequest[] = [];   // 커밋 뒤 보낼 알림(호출한 쪽이 notification 행 + 작업 큐)
   ok = 0; skipped = 0;
   constructor(readonly batchId: string, readonly received: number) {}
   okay(_key: string) { this.ok++; }
@@ -142,6 +144,13 @@ export class Rec {
     if (v === undefined || v === null) { if (required) throw new RecError('ALM-E101', `${k} 필수`); return undefined; }
     if (typeof v !== 'number' || !Number.isFinite(v) || Math.abs(v) >= 1e13) throw new RecError('ALM-E100', `${k}는 숫자`);
     return Math.round(v * 100) / 100;
+  }
+  // 수량: 소수 3자리
+  qty(k: string, required = false): number | undefined {
+    const v = this.r[k];
+    if (v === undefined || v === null) { if (required) throw new RecError('ALM-E101', `${k} 필수`); return undefined; }
+    if (typeof v !== 'number' || !Number.isFinite(v) || Math.abs(v) >= 1e10) throw new RecError('ALM-E100', `${k}는 숫자`);
+    return Math.round(v * 1000) / 1000;
   }
   bool(k: string): boolean | undefined {
     const v = this.r[k];

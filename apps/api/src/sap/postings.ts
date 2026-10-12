@@ -34,10 +34,15 @@ async function blackout(c: PoolClient): Promise<boolean> {
   return Date.parse(v.from) <= now && now < Date.parse(v.to);
 }
 
+// 지금 유효한 역할을 가진 활성 사용자(회사·사이트 범위 무시: 알림은 넓게)
+export async function usersWithRole(c: PoolClient, role: string): Promise<string[]> {
+  return (await c.query(`SELECT DISTINCT u.id FROM user_role r JOIN app_user u ON u.id = r.user_id
+     WHERE r.role = $1 AND u.is_active AND (r.valid_from IS NULL OR r.valid_from <= current_date)
+       AND (r.valid_until IS NULL OR r.valid_until >= current_date)`, [role])).rows.map((r) => r.id as string);
+}
+
 async function accountantMails(c: PoolClient, postingId: string, attempt: number, message: string): Promise<Mail[]> {
-  const users = (await c.query(`SELECT DISTINCT u.id FROM user_role r JOIN app_user u ON u.id = r.user_id
-     WHERE r.role = 'ASSET_ACCOUNTANT' AND u.is_active AND (r.valid_from IS NULL OR r.valid_from <= current_date)
-       AND (r.valid_until IS NULL OR r.valid_until >= current_date)`)).rows;
+  const users = (await usersWithRole(c, 'ASSET_ACCOUNTANT')).map((id) => ({ id }));
   return users.map((u) => ({ recipientId: u.id as string, template: 'SAP_POSTING_FAILED', params: { reference: postingId, message: message.slice(0, 300),
     path: `/integration/sap/postings?postingId=${encodeURIComponent(postingId)}` }, subjectType: 'SAP_POSTING', dedupeKey: `SAP_POSTING_FAILED:${postingId}:${attempt}:${u.id}`.slice(0, 120) }));
 }
