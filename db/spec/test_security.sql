@@ -47,3 +47,29 @@ SET SESSION AUTHORIZATION tester;
 SELECT count(*) AS inactive_tenant_client FROM auth_sap_client('abc123');
 RESET SESSION AUTHORIZATION;
 SELECT tableowner FROM pg_tables WHERE tablename='audit_log';
+\echo '--- 8. audit partitions: owner, app cannot read partitions directly, maintain is idempotent'
+SELECT c.relname, c.relkind, pg_get_userbyid(c.relowner) AS owner FROM pg_class c WHERE c.relname IN ('audit_log', 'security_event', 'audit_log_default', 'security_event_default') ORDER BY 1;
+SELECT count(*) FILTER (WHERE pg_get_userbyid(c.relowner) <> 'alm_audit_owner') AS not_audit_owned, count(*) >= 10 AS has_month_partitions
+  FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid WHERE i.inhparent IN ('audit_log'::regclass, 'security_event'::regclass);
+SELECT count(*) AS created_again FROM log_partition_maintain();
+SET SESSION AUTHORIZATION tester;
+SELECT count(*) FROM audit_log_default;
+SELECT count(*) FROM log_partition_maintain();
+SELECT log_partition_drop('audit_log', '2000-01-01', 0);
+RESET SESSION AUTHORIZATION;
+\echo '--- 9. rows in default partition move to the new month partition'
+INSERT INTO security_event(id, tenant_id, event_type, actor_type, channel, occurred_at)
+  VALUES (gen_random_uuid(), '00000000-0000-0000-0000-00000000000a', 'LOGIN', 'USER', 'WEB', date_trunc('month', now()) + interval '6 months');
+SELECT count(*) AS in_default FROM security_event_default;
+SELECT tbl, moved FROM log_partition_maintain(6) WHERE moved > 0;
+SELECT count(*) AS in_default FROM security_event_default;
+\echo '--- 10. drop: recent month refused, row count must match, owner cannot drop security_event'
+SELECT log_partition_drop('security_event', date_trunc('month', now())::date, 0);
+SELECT count(*) AS old_created FROM log_partition_maintain(0, 16) WHERE tbl = 'audit_log';
+INSERT INTO audit_log(id, tenant_id, table_name, row_id, action, actor_type, db_user, tx_id, occurred_at)
+  VALUES (gen_random_uuid(), '00000000-0000-0000-0000-00000000000a', 'asset', gen_random_uuid(), 'INSERT', 'SYSTEM', 'x', 1, date_trunc('month', now()) - interval '15 months' + interval '3 days');
+SELECT log_partition_drop('audit_log', (date_trunc('month', now()) - interval '15 months')::date, 0);
+SELECT log_partition_drop('audit_log', (date_trunc('month', now()) - interval '15 months')::date, 1);
+SELECT count(*) AS old_rows_left FROM audit_log WHERE occurred_at < date_trunc('month', now()) - interval '14 months';
+SELECT log_partition_drop('pg_class', '2000-01-01', 0);
+DROP TABLE security_event;

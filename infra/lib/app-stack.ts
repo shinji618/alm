@@ -171,19 +171,20 @@ export class AppStack extends Stack {
     const cacheConnect = new iam.PolicyStatement({ actions: ['elasticache:Connect'],
       resources: [cache.attrArn, `arn:aws:elasticache:${this.region}:${this.account}:user:${appUserId}`] });
 
-    const makeTask = (name: string, cpu: number, memoryMiB: number, command: string[], dbUser: string, logGroup: logs.LogGroup) => {
+    // dbUser: IAM DB 인증 로그인. null이면 IAM 접속 없음(migrate·seed는 RDS 마스터 비밀로 접속)
+    const makeTask = (name: string, cpu: number, memoryMiB: number, command: string[], dbUser: string | null, logGroup: logs.LogGroup) => {
       const td = new ecs.FargateTaskDefinition(this, `${name}Task`, { family: `alm-${env}-${name}`, cpu, memoryLimitMiB: memoryMiB,
         runtimePlatform: { cpuArchitecture: ecs.CpuArchitecture.ARM64, operatingSystemFamily: ecs.OperatingSystemFamily.LINUX } });
       td.addVolume({ name: 'tmp' });
       const c = td.addContainer('app', {
         image, command, readonlyRootFilesystem: true, user: '1000',
-        environment: { ...commonEnv, APP_ROLE: name, DB_IAM_USER: dbUser },
+        environment: { ...commonEnv, APP_ROLE: name, ...(dbUser ? { DB_IAM_USER: dbUser } : {}) },
         logging: ecs.LogDrivers.awsLogs({ logGroup, streamPrefix: name }),
         portMappings: name === 'api' ? [{ containerPort: CONTAINER_PORT }] : undefined,
         stopTimeout: Duration.seconds(35),
       });
       c.addMountPoints({ containerPath: '/tmp', sourceVolume: 'tmp', readOnly: false });
-      td.addToTaskRolePolicy(new iam.PolicyStatement({ actions: ['rds-db:connect'], resources: [dbUserArn(dbUser)] }));
+      if (dbUser) td.addToTaskRolePolicy(new iam.PolicyStatement({ actions: ['rds-db:connect'], resources: [dbUserArn(dbUser)] }));
       return { td, c };
     };
     const lg = (n: string) => new logs.LogGroup(this, `${n}Logs`, { logGroupName: `/alm/${env}/${n}`, retention: cfg.logRetentionDays as logs.RetentionDays,
@@ -212,7 +213,7 @@ export class AppStack extends Stack {
     worker.td.addToTaskRolePolicy(cacheConnect);
 
     // migrate(배포 때 1회 RunTask) — 소유자 로그인. 시작 스크립트가 IAM 토큰으로 URL을 만든다
-    const migrate = makeTask('migrate', 512, 1024, ['sh', 'scripts/migrate.sh'], 'alm_owner_iam', lg('migrate'));
+    const migrate = makeTask('migrate', 512, 1024, ['sh', 'scripts/migrate.sh'], null, lg('migrate'));
     // 부트스트랩(로그인 계정 생성·이벤트 트리거)에 rds_superuser가 필요해 마스터로 접속한다. 같은 작업 정의로 seed도 실행(런북 13)
     // ARN으로 가져온다(키를 모르게): 실제 비밀을 쓰면 실행 역할 권한이 Data 키 정책에 붙어 스택 순환이 생긴다(auth-stack 쿠키 키와 같은 이유)
     if (!props.db.secret) throw new Error('RDS 마스터 비밀이 없다');
@@ -224,6 +225,7 @@ export class AppStack extends Stack {
 
     // audit-archive(월 1회 Scheduler RunTask) — 보관 계정 로그인, log-archive 감사 버킷 쓰기
     const archive = makeTask('audit-archive', 512, 1024, ['node', 'dist/main', 'audit-archive'], 'alm_archive_login', lg('audit-archive'));
+    archive.c.addEnvironment('AUDIT_BUCKET', AUDIT_BUCKET);
     archive.td.addToTaskRolePolicy(new iam.PolicyStatement({ actions: ['s3:PutObject', 's3:GetObject', 's3:ListBucket'],
       resources: [`arn:aws:s3:::${AUDIT_BUCKET}`, `arn:aws:s3:::${AUDIT_BUCKET}/${env}/*`] }));
     archive.td.addToTaskRolePolicy(new iam.PolicyStatement({ actions: ['kms:GenerateDataKey', 'kms:Decrypt'],
@@ -286,11 +288,11 @@ export class AppStack extends Stack {
       scheduleGroup: group,
       target: new schedTargets.EcsRunFargateTask(this.cluster, { taskDefinition: td, securityGroups: [sg], vpcSubnets: appSubnets }),
     });
-    runTask('AuditArchive', '0 3 1 * ? *', archive.td, archiveSg);
-    // 파티션 관리: 업무 로그 테이블은 소유자, audit_log는 보관 계정으로 각각 run_maintenance
+    // 야간·주말 정지 환경(DEV·QA)은 DB가 켜져 있는 시간에 돌린다: 보관은 첫 월요일 08시, 파티션 관리는 평일 07:30
+    runTask('AuditArchive', cfg.nightlyStop ? '0 8 ? * MON#1 *' : '0 3 1 * ? *', archive.td, archiveSg);
+    // 감사 파티션 관리(audit_log·security_event): 보관 계정이 log_partition_maintain()으로. 소유자 로그인(alm_owner_iam)은 쓰지 않는다
     const partman = makeTask('partman', 256, 512, ['node', 'dist/main', 'partman'], 'alm_archive_login', lg('partman'));
-    partman.td.addToTaskRolePolicy(new iam.PolicyStatement({ actions: ['rds-db:connect'], resources: [dbUserArn('alm_owner_iam')] }));
-    runTask('PartitionMaintenance', '30 2 * * ? *', partman.td, archiveSg);
+    runTask('PartitionMaintenance', cfg.nightlyStop ? '30 7 ? * MON-FRI *' : '30 2 * * ? *', partman.td, archiveSg);
 
     // DEV·QA 야간 정지(A-10): ECS desired 0 / 복구. RDS 정지·시작은 Scheduler 범용 대상(SDK 호출)
     if (cfg.nightlyStop) {

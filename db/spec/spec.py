@@ -54,8 +54,9 @@ DOMAINS = [
 ]
 
 T = []  # (domain, name, korean, desc, mode, cols, uniques, indexes, screens)
-def t(domain, name, ko, desc, cols, uniques=(), indexes=(), mode='full', screens=''):
-    T.append(dict(domain=domain, name=name, ko=ko, desc=desc, mode=mode,
+def t(domain, name, ko, desc, cols, uniques=(), indexes=(), mode='full', screens='', partition=None):
+    # partition: 월 단위 범위 파티션 키(09 8.3). 기본키는 (id, 키)
+    T.append(dict(domain=domain, name=name, ko=ko, desc=desc, mode=mode, partition=partition,
                   cols=[c.strip() for c in cols.strip().split('\n') if c.strip()],
                   uniques=list(uniques), indexes=list(indexes), screens=screens))
 
@@ -772,7 +773,7 @@ ip_address | inet | | 접속 IP
 db_user | vc(63) | NN | 실제 DB 로그인 계정(session_user). 앱 계정이 아닌 직접 수정 식별
 tx_id | bigint | NN | DB 트랜잭션 ID(같은 트랜잭션 변경 묶음)
 occurred_at | ts | NN =now | 발생 일시
-''', indexes=[('tenant_id','table_name','row_id'),('tenant_id','occurred_at')], mode='log', screens='공통')
+''', indexes=[('tenant_id','table_name','row_id'),('tenant_id','occurred_at')], mode='log', screens='공통', partition='occurred_at')
 t('common','security_event','보안 이벤트','로그인·권한 거부·내보내기·비밀 교체 등. 10년 보관, 월 파티션. 테넌트를 알 수 없는 로그인 실패는 CloudWatch에만', '''
 event_type | E:SecurityEventType | NN | 이벤트
 actor_id | uuid | | 사용자 id(FK 없음)
@@ -785,7 +786,7 @@ target | vc(200) | | 대상(API 경로, 사용자 id, 연결 id 등)
 detail | json | | 상세(거부 사유, 권한 키, 내보내기 행 수 등)
 correlation_id | uuid | | 요청 추적 ID
 occurred_at | ts | NN =now | 발생 일시
-''', indexes=[('tenant_id','occurred_at'),('tenant_id','event_type','occurred_at')], mode='log', screens='관리')
+''', indexes=[('tenant_id','occurred_at'),('tenant_id','event_type','occurred_at')], mode='log', screens='관리', partition='occurred_at')
 
 
 # 감사 트리거 제외(대량·기술성 데이터. 자체가 이력이거나 IF 로그로 추적됨). log 모드 테이블은 모두 제외

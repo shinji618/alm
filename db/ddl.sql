@@ -2360,7 +2360,7 @@ CREATE INDEX ix_notification_recipient_id_status ON notification (recipient_id, 
 
 -- 감사 로그: 업무 테이블의 생성·변경·삭제 전후값(DB 트리거가 기록). 10년 보관, 월 파티션
 CREATE TABLE audit_log (
-  id uuid PRIMARY KEY,
+  id uuid NOT NULL,
   tenant_id uuid NOT NULL,
   table_name varchar(63) NOT NULL,
   row_id uuid NOT NULL,
@@ -2374,8 +2374,10 @@ CREATE TABLE audit_log (
   db_user varchar(63) NOT NULL,
   tx_id bigint NOT NULL,
   occurred_at timestamptz NOT NULL DEFAULT now(),
-  created_at timestamptz NOT NULL DEFAULT now()
-);
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (id, occurred_at)
+) PARTITION BY RANGE (occurred_at);
+CREATE TABLE audit_log_default PARTITION OF audit_log DEFAULT;
 COMMENT ON COLUMN audit_log.id IS '기본키';
 COMMENT ON COLUMN audit_log.tenant_id IS '테넌트';
 COMMENT ON COLUMN audit_log.table_name IS '테이블';
@@ -2397,7 +2399,7 @@ CREATE INDEX ix_audit_log_tenant_id_occurred_at ON audit_log (tenant_id, occurre
 
 -- 보안 이벤트: 로그인·권한 거부·내보내기·비밀 교체 등. 10년 보관, 월 파티션. 테넌트를 알 수 없는 로그인 실패는 CloudWatch에만
 CREATE TABLE security_event (
-  id uuid PRIMARY KEY,
+  id uuid NOT NULL,
   tenant_id uuid NOT NULL,
   event_type security_event_type NOT NULL,
   actor_id uuid,
@@ -2410,8 +2412,10 @@ CREATE TABLE security_event (
   detail jsonb,
   correlation_id uuid,
   occurred_at timestamptz NOT NULL DEFAULT now(),
-  created_at timestamptz NOT NULL DEFAULT now()
-);
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (id, occurred_at)
+) PARTITION BY RANGE (occurred_at);
+CREATE TABLE security_event_default PARTITION OF security_event DEFAULT;
 COMMENT ON COLUMN security_event.id IS '기본키';
 COMMENT ON COLUMN security_event.tenant_id IS '테넌트';
 COMMENT ON COLUMN security_event.event_type IS '이벤트';
@@ -2812,7 +2816,7 @@ SELECT l.tenant_id, l.id AS license_id, l.product_id, l.license_model, l.owned_q
 -- Security (WBS 2.8) ------------------------------------------------------
 -- DB 역할
 --   (소유자)        : 마이그레이션 계정. 업무 테이블 소유. 배포 파이프라인만 사용
---   alm_audit_owner : audit_log·audit_row()·보호 함수 소유. 로그인 없음, 파이프라인 계정은 멤버 아님(최초 1회 DBA가 부트스트랩)
+--   alm_audit_owner : audit_log·security_event(월 파티션 포함)·audit_row()·보호 함수 소유. 로그인 없음, 파이프라인 계정은 멤버 아님(최초 1회 DBA가 부트스트랩)
 --   alm_app         : NestJS 서버. 소유자 아님, BYPASSRLS 없음 → 모든 테이블에 RLS 적용
 --   alm_readonly    : 운영 조회·리포트(읽기 전용, RLS 적용)
 -- 로그인 사용자(예: alm_app_login, IAM DB 인증)는 인프라(CDK)가 만들고 위 역할을 부여한다.
@@ -3000,7 +3004,7 @@ BEGIN
   IF TG_EVENT = 'sql_drop' THEN
     FOR r IN SELECT * FROM pg_event_trigger_dropped_objects() LOOP
       IF (r.object_type = 'trigger' AND r.object_identity LIKE 'tr\_%\_audit on %')
-         OR (r.object_type IN ('table', 'function') AND r.object_identity IN ('public.audit_log', 'public.audit_row()')) THEN
+         OR (r.object_type IN ('table', 'function') AND r.object_identity IN ('public.audit_log', 'public.security_event', 'public.audit_row()')) THEN
         RAISE EXCEPTION 'audit: dropping % is not allowed', r.object_identity;
       END IF;
     END LOOP;
@@ -3010,5 +3014,89 @@ BEGIN
 END $$;
 CREATE EVENT TRIGGER et_guard_audit_ddl ON ddl_command_end EXECUTE FUNCTION guard_audit_ddl();
 CREATE EVENT TRIGGER et_guard_audit_drop ON sql_drop EXECUTE FUNCTION guard_audit_ddl();
+
+-- 감사 기록 월 파티션(09 8.3) -------------------------------------------------------
+-- audit_log·security_event는 occurred_at 월 단위 범위 파티션이다(이름 <표>_pYYYYMM, [월초, 다음 월초) UTC).
+-- 둘 다 alm_audit_owner가 소유한다: 파이프라인(소유자) 계정은 감사 기록을 지우거나 파티션을 떼어 낼 수 없다.
+-- 파티션 관리·보관은 alm_audit_owner 멤버 로그인(alm_archive_login)만 아래 두 함수로 한다.
+ALTER TABLE security_event OWNER TO alm_audit_owner;
+ALTER TABLE audit_log_default OWNER TO alm_audit_owner;
+ALTER TABLE security_event_default OWNER TO alm_audit_owner;
+-- 기본 파티션은 앞의 GRANT … ON ALL TABLES로 앱 권한을 받았다. 파티션을 직접 읽으면 RLS가 걸리지 않으므로 회수(부모 테이블로만 접근)
+REVOKE ALL ON audit_log_default, security_event_default FROM alm_app, alm_readonly;
+GRANT REFERENCES (id) ON tenant TO alm_audit_owner;
+GRANT USAGE, CREATE ON SCHEMA public TO alm_audit_owner;   -- 월 파티션 생성(PG15+는 public CREATE 기본 회수)
+
+-- 이번 달 앞 p_back개월 ~ 뒤 p_ahead개월 파티션을 만든다(멱등). 기본 파티션에 그 범위 행이 있으면 새 파티션으로 옮긴다
+-- (야간 정지 환경에서 관리 작업이 밀려 기본 파티션에 쌓인 경우). 반환: 새로 만든 파티션과 옮긴 행 수
+CREATE FUNCTION log_partition_maintain(p_ahead int DEFAULT 3, p_back int DEFAULT 0)
+RETURNS TABLE (tbl text, part text, moved bigint)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+  t  text;
+  i  int;
+  m  date;
+  lo timestamptz;
+  hi timestamptz;
+BEGIN
+  IF p_ahead NOT BETWEEN 0 AND 24 OR p_back NOT BETWEEN 0 AND 120 THEN
+    RAISE EXCEPTION 'log_partition_maintain: p_ahead 0..24, p_back 0..120';
+  END IF;
+  FOREACH t IN ARRAY ARRAY['audit_log', 'security_event'] LOOP
+    FOR i IN -p_back..p_ahead LOOP
+      m  := (date_trunc('month', now() AT TIME ZONE 'UTC') + make_interval(months => i))::date;
+      part := format('%s_p%s', t, to_char(m, 'YYYYMM'));
+      IF to_regclass(part) IS NOT NULL THEN
+        IF NOT EXISTS (SELECT 1 FROM pg_inherits WHERE inhrelid = to_regclass(part) AND inhparent = to_regclass(t)) THEN
+          RAISE EXCEPTION 'log_partition_maintain: % exists but is not a partition of %', part, t;
+        END IF;
+        CONTINUE;
+      END IF;
+      lo := m::timestamp AT TIME ZONE 'UTC';
+      hi := (m + interval '1 month')::timestamp AT TIME ZONE 'UTC';
+      EXECUTE format('CREATE TABLE %I (LIKE %I INCLUDING DEFAULTS INCLUDING CONSTRAINTS)', part, t);
+      EXECUTE format('WITH d AS (DELETE FROM %I WHERE occurred_at >= $1 AND occurred_at < $2 RETURNING *) INSERT INTO %I SELECT * FROM d',
+                     t || '_default', part) USING lo, hi;
+      GET DIAGNOSTICS moved = ROW_COUNT;
+      EXECUTE format('ALTER TABLE %I ATTACH PARTITION %I FOR VALUES FROM (%L) TO (%L)', t, part, lo, hi);
+      tbl := t;
+      RETURN NEXT;
+    END LOOP;
+  END LOOP;
+END $$;
+
+-- S3 보관이 끝난 파티션을 떼어 내 지운다. 13개월 온라인 기간(이번 달 포함 14개월)보다 오래된 월만, DB 건수가 보관한 건수와 같을 때만
+CREATE FUNCTION log_partition_drop(p_table text, p_month date, p_rows bigint)
+RETURNS bigint
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+  part text;
+  n    bigint;
+BEGIN
+  IF p_table NOT IN ('audit_log', 'security_event') THEN
+    RAISE EXCEPTION 'log_partition_drop: % is not an archived log table', p_table;
+  END IF;
+  IF p_month IS NULL OR p_month <> date_trunc('month', p_month)::date
+     OR p_month > (date_trunc('month', now() AT TIME ZONE 'UTC') - interval '14 months')::date THEN
+    RAISE EXCEPTION 'log_partition_drop: % is inside the 13-month online window', p_month;
+  END IF;
+  part := format('%s_p%s', p_table, to_char(p_month, 'YYYYMM'));
+  IF NOT EXISTS (SELECT 1 FROM pg_inherits WHERE inhrelid = to_regclass(part) AND inhparent = to_regclass(p_table)) THEN
+    RAISE EXCEPTION 'log_partition_drop: % is not a partition of %', part, p_table;
+  END IF;
+  EXECUTE format('LOCK TABLE %I IN ACCESS EXCLUSIVE MODE', part);
+  EXECUTE format('SELECT count(*) FROM %I', part) INTO n;
+  IF n <> p_rows THEN
+    RAISE EXCEPTION 'log_partition_drop: % has % rows, archive has %', part, n, p_rows;
+  END IF;
+  EXECUTE format('ALTER TABLE %I DETACH PARTITION %I', p_table, part);
+  EXECUTE format('DROP TABLE %I', part);
+  RETURN n;
+END $$;
+ALTER FUNCTION log_partition_maintain(int, int) OWNER TO alm_audit_owner;
+ALTER FUNCTION log_partition_drop(text, date, bigint) OWNER TO alm_audit_owner;
+REVOKE ALL ON FUNCTION log_partition_maintain(int, int), log_partition_drop(text, date, bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION log_partition_maintain(int, int), log_partition_drop(text, date, bigint) TO alm_audit_owner;
+SELECT count(*) AS partitions_created FROM log_partition_maintain();
 
 COMMIT;

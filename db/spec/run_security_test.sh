@@ -7,9 +7,10 @@ cd "$(dirname "$0")"
 DB=${TEST_DB:-alm_security_test}
 psql -X -q -d postgres -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB"
 psql -X -q -d "$DB" -v ON_ERROR_STOP=1 -f ../ddl.sql > /dev/null
-# 무작위 값(실패 행 내용의 UUID·시각)만 지우고 나머지는 그대로 비교한다
+# 무작위 값(실패 행 내용의 UUID·시각)과 실행 월(파티션 이름·월초 날짜)만 지우고 나머지는 그대로 비교한다
 psql -X -d "$DB" -f test_security.sql 2>&1 \
-  | sed -E 's/Failing row contains \(.*\)\./Failing row contains (...)./' > test_security.actual
+  | sed -E -e 's/Failing row contains \(.*\)\./Failing row contains (...)./' \
+        -e 's/[0-9]{4}-[0-9]{2}-01/YYYY-MM-01/g' -e 's/_p[0-9]{6}/_pYYYYMM/g' > test_security.actual
 if [[ "${UPDATE_EXPECTED:-0}" == "1" ]]; then
   mv test_security.actual test_security.expected; echo "expected updated"; exit 0
 fi

@@ -118,7 +118,7 @@ def build_prisma():
             typ, dbattr = prisma_scalar(c)
             opt = '' if c['nn'] else '?'
             attrs = []
-            if c.get('pk'): attrs.append('@id @default(uuid(7))')
+            if c.get('pk'): attrs.append('@default(uuid(7))' if t.get('partition') else '@id @default(uuid(7))')
             if c.get('uk'): attrs.append('@unique')
             d = prisma_default(c)
             if d: attrs.append(d)
@@ -133,6 +133,8 @@ def build_prisma():
                 lines.append(f'  {r["field"]} {pascal(c["ref"])}{opt} @relation("{r["name"]}", fields: [{fn}], references: [id])')
         for back, srcmodel, relname, uniq in backrefs[t['name']]:
             lines.append(f'  {back} {srcmodel}{"?" if uniq else "[]"} @relation("{relname}")')
+        if t.get('partition'):
+            lines.append(f'  @@id([id, {camel(t["partition"])}])')
         for u in t['uniques']:
             lines.append(f'  @@unique([{", ".join(camel(x) for x in u)}])')
         for i in t['indexes']:
@@ -169,8 +171,8 @@ def build_ddl():
         defs = []
         for c in all_cols(t):
             s = f'  {c["name"]} {pgtype(c)}'
-            if c.get('pk'): s += ' PRIMARY KEY'
-            if c['nn'] and not c.get('pk'): s += ' NOT NULL'
+            if c.get('pk') and not t.get('partition'): s += ' PRIMARY KEY'
+            if c['nn'] and not (c.get('pk') and not t.get('partition')): s += ' NOT NULL'
             d = pgdefault(c)
             if d: s += f' DEFAULT {d}'
             if c.get('uk'): s += ' UNIQUE'
@@ -184,8 +186,15 @@ def build_ddl():
             defs.append("  CHECK (idp_provider_name ~ '^T-[A-Z0-9-]+$')")
         if t['name'] == 'approval':
             defs.append('  CHECK (num_nonnulls(asset_request_id, purchase_request_id) = 1)')
+        if t.get('partition'):
+            defs.append(f'  PRIMARY KEY (id, {t["partition"]})')
         o.append(',\n'.join(defs))
-        o.append(');')
+        if t.get('partition'):
+            # 월 파티션은 log_partition_maintain()이 만든다(security.sql). 범위 밖 행은 기본 파티션이 받는다
+            o.append(f') PARTITION BY RANGE ({t["partition"]});')
+            o.append(f'CREATE TABLE {t["name"]}_default PARTITION OF {t["name"]} DEFAULT;')
+        else:
+            o.append(');')
         for c in all_cols(t):
             if c.get('desc'):
                 o.append(f"COMMENT ON COLUMN {t['name']}.{c['name']} IS {sql_str(c['desc'])};")
@@ -246,6 +255,7 @@ def doc_table(t):
     if t['name'] == 'user_role': extra.append('UNIQUE는 NULLS NOT DISTINCT(범위가 빈 같은 역할 중복 방지)')
     if t['name'] in APPEND_ONLY: extra.append('앱 계정은 추가만(수정·삭제 불가)')
     if t['mode'] == 'log': extra.append('로그 테이블: 공통 컬럼 중 id·tenant_id·created_at만')
+    if t.get('partition'): extra.append(f'월 파티션(PARTITION BY RANGE {t["partition"]}), 기본키 (id, {t["partition"]}). 13개월 뒤 S3 보관')
     if t['mode'] == 'root': extra.append('tenant_id 없음')
     if extra:
         lines += [''] + ['제약: ' + '; '.join(extra)]

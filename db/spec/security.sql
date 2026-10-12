@@ -1,7 +1,7 @@
 -- Security (WBS 2.8) ------------------------------------------------------
 -- DB 역할
 --   (소유자)        : 마이그레이션 계정. 업무 테이블 소유. 배포 파이프라인만 사용
---   alm_audit_owner : audit_log·audit_row()·보호 함수 소유. 로그인 없음, 파이프라인 계정은 멤버 아님(최초 1회 DBA가 부트스트랩)
+--   alm_audit_owner : audit_log·security_event(월 파티션 포함)·audit_row()·보호 함수 소유. 로그인 없음, 파이프라인 계정은 멤버 아님(최초 1회 DBA가 부트스트랩)
 --   alm_app         : NestJS 서버. 소유자 아님, BYPASSRLS 없음 → 모든 테이블에 RLS 적용
 --   alm_readonly    : 운영 조회·리포트(읽기 전용, RLS 적용)
 -- 로그인 사용자(예: alm_app_login, IAM DB 인증)는 인프라(CDK)가 만들고 위 역할을 부여한다.

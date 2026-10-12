@@ -120,9 +120,22 @@ describe('App (10 6장)', () => {
     expect(secretsOf('alm-dev-api')).toEqual(['COGNITO_WEB_CLIENT_SECRET', 'COOKIE_KEY']);
     for (const f of ['alm-dev-worker', 'alm-dev-audit-archive', 'alm-dev-partman']) expect(secretsOf(f)).toEqual([]);
   });
+  it('감사 보관·파티션 관리: 정지 환경은 DB가 켜진 시간, 보관 작업에 감사 버킷', () => {
+    const sched = (env: 'dev' | 'prd') => Object.fromEntries(Object.values(tpl(env, 'app').findResources('AWS::Scheduler::Schedule'))
+      .filter((r: any) => r.Properties.Target?.EcsParameters).map((r: any) => [r.Properties.Target.EcsParameters.TaskDefinitionArn.Ref ?? '', r.Properties.ScheduleExpression]));
+    expect(Object.values(sched('dev')).sort()).toEqual(['cron(0 8 ? * MON#1 *)', 'cron(30 7 ? * MON-FRI *)']);
+    expect(Object.values(sched('prd')).sort()).toEqual(['cron(0 3 1 * ? *)', 'cron(30 2 * * ? *)']);
+    const tds = tpl('dev', 'app').findResources('AWS::ECS::TaskDefinition');
+    const env = (fam: string) => Object.fromEntries(((Object.values(tds).find((r: any) => r.Properties.Family === fam) as any)
+      .Properties.ContainerDefinitions[0].Environment ?? []).map((e: any) => [e.Name, e.Value]));
+    expect(env('alm-dev-audit-archive').AUDIT_BUCKET).toBe('alm-audit-archive-085462181410');
+    expect(env('alm-dev-audit-archive').DB_IAM_USER).toBe('alm_archive_login');
+    expect(env('alm-dev-migrate').DB_IAM_USER).toBeUndefined();
+  });
   it('작업 역할은 자기 DB 사용자로만 rds-db:connect', () => {
     const json = JSON.stringify(tpl('prd', 'app').toJSON());
-    for (const u of ['alm_app_login', 'alm_owner_iam', 'alm_archive_login']) expect(json).toContain(`/${u}`);
+    for (const u of ['alm_app_login', 'alm_archive_login']) expect(json).toContain(`/${u}`);
+    expect(json).not.toContain('/alm_owner_iam');              // 3.4 2차-3: 소유자 IAM 로그인 정리(migrate는 마스터 비밀)
     expect(json).not.toMatch(/dbuser:[^"]*\/\*"/);
   });
 });

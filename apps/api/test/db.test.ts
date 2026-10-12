@@ -67,7 +67,8 @@ test('migrate: 두 번 실행해도 같은 결과, 적용된 파일 변경은 �
   ms[0] = { ...ms[0], checksum: 'x'.repeat(64) };
   await assert.rejects(migrate(owner, ms), /내용이 바뀌었다/);
   const roles = (await owner.query(`SELECT rolname FROM pg_roles WHERE rolname LIKE 'alm_%' ORDER BY 1`)).rows.map((r) => r.rolname);
-  for (const r of ['alm_app', 'alm_app_login', 'alm_archive_login', 'alm_audit_owner', 'alm_owner_iam', 'alm_readonly']) assert.ok(roles.includes(r), r);
+  for (const r of ['alm_app', 'alm_app_login', 'alm_archive_login', 'alm_audit_owner', 'alm_readonly']) assert.ok(roles.includes(r), r);
+  assert.ok(!roles.includes('alm_owner_iam'), 'alm_owner_iam은 만들지 않는다');
   const owner_ = (await owner.query(`SELECT tableowner FROM pg_tables WHERE tablename = 'audit_log'`)).rows[0].tableowner;
   assert.equal(owner_, 'alm_audit_owner');
 });

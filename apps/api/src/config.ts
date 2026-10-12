@@ -10,6 +10,7 @@ export interface Config {
   cookieKeys: Buffer[];        // [현재, 이전] — 분기 교체 뒤 8시간 동안 이전 키도 받는다(09 6.4)
   jobsQueueUrl?: string;
   cognitoAdminFunction?: string;
+  auditBucket?: string;        // audit-archive: log-archive 계정 감사 버킷(Object Lock)
 }
 
 const req = (k: string) => {
@@ -31,7 +32,9 @@ export function loadConfig(role: string): Config {
     port: Number(process.env.PORT || 3000),
     db: {
       host: req('DB_HOST'), port: Number(process.env.DB_PORT || 5432), name: process.env.DB_NAME || 'alm',
-      user: req('DB_IAM_USER'), password: opt('DB_PASSWORD'),               // DB_PASSWORD가 있으면 IAM 토큰 대신(로컬)
+      // migrate·seed는 마스터 비밀로 접속하므로 IAM 로그인 계정이 없어도 된다
+      user: opt('DB_IAM_USER') ?? (opt('DB_MASTER_PASSWORD') ? process.env.DB_MASTER_USER || 'alm_owner' : req('DB_IAM_USER')),
+      password: opt('DB_PASSWORD'),                                          // DB_PASSWORD가 있으면 IAM 토큰 대신(로컬)
       ssl: process.env.DB_SSL !== 'false',
     },
     dbMaster: opt('DB_MASTER_PASSWORD') ? { user: process.env.DB_MASTER_USER || 'alm_owner', password: req('DB_MASTER_PASSWORD') } : undefined,
@@ -46,5 +49,6 @@ export function loadConfig(role: string): Config {
     cookieKeys: needsHttp ? [req('COOKIE_KEY'), opt('COOKIE_KEY_PREVIOUS')].filter((x): x is string => !!x).map(keyOf) : [],
     jobsQueueUrl: opt('JOBS_QUEUE_URL'),
     cognitoAdminFunction: opt('COGNITO_ADMIN_FUNCTION'),
+    auditBucket: opt('AUDIT_BUCKET'),
   };
 }

@@ -93,3 +93,69 @@ RESET
  alm_audit_owner
 (1 row)
 
+--- 8. audit partitions: owner, app cannot read partitions directly, maintain is idempotent
+        relname         | relkind |      owner      
+------------------------+---------+-----------------
+ audit_log              | p       | alm_audit_owner
+ audit_log_default      | r       | alm_audit_owner
+ security_event         | p       | alm_audit_owner
+ security_event_default | r       | alm_audit_owner
+(4 rows)
+
+ not_audit_owned | has_month_partitions 
+-----------------+----------------------
+               0 | t
+(1 row)
+
+ created_again 
+---------------
+             0
+(1 row)
+
+SET
+psql:test_security.sql:56: ERROR:  permission denied for table audit_log_default
+psql:test_security.sql:57: ERROR:  permission denied for function log_partition_maintain
+psql:test_security.sql:58: ERROR:  permission denied for function log_partition_drop
+RESET
+--- 9. rows in default partition move to the new month partition
+INSERT 0 1
+ in_default 
+------------
+          1
+(1 row)
+
+      tbl       | moved 
+----------------+-------
+ security_event |     1
+(1 row)
+
+ in_default 
+------------
+          0
+(1 row)
+
+--- 10. drop: recent month refused, row count must match, owner cannot drop security_event
+psql:test_security.sql:67: ERROR:  log_partition_drop: YYYY-MM-01 is inside the 13-month online window
+CONTEXT:  PL/pgSQL function log_partition_drop(text,date,bigint) line 11 at RAISE
+ old_created 
+-------------
+          16
+(1 row)
+
+INSERT 0 1
+psql:test_security.sql:71: ERROR:  log_partition_drop: audit_log_pYYYYMM has 1 rows, archive has 0
+CONTEXT:  PL/pgSQL function log_partition_drop(text,date,bigint) line 20 at RAISE
+ log_partition_drop 
+--------------------
+                  1
+(1 row)
+
+ old_rows_left 
+---------------
+             0
+(1 row)
+
+psql:test_security.sql:74: ERROR:  log_partition_drop: pg_class is not an archived log table
+CONTEXT:  PL/pgSQL function log_partition_drop(text,date,bigint) line 7 at RAISE
+psql:test_security.sql:75: ERROR:  audit: dropping public.security_event is not allowed
+CONTEXT:  PL/pgSQL function guard_audit_ddl() line 9 at RAISE

@@ -13,6 +13,7 @@ import { contextMiddleware } from './http/context';
 import { runMigrate, ownerClient } from './ops/migrate';
 import { parseSeed, seed } from './ops/seed';
 import { Worker } from './worker/worker';
+import { maintainPartitions, archiveAll, s3Store } from './ops/archive';
 
 export async function createApi(deps: Parameters<typeof AppModule.create>[0]) {
   const app = await NestFactory.create<NestExpressApplication>(AppModule.create(deps), { logger: ['error', 'warn'], bodyParser: true });
@@ -53,11 +54,21 @@ async function main(role: string) {
       try { await seed(c, input); } finally { await c.end(); }
       return;
     }
-    case 'audit-archive':
     case 'partman':
-      // 월 파티션·10년 보관(WBS 2.8 설계)은 3.4 2차에서 구현. 예약 작업이 실패로 보이지 않게 정상 종료
-      log.info('not implemented yet', { role });
+    case 'audit-archive': {
+      // 보관 계정(alm_archive_login, IAM 토큰)으로 접속. 감사 기록 파티션만 다룬다(09 8.3)
+      const pool = createPool(cfg, { max: 1 });
+      const c = await pool.connect();
+      try {
+        if (role === 'partman') await maintainPartitions(c);
+        else {
+          if (!cfg.auditBucket) throw new Error('AUDIT_BUCKET이 없다');
+          await maintainPartitions(c);     // 보관 전에 이번 달 이후 파티션도 확인
+          await archiveAll(c, await s3Store(cfg.auditBucket, cfg.region), cfg.env, { dryRun: process.argv[3] === '--dry-run' });
+        }
+      } finally { c.release(); await pool.end(); }
       return;
+    }
     default:
       throw new Error(`알 수 없는 역할: ${role}`);
   }

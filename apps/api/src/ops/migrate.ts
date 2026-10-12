@@ -39,24 +39,32 @@ export async function bootstrap(c: Client): Promise<void> {
   // PG15+는 public 스키마 CREATE가 기본 회수 → 소유권을 받을 역할(감사 소유)과 월 파티션을 만들 역할에 준다
   await c.query('GRANT USAGE, CREATE ON SCHEMA public TO alm_audit_owner');
   // 로그인 계정(IAM 토큰). 비밀번호 없음 — rds_iam이 없는 로컬은 시험에서 따로 비밀번호를 준다
-  const logins: [string, string][] = [['alm_app_login', 'alm_app'], ['alm_owner_iam', me], ['alm_archive_login', 'alm_audit_owner']];
+  const logins: [string, string][] = [['alm_app_login', 'alm_app'], ['alm_archive_login', 'alm_audit_owner']];
   for (const [login, member] of logins) {
     if (!(await hasRole(login))) await c.query(`CREATE ROLE ${login} LOGIN NOBYPASSRLS`);
-    if (member !== me) { await c.query(`GRANT ${ident(member)} TO ${login}`); }
-    else {
-      // PG16은 RDS 마스터가 자기 자신의 멤버십을 줄 수 없다(ADMIN 없음) → 건너뛴다. alm_owner_iam은 partman 전용, 3.4 2차에서 정리
-      await c.query('SAVEPOINT g');
-      try { await c.query(`GRANT ${ident(member)} TO ${login}`); await c.query('RELEASE SAVEPOINT g'); }
-      catch (e) { await c.query('ROLLBACK TO SAVEPOINT g'); log.warn('owner grant skipped', { login, err: String(e) }); }
-    }
+    await c.query(`GRANT ${ident(member)} TO ${login}`);
     if (rdsIam) await c.query(`GRANT rds_iam TO ${login}`);
+  }
+  // alm_owner_iam(3.4 1차의 partman용 소유자 로그인)은 쓰지 않는다: 파티션 관리는 보관 계정이 함수로 한다(0002). 남아 있으면 지운다
+  if (await hasRole('alm_owner_iam')) {
+    await c.query('SAVEPOINT d');
+    try { await c.query('DROP ROLE alm_owner_iam'); await c.query('RELEASE SAVEPOINT d'); log.info('role dropped', { role: 'alm_owner_iam' }); }
+    catch (e) { await c.query('ROLLBACK TO SAVEPOINT d'); log.warn('alm_owner_iam drop skipped', { err: String(e) }); }
   }
   // 이후 마이그레이션이 만드는 테이블에도 같은 권한(0001은 직접 GRANT). FOR ROLE 생략 = 현재 접속 계정(소유자)
   await c.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO alm_app`);
   await c.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO alm_readonly`);
   await c.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO alm_app`);
   const pgaudit = (await c.query(`SELECT 1 FROM pg_available_extensions WHERE name = 'pgaudit'`)).rowCount === 1;
-  if (pgaudit) await c.query('CREATE EXTENSION IF NOT EXISTS pgaudit');
+  if (pgaudit) {
+    await c.query('CREATE EXTENSION IF NOT EXISTS pgaudit');
+    // 소유자(마스터)·보관 계정 세션은 모든 SQL을 남긴다(09 8.2, 결정 S-16). 역할 설정은 멤버십으로 상속되지 않아 로그인마다 건다
+    for (const sql of [`ALTER ROLE CURRENT_USER SET pgaudit.log = 'all'`, `ALTER ROLE alm_archive_login SET pgaudit.log = 'all'`]) {
+      await c.query('SAVEPOINT a');
+      try { await c.query(sql); await c.query('RELEASE SAVEPOINT a'); }
+      catch (e) { await c.query('ROLLBACK TO SAVEPOINT a'); log.warn('pgaudit role setting skipped', { sql, err: String(e) }); }
+    }
+  }
   await c.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     version varchar(4) PRIMARY KEY, file varchar(200) NOT NULL, checksum char(64) NOT NULL,
     applied_at timestamptz NOT NULL DEFAULT now(), applied_by varchar(63) NOT NULL DEFAULT session_user)`);
@@ -101,6 +109,16 @@ export async function migrate(c: Client, migrations = loadMigrations()): Promise
       });
       log.info('migration applied', { file: m.file, ms: Date.now() - t0 });
       done.push(m.file);
+    }
+    // 배포마다 이번 달 ~ 3개월 뒤 감사 파티션을 확인한다(야간 정지 환경은 매일 관리 작업이 못 돌 수 있다)
+    if ((await c.query(`SELECT to_regprocedure('log_partition_maintain(integer,integer)') IS NOT NULL AS ok`)).rows[0].ok) {
+      await withAuditOwner(c, async () => {
+        await c.query('SET ROLE alm_audit_owner');
+        try {
+          const r = await c.query('SELECT part FROM log_partition_maintain(3)');
+          if (r.rowCount) log.info('partitions created', { parts: r.rows.map((x) => x.part) });
+        } finally { await c.query('RESET ROLE'); }
+      });
     }
     log.info('migrate done', { applied: done.length, total: migrations.length });
     return done;

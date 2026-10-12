@@ -2646,7 +2646,7 @@ model Notification {
 
 /// 감사 로그 — 업무 테이블의 생성·변경·삭제 전후값(DB 트리거가 기록). 10년 보관, 월 파티션
 model AuditLog {
-  id String @id @default(uuid(7)) @db.Uuid
+  id String @default(uuid(7)) @db.Uuid
   /// 테넌트
   tenantId String @map("tenant_id") @db.Uuid
   tenant Tenant @relation("audit_log_tenant_id", fields: [tenantId], references: [id])
@@ -2676,6 +2676,7 @@ model AuditLog {
   occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
   /// 생성 일시
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@id([id, occurredAt])
   @@index([tenantId, tableName, rowId])
   @@index([tenantId, occurredAt])
   @@map("audit_log")
@@ -2683,7 +2684,7 @@ model AuditLog {
 
 /// 보안 이벤트 — 로그인·권한 거부·내보내기·비밀 교체 등. 10년 보관, 월 파티션. 테넌트를 알 수 없는 로그인 실패는 CloudWatch에만
 model SecurityEvent {
-  id String @id @default(uuid(7)) @db.Uuid
+  id String @default(uuid(7)) @db.Uuid
   /// 테넌트
   tenantId String @map("tenant_id") @db.Uuid
   tenant Tenant @relation("security_event_tenant_id", fields: [tenantId], references: [id])
@@ -2711,6 +2712,7 @@ model SecurityEvent {
   occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
   /// 생성 일시
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@id([id, occurredAt])
   @@index([tenantId, occurredAt])
   @@index([tenantId, eventType, occurredAt])
   @@map("security_event")
