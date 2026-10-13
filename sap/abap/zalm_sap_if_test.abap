@@ -1,5 +1,5 @@
 *&---------------------------------------------------------------------*
-*& ZALM_SAP_IF_TEST - ALM 수신 API 시험(IF-MD-01, IF-AA-01, IF-AA-02)
+*& ZALM_SAP_IF_TEST - ALM 수신 API 시험(IF-MD-01, IF-AA-01·02, IF-MM-01·03, IF-RC-01)
 *&   WBS 4.7 DEV 확인용. 운영 송신 프로그램(ZALM_IF_MASTER_SEND, 7.x)이
 *&   나오기 전까지 실제 SAP 데이터를 소량 보내 응답(200/207)을 확인한다.
 *&   - 토큰: POST /oauth/token (client_credentials, Basic)
@@ -8,6 +8,8 @@
 *&   - AA01: 회사코드의 자산 P_MAX건(ANLA + ANLZ)
 *&   - AA02: 위 자산의 회계연도 금액(ANLC, 상각영역 01) - 시험용 단순 계산
 *&   - MM01: 자산 PO 항목(EKPO KNTTP=A, EKKN) P_MAX건
+*&   - MM03: 입고(MATDOC BWART 101·102·122, 계정지정 A PO) 최근 P_GRDAY일 P_MAX건
+*&           ALM에 PO 항목이 먼저 있어야 함(같이 실행하면 MM01 → MM03 순서)
 *&   - RC01: 대사 스냅샷(회사코드 자산 전체, 비활성은 최근 12개월) WEEKLY
 *&   - OP01: GET /sap/run-requests (대기 요청을 '가져감'으로 바꿈)
 *&   - POST: POST /sap/postings:claim - 전기 대상을 15분 잠그고 시도 횟수를 올린다.
@@ -22,12 +24,14 @@ PARAMETERS: p_dest  TYPE rfcdest DEFAULT 'ZALM_DEV' OBLIGATORY,
             p_sec   TYPE char128 LOWER CASE OBLIGATORY MODIF ID sec,
             p_bukrs TYPE bukrs DEFAULT '1000' OBLIGATORY,
             p_max   TYPE i DEFAULT 20,
-            p_gjahr TYPE gjahr.
+            p_gjahr TYPE gjahr,
+            p_grday TYPE i DEFAULT 30.
 SELECTION-SCREEN SKIP.
 PARAMETERS: p_md  AS CHECKBOX DEFAULT 'X',
             p_aa1 AS CHECKBOX DEFAULT 'X',
             p_aa2 AS CHECKBOX DEFAULT 'X',
             p_po  AS CHECKBOX DEFAULT 'X',
+            p_gr  AS CHECKBOX DEFAULT ' ',
             p_rc  AS CHECKBOX DEFAULT ' ',
             p_opr AS CHECKBOX DEFAULT 'X',
             p_clm AS CHECKBOX DEFAULT ' '.
@@ -111,6 +115,16 @@ TYPES: BEGIN OF ty_company,
          deletion_flag  TYPE abap_bool,
          alm_request_no TYPE string,
        END OF ty_po,
+       BEGIN OF ty_gr,
+         material_doc  TYPE string,
+         doc_year      TYPE string,
+         doc_item      TYPE string,
+         po_no         TYPE string,
+         po_item       TYPE string,
+         movement_type TYPE string,
+         quantity      TYPE ty_qty,
+         posting_date  TYPE string,
+       END OF ty_gr,
        BEGIN OF ty_recon,
          company_code TYPE string,
          asset_no     TYPE string,
@@ -437,6 +451,33 @@ START-OF-SELECTION.
                       alm_request_no = ls_p-ihrez ) TO lt_po.
     ENDLOOP.
     go_api->send( iv_path = '/sap/purchase-orders' iv_batch = |{ gv_batch }-MM01| it_recs = lt_po iv_size = 1000 ).
+  ENDIF.
+
+  "---------------- IF-MM-03 입고(계정지정 A PO) ----------------
+  "  101 입고, 102 입고 취소, 122 공급업체 반품. 같은 문서 행을 다시 보내면 ALM이 SKIPPED
+  IF p_gr = abap_true.
+    DATA lt_gr TYPE STANDARD TABLE OF ty_gr.
+    DATA(lv_from) = CONV d( sy-datum - p_grday ).
+    SELECT m~mblnr, m~mjahr, m~zeile, m~ebeln, m~ebelp, m~bwart, m~menge, m~budat
+      FROM matdoc AS m
+      INNER JOIN ekpo AS p ON p~ebeln = m~ebeln AND p~ebelp = m~ebelp
+      INNER JOIN ekko AS k ON k~ebeln = m~ebeln
+      WHERE k~bukrs = @p_bukrs AND p~knttp = 'A'
+        AND m~bwart IN ('101','102','122') AND m~budat >= @lv_from
+        AND m~ebeln <> @space AND m~xauto = @space
+      ORDER BY m~mblnr, m~mjahr, m~zeile
+      INTO TABLE @DATA(lt_mdoc) UP TO @p_max ROWS.
+    LOOP AT lt_mdoc INTO DATA(ls_m).
+      APPEND VALUE #( material_doc = ls_m-mblnr doc_year = |{ ls_m-mjahr }| doc_item = |{ ls_m-zeile }|
+                      po_no = ls_m-ebeln po_item = |{ ls_m-ebelp }| movement_type = ls_m-bwart
+                      quantity = ls_m-menge posting_date = |{ ls_m-budat DATE = ISO }| ) TO lt_gr.
+    ENDLOOP.
+    IF lt_gr IS INITIAL.
+      WRITE: / |MM03: 최근 { p_grday }일 계정지정 A 입고 없음({ lv_from DATE = ISO } 이후)|.
+    ELSE.
+      go_api->send( iv_path = '/sap/goods-receipts' iv_batch = |{ gv_batch }-MM03| it_recs = lt_gr iv_size = 1000
+                    iv_compress = abap_false ).
+    ENDIF.
   ENDIF.
 
   "---------------- IF-RC-01 대사 스냅샷(WEEKLY) ----------------
