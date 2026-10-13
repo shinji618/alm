@@ -265,19 +265,20 @@ serialNo | string(40) | N | 시리얼
 companyId | uuid | Y | 회사코드
 roomId | uuid | Y | 위치(룸)
 costCenterId | uuid | Y | 코스트센터
-assetClassId | uuid | N | 자산클래스(비면 카테고리 기본값)
+assetClassId | uuid | N | 자산클래스(비면 카테고리 기본값). registerInSap이면 필요
 status | enum(ON_ORDER,IN_STOCK,IN_USE) | N | 기본 IN_STOCK
 assignedUserId | uuid | N | IN_USE면 필수
 purchaseDate | date | N | 구매일
-purchaseCost | number | N | 구매가(예상 취득가로도 사용)
+purchaseCost | number | N | 구매가(예상 취득가로도 사용). registerInSap이면 필수(0보다 큼)
 warrantyEndDate | date | N | 보증 종료
 hostname | string(63) | N | 호스트명
 notes | string | N | 메모
 printLabel | bool | N | 등록 후 라벨 출력 대기열에 추가(기본 true)
+registerInSap | bool | N | SAP 고정자산 등록(기본 false). 등록자가 판단해 체크하면 신규 자산 요청(NEW_ASSET)을 만들어 승인 후 IF-AA-03으로 SAP 자산 생성
 ''')
 schema('AssetCreated', '자산 등록 결과', '''
 asset | AssetDetail | Y | 등록된 자산
-createdRequest | RequestRef | N | 자본화 클래스면 생성된 신규 자산 요청(AS01)
+createdRequest | RequestRef | N | registerInSap이면 생성된 신규 자산 요청(AS01)
 labelJobId | uuid | N | 라벨 출력 작업
 ''')
 schema('AssetPatch', '자산 수정. 보낸 필드만 바꿈', '''
@@ -376,7 +377,7 @@ AF = [('q','query','string','N','태그·시리얼·호스트명·IP·사용자 
 W('자산','GET','/assets','listAssets','자산 목록','로그인 사용자(범위 내)',None,'AssetSummaryList','200, 400','asset, v_asset_stage, v_asset_value_latest','ALM-110',
   ['EMPLOYEE는 본인 할당 자산만. 그 외 역할은 회사코드·사이트 범위.', '5만 건에서 2초 이내(인덱스: status, room, cost_center, 사용자, 태그·시리얼 trigram).', '기본 정렬 -updatedAt.'], params=AF)
 W('자산','POST','/assets','createAsset','자산 등록','ASSET_MANAGER','AssetCreate','AssetCreated','201, 400, 403, 422','asset, number_sequence, asset_request, label_print_job, asset_event','ALM-112',
-  ['자산태그는 AT-nnnnnn 자동 채번.', '자산클래스가 자본화 대상이면 신규 자산 요청(NEW_ASSET)을 자동 생성하고 승인 단계로 보낸다.', 'IN_USE면 asset_assignment 행도 만든다.'], idem='Idempotency-Key', ok='201')
+  ['자산태그는 AT-nnnnnn 자동 채번.', 'registerInSap(SAP 등록 체크)이면 자산클래스·구매가가 필수이고, 신규 자산 요청(NEW_ASSET)을 만들어 승인 단계(부서 관리자 → 자산회계)로 보낸다. 최종 승인 뒤 IF-AA-03으로 SAP 자산을 만든다. 체크하지 않으면 ALM에만 등록한다(자동 판단 없음).', 'IN_USE면 asset_assignment 행도 만든다.'], idem='Idempotency-Key', ok='201')
 W('자산','GET','/assets/{id}','getAsset','자산 상세','로그인 사용자(범위 내)',None,'AssetDetail','200, 403, 404','asset, v_asset_stage, v_asset_value_latest, asset_request','ALM-111',[ '응답 ETag = version.'],params=[ID()])
 W('자산','PATCH','/assets/{id}','patchAsset','자산 수정','ASSET_MANAGER','AssetPatch','AssetChangeResult','200, 400, 403, 409, 422','asset, asset_event, asset_request','ALM-111',
   ['If-Match: version 필수. 다르면 409 ALM-E310(다른 사람이 먼저 수정).', 'SAP 기준 필드(자산클래스, 취득가, 코스트센터)는 여기서 못 바꾼다(422 ALM-E211). 코스트센터는 할당 또는 이관 요청으로.', '자본화 자산의 시리얼·룸·자산명 변경은 ALM에 바로 반영하고 ASSET_CHANGE 요청을 자동 생성해 SAP에 보낸다.'],

@@ -1606,7 +1606,7 @@ paths:
 
         - 자산태그는 AT-nnnnnn 자동 채번.
 
-        - 자산클래스가 자본화 대상이면 신규 자산 요청(NEW_ASSET)을 자동 생성하고 승인 단계로 보낸다.
+        - registerInSap(SAP 등록 체크)이면 자산클래스·구매가가 필수이고, 신규 자산 요청(NEW_ASSET)을 만들어 승인 단계(부서 관리자 → 자산회계)로 보낸다. 최종 승인 뒤 IF-AA-03으로 SAP 자산을 만든다. 체크하지 않으면 ALM에만 등록한다(자동 판단 없음).
 
         - IN_USE면 asset_assignment 행도 만든다.'
       parameters:
@@ -10680,7 +10680,7 @@ components:
         assetClassId:
           type: string
           format: uuid
-          description: 자산클래스(비면 카테고리 기본값)
+          description: 자산클래스(비면 카테고리 기본값). registerInSap이면 필요
         status:
           type: string
           enum:
@@ -10698,7 +10698,7 @@ components:
           description: 구매일
         purchaseCost:
           type: number
-          description: 구매가(예상 취득가로도 사용)
+          description: 구매가(예상 취득가로도 사용). registerInSap이면 필수(0보다 큼)
         warrantyEndDate:
           type: string
           format: date
@@ -10713,6 +10713,9 @@ components:
         printLabel:
           type: boolean
           description: 등록 후 라벨 출력 대기열에 추가(기본 true)
+        registerInSap:
+          type: boolean
+          description: SAP 고정자산 등록(기본 false). 등록자가 판단해 체크하면 신규 자산 요청(NEW_ASSET)을 만들어 승인 후 IF-AA-03으로 SAP 자산 생성
       required:
       - categoryId
       - modelId
@@ -10731,7 +10734,7 @@ components:
         createdRequest:
           allOf:
           - $ref: '#/components/schemas/RequestRef'
-          description: 자본화 클래스면 생성된 신규 자산 요청(AS01)
+          description: registerInSap이면 생성된 신규 자산 요청(AS01)
         labelJobId:
           type: string
           format: uuid

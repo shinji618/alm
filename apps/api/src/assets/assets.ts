@@ -1,7 +1,8 @@
 // 자산 목록·상세·등록·수정(ALM-110~112, openapi listAssets·getAsset·createAsset·patchAsset 외). WBS 4.2
 //   범위: asset.read·asset.write의 역할 행 범위(09 4.1, auth/scope). 범위 밖 단건은 404.
 //   금액: amount.read가 없으면 null(09 4.2).
-//   등록: 태그 AT-nnnnnn, IN_USE면 할당 행, 자본화 대상 클래스면 신규 자산 요청(NEW_ASSET, 2단계 승인 대기) 자동 생성, 라벨 대기열.
+//   등록: 태그 AT-nnnnnn, IN_USE면 할당 행, 라벨 대기열. SAP 등록(registerInSap)은 등록자가 판단해 체크한다(자동 판단 없음):
+//         체크하면 자산클래스·구매가 필수 → 신규 자산 요청(NEW_ASSET, 부서 관리자 → 자산회계 승인 대기) → 최종 승인 뒤 IF-AA-03.
 //   수정: If-Match(version) 필수 → 다르면 409 ALM-E310. SAP 기준 필드(자산클래스·취득가·코스트센터·회사코드)는 422 ALM-E211.
 //         SAP 자산번호가 있는 자산의 자산명·시리얼·룸 변경은 ALM에 바로 반영하고 변경 요청(CHANGE) + SAP 전기 건(ASSET_CHANGE)을 만든다.
 import { randomUUID } from 'node:crypto';
@@ -185,8 +186,10 @@ export async function createAsset(c: PoolClient, p: Principal, body: unknown) {
     status: k.oneOf(b, 'status', ['ON_ORDER', 'IN_STOCK', 'IN_USE'] as const) ?? 'IN_STOCK', assignedUserId: k.uuid(b, 'assignedUserId'),
     purchaseDate: k.date(b, 'purchaseDate'), purchaseCost: k.num(b, 'purchaseCost', { min: 0, max: 1e12 }),
     warrantyEndDate: k.date(b, 'warrantyEndDate'), hostname: k.str(b, 'hostname', { max: 63 }), notes: k.str(b, 'notes', { max: 4000 }),
-    printLabel: k.bool(b, 'printLabel') ?? true,
+    printLabel: k.bool(b, 'printLabel') ?? true, registerInSap: k.bool(b, 'registerInSap') ?? false,
   };
+  if (v.registerInSap && v.purchaseCost === undefined) k.errors.push({ field: 'purchaseCost', code: 'ALM-E101', message: 'SAP 등록이면 필수입니다' });
+  else if (v.registerInSap && v.purchaseCost !== undefined && v.purchaseCost <= 0) k.fail('purchaseCost', 'SAP 등록이면 0보다 커야 합니다');
   if (v.status === 'IN_USE' && !v.assignedUserId) k.errors.push({ field: 'assignedUserId', code: 'ALM-E101', message: 'IN_USE면 필수입니다' });
   if (v.status !== 'IN_USE' && v.assignedUserId) k.fail('assignedUserId', 'IN_USE일 때만 지정합니다');
   k.done();
@@ -196,6 +199,10 @@ export async function createAsset(c: PoolClient, p: Principal, body: unknown) {
   const classId = v.assetClassId ?? ref.defaultClassId ?? null;
   const cls = classId ? (await c.query('SELECT id, class_code, is_capitalized, is_low_value, is_active FROM asset_class WHERE id = $1', [classId])).rows[0] : undefined;
   if (classId && !cls?.is_active) throw E.badRequest('입력 값을 확인하세요: assetClassId 활성 자산클래스가 아닙니다', { errors: [{ field: 'assetClassId', code: 'ALM-E100', message: '없음' }] });
+  if (v.registerInSap && !cls) {
+    throw new AlmError(400, 'ALM-E101', '입력 값을 확인하세요: assetClassId SAP 등록이면 자산클래스가 필요합니다(카테고리 기본값 없음)',
+      { errors: [{ field: 'assetClassId', code: 'ALM-E101', message: 'SAP 등록이면 필수입니다' }] });
+  }
 
   const id = randomUUID();
   const [tag] = await nextAssetTags(c, p.tenantId, 1);
@@ -210,14 +217,10 @@ export async function createAsset(c: PoolClient, p: Principal, body: unknown) {
   }
   await event(c, p, id, 'CREATED', { source: 'MANUAL', assetTag: tag, status: v.status });
 
-  // 자본화 대상: 클래스가 자본화(저가자산 아님)이고 구매가가 기준 이상(기준·구매가가 없으면 대상으로 본다 → 자산회계가 승인에서 판단)
-  let createdRequest: Record<string, string> | undefined;
-  if (cls && cls.is_capitalized && !cls.is_low_value) {
-    const th = (await c.query(`SELECT value FROM setting WHERE key = 'asset.capitalization_threshold'`)).rows[0]?.value;
-    if (typeof th !== 'number' || v.purchaseCost === undefined || v.purchaseCost >= th) {
-      createdRequest = await newAssetRequest(c, p, { assetId: id, classId: cls.id, value: v.purchaseCost ?? null, costCenterId: v.costCenterId!, roomId: v.roomId! });
-    }
-  }
+  // SAP 등록 체크: 신규 자산 요청(승인 후 IF-AA-03). 체크하지 않으면 ALM에만 둔다
+  const createdRequest = v.registerInSap && cls
+    ? await newAssetRequest(c, p, { assetId: id, classId: cls.id, value: v.purchaseCost!, costCenterId: v.costCenterId!, roomId: v.roomId! })
+    : undefined;
   let labelJobId: string | undefined;
   if (v.printLabel) {
     const t = (await c.query('SELECT id FROM label_template WHERE is_default AND is_active ORDER BY template_code LIMIT 1')).rows[0]?.id;
@@ -254,12 +257,12 @@ async function refs(c: PoolClient, v: { categoryId?: string; modelId?: string; c
 }
 
 // 신규 자산 요청(NEW_ASSET): 제출 상태 + 승인 2단계(부서 관리자 → 자산회계, 09 2장 S-14). 승인 처리는 4.3
-async function newAssetRequest(c: PoolClient, p: Principal, o: { assetId: string; classId: string; value: number | null; costCenterId: string; roomId: string }) {
+async function newAssetRequest(c: PoolClient, p: Principal, o: { assetId: string; classId: string; value: number; costCenterId: string; roomId: string }) {
   const id = randomUUID();
   const [no] = await nextNumbers(c, p.tenantId, 'asset_request');
   await c.query(`INSERT INTO asset_request (id, tenant_id, request_no, request_type, status, source, asset_id, requester_id, submitted_at, reason,
       asset_class_id, acquisition_value, target_cost_center_id, target_room_id, created_by, updated_by)
-    VALUES ($1, $2, $3, 'NEW_ASSET', 'SUBMITTED', 'USER', $4, $5, now(), 'ALM-112 자산 등록(자본화 대상)', $6, $7, $8, $9, $5, $5)`,
+    VALUES ($1, $2, $3, 'NEW_ASSET', 'SUBMITTED', 'USER', $4, $5, now(), 'ALM-112 자산 등록(SAP 등록 체크)', $6, $7, $8, $9, $5, $5)`,
   [id, p.tenantId, no, o.assetId, p.userId, o.classId, o.value, o.costCenterId, o.roomId]);
   for (const [step, role] of [[1, 'DEPT_MANAGER'], [2, 'ASSET_ACCOUNTANT']] as const) {
     await c.query(`INSERT INTO approval (id, tenant_id, asset_request_id, step_no, approver_role, created_by) VALUES ($1, $2, $3, $4, $5, $6)`,

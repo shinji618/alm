@@ -86,7 +86,7 @@ after(async () => {
   await su.connect(); await su.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`); await su.end();
 });
 
-test('등록: 권한·검증·범위, 태그 채번, IN_USE 할당, 자본화 대상이면 신규 자산 요청(2단계 승인 대기), 라벨 대기열', { skip }, async () => {
+test('등록: 권한·검증·범위, 태그 채번, IN_USE 할당, SAP 등록 체크면 금액 필수·신규 자산 요청(2단계 승인 대기), 라벨 대기열', { skip }, async () => {
   assert.equal((await call('emp', 'POST', '/assets', nb())).status, 403, '일반 사용자는 asset.write 없음');
   const bad = await call('mgr', 'POST', '/assets', nb({ modelId: ids.modelMon, status: 'IN_USE' }));
   assert.equal(bad.status, 400);
@@ -95,7 +95,14 @@ test('등록: 권한·검증·범위, 태그 채번, IN_USE 할당, 자본화 �
   assert.equal(cat.status, 400); assert.equal(cat.body.errors[0].field, 'modelId', '카테고리에 속하지 않은 모델');
   assert.equal((await call('mgrw', 'POST', '/assets', nb())).status, 403, 'West 관리자는 Atlanta 룸에 등록 못함');
 
-  const r = await call('mgr', 'POST', '/assets', nb({ status: 'IN_USE', assignedUserId: ids.emp }));
+  const noCost = await call('mgr', 'POST', '/assets', nb({ registerInSap: true, purchaseCost: undefined }));
+  assert.equal(noCost.status, 400); assert.deepEqual(noCost.body.errors.map((e: { field: string; code: string }) => [e.field, e.code]), [['purchaseCost', 'ALM-E101']]);
+  assert.equal((await call('mgr', 'POST', '/assets', nb({ registerInSap: true, purchaseCost: 0 }))).status, 400, '금액 0');
+  const noCls = await call('mgr', 'POST', '/assets', nb({ registerInSap: true, categoryId: ids.catMon, modelId: ids.modelMon }));
+  assert.equal(noCls.status, 400); assert.equal(noCls.body.errors[0].field, 'assetClassId', '클래스 없는 카테고리');
+  assert.equal((await q(`SELECT count(*)::int AS n FROM asset`))[0].n, 0, '실패한 등록은 남지 않음');
+
+  const r = await call('mgr', 'POST', '/assets', nb({ status: 'IN_USE', assignedUserId: ids.emp, registerInSap: true }));
   assert.equal(r.status, 201);
   const a = r.body.asset;
   ids.a1 = a.id;
@@ -113,11 +120,11 @@ test('등록: 권한·검증·범위, 태그 채번, IN_USE 할당, 자본화 �
   assert.equal(w.status, 201);
   ids.a2 = w.body.asset.id;
   assert.equal(w.body.asset.assetTag, 'AT-000002');
-  assert.equal(w.body.createdRequest, undefined, '자산클래스 없음 → 자본화 대상 아님');
+  assert.equal(w.body.createdRequest, undefined, 'SAP 등록 체크 안 함');
   assert.equal(w.body.labelJobId, undefined);
-  const low = await call('mgr', 'POST', '/assets', nb({ purchaseCost: 500, serialNo: 'SN-LOW' }));
+  const low = await call('mgr', 'POST', '/assets', nb({ purchaseCost: 5000, serialNo: 'SN-LOW' }));
   ids.a3 = low.body.asset.id;
-  assert.equal(low.body.createdRequest, undefined, '자본화 기준 금액(1000) 미만');
+  assert.equal(low.body.createdRequest, undefined, '자본화 클래스·큰 금액이어도 체크하지 않으면 ALM에만 등록(자동 판단 없음)');
 });
 
 test('목록: 역할 범위(전체·사이트·코스트센터·본인), 검색·필터·정렬, 금액 마스킹', { skip }, async () => {
