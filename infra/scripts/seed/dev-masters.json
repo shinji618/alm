@@ -1,0 +1,56 @@
+{
+  "tenant": { "code": "TEST" },
+  "masters": {
+    "sites": [
+      { "code": "ATL", "name": "Atlanta HQ", "address": "Atlanta, GA", "timeZone": "America/New_York" },
+      { "code": "DUL", "name": "Duluth Office", "address": "Duluth, GA", "timeZone": "America/New_York" }
+    ],
+    "rooms": [
+      { "siteCode": "ATL", "code": "ATL-101", "name": "Executive Office", "floor": "1" },
+      { "siteCode": "ATL", "code": "ATL-102", "name": "Finance", "floor": "1" },
+      { "siteCode": "ATL", "code": "ATL-201", "name": "IT Office", "floor": "2" },
+      { "siteCode": "ATL", "code": "ATL-202", "name": "Server Room", "floor": "2" },
+      { "siteCode": "ATL", "code": "ATL-203", "name": "Meeting Room A", "floor": "2" },
+      { "siteCode": "ATL", "code": "ATL-STO", "name": "IT Storage", "floor": "B1", "isStorage": true },
+      { "siteCode": "DUL", "code": "DUL-101", "name": "Open Office", "floor": "1" },
+      { "siteCode": "DUL", "code": "DUL-102", "name": "Meeting Room", "floor": "1" },
+      { "siteCode": "DUL", "code": "DUL-201", "name": "Lab", "floor": "2" },
+      { "siteCode": "DUL", "code": "DUL-STO", "name": "IT Storage", "floor": "1", "isStorage": true }
+    ],
+    "categories": [
+      { "code": "IT", "name": "IT Hardware" },
+      { "code": "NB", "name": "Notebook", "parentCode": "IT", "assetClass": "00003200", "usefulLifeYears": 3 },
+      { "code": "DT", "name": "Desktop", "parentCode": "IT", "assetClass": "00003200", "usefulLifeYears": 4 },
+      { "code": "MON", "name": "Monitor", "parentCode": "IT", "usefulLifeYears": 5 },
+      { "code": "SRV", "name": "Server", "parentCode": "IT", "assetClass": "00003200", "usefulLifeYears": 5 },
+      { "code": "NET", "name": "Network Equipment", "parentCode": "IT", "assetClass": "00003200", "usefulLifeYears": 5 },
+      { "code": "PRN", "name": "Printer", "parentCode": "IT", "usefulLifeYears": 5 },
+      { "code": "MOB", "name": "Tablet / Mobile", "parentCode": "IT", "usefulLifeYears": 3 },
+      { "code": "PDA", "name": "Barcode Scanner (PDA)", "parentCode": "IT", "usefulLifeYears": 4 },
+      { "code": "AV", "name": "Audio / Video", "parentCode": "IT", "usefulLifeYears": 5 }
+    ],
+    "models": [
+      { "categoryCode": "NB", "manufacturer": "Dell", "name": "Latitude 7450", "partNo": "LAT7450" },
+      { "categoryCode": "NB", "manufacturer": "Lenovo", "name": "ThinkPad T14 Gen 5", "partNo": "21ML" },
+      { "categoryCode": "NB", "manufacturer": "HP", "name": "EliteBook 840 G11", "partNo": "EB840G11" },
+      { "categoryCode": "DT", "manufacturer": "Dell", "name": "OptiPlex 7020 Micro", "partNo": "OP7020M" },
+      { "categoryCode": "MON", "manufacturer": "Dell", "name": "P2425H 24in", "partNo": "P2425H" },
+      { "categoryCode": "MON", "manufacturer": "LG", "name": "27UP850 27in 4K", "partNo": "27UP850" },
+      { "categoryCode": "SRV", "manufacturer": "Dell", "name": "PowerEdge R760", "partNo": "R760" },
+      { "categoryCode": "NET", "manufacturer": "Cisco", "name": "Catalyst 9200L 48P", "partNo": "C9200L-48P-4G" },
+      { "categoryCode": "PRN", "manufacturer": "HP", "name": "LaserJet Enterprise M507", "partNo": "1PV87A" },
+      { "categoryCode": "PDA", "manufacturer": "Zebra", "name": "TC58", "partNo": "TC58" }
+    ],
+    "vendors": [
+      { "no": "V-DELL", "name": "Dell Technologies" },
+      { "no": "V-CDW", "name": "CDW" },
+      { "no": "V-LENOVO", "name": "Lenovo" },
+      { "no": "V-HP", "name": "HP Inc." },
+      { "no": "V-CISCO", "name": "Cisco Systems" }
+    ],
+    "labelTemplates": [
+      { "code": "STD-2X1", "name": "Standard 2x1 QR + Code128", "layout": "QR_CODE128", "isDefault": true,
+        "zpl": "^XA^FO20,20^BQN,2,4^FDQA,{{assetTag}}^FS^FO170,30^BY2^BCN,60,N,N^FD{{assetTag}}^FS^FO170,110^A0N,28,28^FD{{assetTag}}^FS^XZ" }
+    ]
+  }
+}

@@ -7,6 +7,8 @@
 # SAP 연결(시험용, 7.x 연결 관리 화면 전까지):
 #   ... ,"companies":[{"code":"1000","name":"BSG US"}],
 #   "sapConnections":[{"systemId":"S4D-100","companyCode":"1000","clientId":"<createSapClient의 clientId>","allowedCidrs":["108.79.59.91/32"]}]
+# ALM 시험 마스터(사이트·룸·카테고리·모델·공급사·라벨 템플릿, 마스터 화면 5.x 전): JSON 대신 @파일 경로
+#   bash db-seed.sh dev @seed/dev-masters.json     ← tenant.code만 있으면 테넌트·도메인·사용자는 건드리지 않는다
 set -euo pipefail
 ENV=${1:?dev|qa|prd}; JSON=${2:?seed JSON}
 case "$ENV" in
@@ -15,7 +17,14 @@ case "$ENV" in
   prd) acct=482545366457 ;;
   *) echo "env는 dev|qa|prd" >&2; exit 2 ;;
 esac
+if [[ "$JSON" == @* ]]; then
+  f="${JSON#@}"; [[ -f "$f" ]] || f="$(dirname "$0")/${JSON#@}"
+  [[ -f "$f" ]] || { echo "파일이 없다: ${JSON#@}" >&2; exit 2; }
+  JSON=$(cat "$f")
+fi
 jq -e . >/dev/null <<< "$JSON" || { echo "JSON 형식이 아니다(작은따옴표로 감쌌는지 확인)" >&2; exit 2; }
+JSON=$(jq -c . <<< "$JSON")   # 작업 덮어쓰기 크기 제한(8KB) 안에 들도록 공백 제거
+(( ${#JSON} < 7000 )) || { echo "JSON이 너무 크다(${#JSON}자). 나눠서 실행" >&2; exit 2; }
 read -r AK SK ST <<< "$(aws sts assume-role --role-arn "arn:aws:iam::${acct}:role/AWSControlTowerExecution" \
   --role-session-name alm-db-seed --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' --output text)"
 export AWS_ACCESS_KEY_ID=$AK AWS_SECRET_ACCESS_KEY=$SK AWS_SESSION_TOKEN=$ST AWS_REGION=us-east-1 AWS_DEFAULT_REGION=us-east-1
