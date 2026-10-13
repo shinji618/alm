@@ -1,0 +1,23 @@
+// 자산 API 응답 타입(openapi AssetSummary·AssetDetail·Lookups 등)
+import type { AssetStatusCode, StageCode } from '@/lib/status';
+
+export interface AssetSummary {
+  id: string; assetTag: string; description: string; categoryName: string; modelName?: string; serialNo?: string;
+  status: AssetStatusCode; stage: StageCode; siteCode?: string; roomCode?: string; assignedUserName?: string; costCenterCode?: string;
+  sapAssetNo?: string; warrantyEndDate?: string; nbv: number | null; updatedAt: string;
+}
+export interface Page<T> { items: T[]; page: number; pageSize: number; total: number }
+export interface RequestRef { id: string; requestNo: string; requestType: string; status: string }
+export interface AssetDetail {
+  id: string; version: number; assetTag: string; description: string; categoryId: string; modelId?: string; serialNo?: string;
+  status: AssetStatusCode; stage: StageCode; source: string; siteId?: string; roomId?: string; costCenterId?: string; assignedUserId?: string;
+  assignedAt?: string; dueBackDate?: string; hostname?: string; ipAddress?: string; macAddress?: string; osName?: string; warrantyEndDate?: string;
+  lastCountDate?: string; lastSeenAt?: string; notes?: string;
+  financial: { isCapitalized: boolean; companyCode: string; sapAssetNo?: string; sapSubNo?: string; assetClass?: string; capDate?: string;
+    acquisitionValue?: number | null; accumDepreciation?: number | null; netBookValue?: number | null; usefulLifeYears?: number; valueAsOf?: string;
+    tcoEstimate?: number | null; sapSyncedAt?: string };
+  openRequests: RequestRef[]; editableFields: string[];
+}
+export interface ChangeResult { asset: AssetDetail; createdRequests: RequestRef[] }
+export interface LookupItem { id: string; code: string; label: string; parentId?: string; extra?: Record<string, unknown> }
+export type Lookups = Partial<Record<'companies' | 'sites' | 'rooms' | 'costCenters' | 'assetClasses' | 'categories' | 'models' | 'vendors' | 'users', LookupItem[]>>;

@@ -1,0 +1,8 @@
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.pagerBtns { display: flex; gap: 8px; align-items: center; }
+.formActions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.stageDot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.headRow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.notice { padding: 10px 12px; border-radius: 8px; background: var(--surface-2, rgba(127, 127, 127, 0.08)); margin-bottom: 12px; }
+.loginWrap { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+.loginCard { width: 100%; max-width: 420px; }

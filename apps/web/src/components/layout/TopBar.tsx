@@ -11,10 +11,12 @@ export interface TopBarProps {
   onMenu: () => void;
   /** Enter 시 호출. 정확 일치면 상세, 아니면 목록 검색(화면설계서 5.3) */
   onSearch: (q: string) => void;
+  /** 있으면 사용자 메뉴에 로그아웃 */
+  onSignOut?: () => void;
 }
 
 /** ② Top bar: 전역 검색 · 사용자 메뉴(언어·테마) */
-export function TopBar({ userName, userRole, onMenu, onSearch }: TopBarProps) {
+export function TopBar({ userName, userRole, onMenu, onSearch, onSignOut }: TopBarProps) {
   const { t, i18n } = useTranslation();
   const [menu, setMenu] = useState(false);
   const [theme, setTheme] = useState<ThemePref>(getThemePref());
@@ -85,6 +87,11 @@ export function TopBar({ userName, userRole, onMenu, onSearch }: TopBarProps) {
                 <option value="dark">{t('app.themeDark')}</option>
               </select>
             </label>
+            {onSignOut && (
+              <button type="button" className={s.menuRow} role="menuitem" onClick={onSignOut}>
+                {t('app.signOut')}
+              </button>
+            )}
           </div>
         )}
       </div>

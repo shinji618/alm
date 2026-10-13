@@ -36,3 +36,16 @@ export function expiryTone(daysLeft: number): Tone {
   if (daysLeft <= 90) return 'warn';
   return 'ok';
 }
+
+/** API 상태 코드(자산 상태·단계) — 화면 글자는 i18n asset.status.* / asset.stage.* */
+export type AssetStatusCode = 'ON_ORDER' | 'IN_STOCK' | 'IN_USE' | 'IN_REPAIR' | 'MISSING' | 'RETIRED' | 'DISPOSED';
+export type StageCode = 'PLAN' | 'PROCURE' | 'DEPLOY' | 'OPERATE' | 'MAINTAIN' | 'RETIRE';
+export const STATUS_CODES: AssetStatusCode[] = ['ON_ORDER', 'IN_STOCK', 'IN_USE', 'IN_REPAIR', 'MISSING', 'RETIRED', 'DISPOSED'];
+export const STAGE_CODES: StageCode[] = ['PLAN', 'PROCURE', 'DEPLOY', 'OPERATE', 'MAINTAIN', 'RETIRE'];
+export const statusCodeTone: Record<AssetStatusCode, Tone> = {
+  IN_USE: 'ok', IN_STOCK: 'info', IN_REPAIR: 'warn', ON_ORDER: 'accent', MISSING: 'bad', RETIRED: 'neutral', DISPOSED: 'neutral',
+};
+export const stageCodeColorVar: Record<StageCode, string> = {
+  PLAN: 'var(--stage-plan)', PROCURE: 'var(--stage-procure)', DEPLOY: 'var(--stage-deploy)',
+  OPERATE: 'var(--stage-operate)', MAINTAIN: 'var(--stage-maintain)', RETIRE: 'var(--stage-retire)',
+};
