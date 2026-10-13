@@ -211,6 +211,17 @@ async function applyPosted(c: PoolClient, conn: SapConn, p: Record<string, any>,
   }
   if (!p.asset_id) return;
   const changes: Record<string, unknown> = { postingId: p.posting_id, type };
+  // 할당에 따른 코스트센터 변경(CHANGE·TRANSFER 요청): SAP 전기가 끝난 지금 ALM 코스트센터를 바꾼다
+  if ((type === 'ASSET_CHANGE' || type === 'ASSET_TRANSFER') && p.asset_request_id) {
+    const cc = (await c.query('SELECT target_cost_center_id FROM asset_request WHERE id = $1', [p.asset_request_id])).rows[0]?.target_cost_center_id;
+    if (cc) {
+      const before = (await c.query('SELECT cost_center_id FROM asset WHERE id = $1', [p.asset_id])).rows[0]?.cost_center_id ?? null;
+      if (before !== cc) {
+        await c.query('UPDATE asset SET cost_center_id = $2, updated_at = now(), version = version + 1 WHERE id = $1', [p.asset_id, cc]);
+        changes.cost_center_id = { before, after: cc };
+      }
+    }
+  }
   if ((type === 'ASSET_CREATE' || type === 'ASSET_TRANSFER') && r.assetNo) {
     // 같은 회사코드·자산번호가 다른 ALM 자산에 이미 있으면(SAP 수신이 먼저 만든 경우 등) 409로 사람이 확인
     const dup = (await c.query('SELECT asset_tag FROM asset WHERE company_id = $1 AND sap_asset_no = $2 AND sap_sub_no = $3 AND id <> $4',

@@ -4,6 +4,7 @@ import type { Response } from 'express';
 import { Db } from '../db/pool';
 import * as assets from '../assets/assets';
 import { lookups } from '../assets/lookups';
+import { checkIn, checkOut, repair } from '../assets/assign';
 import { AlmContext, Ctx, Operation, txOf } from './context';
 import { DB } from './tokens';
 
@@ -70,5 +71,26 @@ export class AssetsController {
   @Operation('listAssetAttachments')
   attachments(@Ctx() ctx: AlmContext, @Param('id') id: string) {
     return this.db.withTx(txOf(ctx), (c) => assets.attachments(c, ctx.principal!, id));
+  }
+
+  @Post('assets/:id\\:check-out')
+  @HttpCode(200)
+  @Operation('checkOutAsset')
+  checkOut(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) {
+    return this.db.withTx(txOf(ctx), (c) => checkOut(c, ctx.principal!, id, body));
+  }
+
+  @Post('assets/:id\\:check-in')
+  @HttpCode(200)
+  @Operation('checkInAsset')
+  checkIn(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) {
+    return this.db.withTx(txOf(ctx), (c) => checkIn(c, ctx.principal!, id, body));
+  }
+
+  @Post('assets/:id\\:repair')
+  @HttpCode(200)
+  @Operation('moveRepair')
+  repair(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) {
+    return this.db.withTx(txOf(ctx), (c) => repair(c, ctx.principal!, id, body));
   }
 }

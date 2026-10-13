@@ -68,6 +68,21 @@ migrate_ready() {
   aws ecs describe-task-definition --task-definition "$fam" \
     --query "taskDefinition.containerDefinitions[?name=='app'].secrets[].name" --output text 2>/dev/null | grep -qw DB_MASTER_PASSWORD
 }
+# DB가 꺼져 있으면(DEV 야간 정지 20:05~06:40 ET) migrate가 접속하지 못해 실패한다 → 먼저 알리고 멈춘다.
+# 켜지는 중이면 기다린다. 상태를 못 읽으면(권한 등) 그대로 진행한다
+check_db() {
+  local st
+  st=$(aws rds describe-db-instances --db-instance-identifier "alm-${ENV}" --query 'DBInstances[0].DBInstanceStatus' --output text 2>/dev/null || echo unknown)
+  case "$st" in
+    available|unknown|None) ;;
+    stopped|stopping)
+      echo "::error::DB alm-${ENV}가 ${st} 상태입니다(DEV 야간 정지 20:05~06:40 ET). 07:00 ET 이후 Re-run 하거나, DB를 켠 뒤(aws rds start-db-instance --db-instance-identifier alm-${ENV}) Re-run 하세요" >&2
+      exit 1 ;;
+    *) echo "DB alm-${ENV} 상태 ${st}: available까지 기다림"; aws rds wait db-instance-available --db-instance-identifier "alm-${ENV}" ;;
+  esac
+}
+check_db
+
 if migrate_ready; then
   run_migrate
   cdk_deploy

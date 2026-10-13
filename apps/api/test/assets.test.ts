@@ -213,3 +213,62 @@ test('드롭다운: 범위 밖 사이트·룸 제외, 사용자 목록 권한', 
   assert.deepEqual(u.map((x: { label: string }) => x.label), ['Emp']);
   assert.equal((await call('mgr', 'GET', '/lookups?types=nope')).status, 400);
 });
+
+test('할당·반납·수리: 상태 전이, 코스트센터 변경(SAP 자산은 요청 → 전기 뒤 반영), 창고 반납, 범위', { skip }, async () => {
+  const { postResult } = await import('../src/sap/postings');
+  await q(`INSERT INTO room (id, tenant_id, site_id, room_code, name, barcode, is_storage) VALUES (gen_random_uuid(), $1, $2, 'ATL-STO', 'IT Storage', 'RM-ATL-STO', true)`,
+    [tenantId, ids.siteAtl]);
+  const out = (id: string, b: Record<string, unknown>, who = 'mgr') => call(who, 'POST', `/assets/${id}:check-out`, b);
+  assert.equal((await out(ids.a3, { userId: ids.emp, roomId: ids.roomAtl2 }, 'emp')).status, 403, 'asset.assign 없음');
+  assert.equal((await out(ids.a3, { userId: ids.emp, roomId: ids.roomWest }, 'mgrw')).status, 404, 'West 관리자에게 Atlanta 자산은 범위 밖');
+  assert.equal((await out(ids.a3, { roomId: ids.roomAtl2 })).body.code, 'ALM-E101');
+
+  // SAP 번호 없는 자산: 코스트센터 바로 변경
+  const r3 = await out(ids.a3, { userId: ids.emp, roomId: ids.roomAtl2, costCenterId: ids.cc200, dueBackDate: '2026-12-31' });
+  assert.equal(r3.status, 200);
+  assert.deepEqual([r3.body.asset.status, r3.body.asset.assignedUserId, r3.body.asset.roomId, r3.body.asset.costCenterId, r3.body.asset.dueBackDate],
+    ['IN_USE', ids.emp, ids.roomAtl2, ids.cc200, '2026-12-31']);
+  assert.deepEqual(r3.body.createdRequests, []);
+
+  // SAP 자산: 진행 중 요청(수정에서 만든 CHANGE)이 있으면 E315 → 그 요청이 끝나면 코스트센터 변경 요청 생성, 값은 그대로
+  const busy = await out(ids.a1, { userId: ids.dept, roomId: ids.roomWest, costCenterId: ids.cc200 });
+  assert.equal(busy.status, 409); assert.equal(busy.body.code, 'ALM-E315');
+  await q(`UPDATE asset_request SET status = 'POSTED' WHERE asset_id = $1`, [ids.a1]);   // 등록 때 NEW_ASSET, 수정 때 CHANGE
+  const r1 = await out(ids.a1, { userId: ids.dept, roomId: ids.roomWest, costCenterId: ids.cc200 });
+  assert.equal(r1.status, 200);
+  assert.deepEqual(r1.body.createdRequests.map((x: { requestType: string; status: string }) => [x.requestType, x.status]), [['CHANGE', 'SUBMITTED']],
+    '손익센터 같음 → CHANGE');
+  assert.equal(r1.body.asset.costCenterId, ids.cc100, '승인·전기 전에는 그대로');
+  assert.equal(r1.body.asset.assignedUserId, ids.dept);
+  assert.deepEqual((await q(`SELECT u.email, x.returned_at IS NULL AS open FROM asset_assignment x JOIN app_user u ON u.id = x.user_id
+    WHERE x.asset_id = $1 ORDER BY x.checked_out_at`, [ids.a1])).map((x) => [x.email, x.open]), [['emp@ast.test', false], ['dept@ast.test', true]]);
+
+  // 승인 뒤 SAP 전기 결과(POSTED)가 오면 코스트센터 반영
+  const reqNo = r1.body.createdRequests[0].requestNo;
+  await q(`INSERT INTO sap_posting (id, tenant_id, posting_id, posting_type, company_id, asset_request_id, asset_id, payload, status)
+    SELECT gen_random_uuid(), $1, request_no, 'ASSET_CHANGE', $2, id, asset_id, '{"fields":{"costCenter":"CC200"}}', 'CLAIMED' FROM asset_request WHERE request_no = $3`,
+  [tenantId, ids.co, reqNo]);
+  const conn = { tenantId, tenantCode: 'AST', connectionId: ids.co, companyId: ids.co, companyCode: '1000', systemId: 'DEV-100', allowedCidrs: [], clientId: 'x' };
+  await postResult(owner as never, conn, reqNo, { postingId: reqNo, status: 'POSTED' });
+  assert.equal((await q(`SELECT cost_center_id FROM asset WHERE id = $1`, [ids.a1]))[0].cost_center_id, ids.cc200);
+
+  // 반납: 위치 없으면 사이트 IT 창고, 다시 반납은 E322
+  const in3 = await call('mgr', 'POST', `/assets/${ids.a3}:check-in`, { condition: 'GOOD' });
+  assert.equal(in3.status, 200);
+  assert.deepEqual([in3.body.asset.status, in3.body.asset.assignedUserId ?? null, in3.body.asset.dueBackDate ?? null],
+    ['IN_STOCK', null, null]);
+  assert.equal((await q(`SELECT r.room_code FROM asset a JOIN room r ON r.id = a.room_id WHERE a.id = $1`, [ids.a3]))[0].room_code, 'ATL-STO');
+  assert.equal((await call('mgr', 'POST', `/assets/${ids.a3}:check-in`, {})).body.code, 'ALM-E322');
+
+  // 수리: 입고 → 할당 불가 → 출고하면 이전 상태
+  const rep = (id: string, b: Record<string, unknown>) => call('mgr', 'POST', `/assets/${id}:repair`, b);
+  assert.equal((await rep(ids.a3, {})).body.code, 'ALM-E101');
+  assert.equal((await rep(ids.a3, { direction: 'OUT' })).body.code, 'ALM-E322');
+  assert.equal((await rep(ids.a3, { direction: 'IN', ticketNo: 'INC-1' })).body.asset.status, 'IN_REPAIR');
+  assert.equal((await out(ids.a3, { userId: ids.emp, roomId: ids.roomAtl })).body.code, 'ALM-E322');
+  assert.equal((await rep(ids.a3, { direction: 'OUT' })).body.asset.status, 'IN_STOCK');
+  assert.equal((await rep(ids.a1, { direction: 'IN' })).body.asset.status, 'IN_REPAIR');
+  assert.equal((await rep(ids.a1, { direction: 'OUT' })).body.asset.status, 'IN_USE', '할당 중이던 자산은 IN_USE로');
+  const ev = (await q(`SELECT event_type FROM asset_event WHERE asset_id = $1 ORDER BY occurred_at, created_at`, [ids.a3])).map((x) => x.event_type);
+  assert.deepEqual(ev.slice(-4), ['ASSIGNED', 'RETURNED', 'REPAIR_IN', 'REPAIR_OUT']);
+});
