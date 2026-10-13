@@ -840,6 +840,7 @@ request | AssetRequestInput | Y | 값(금액은 amount.read·요청자·지금 �
 labels | RequestLabels | Y | 화면 표시용 코드·이름
 amountMasked | bool | Y | 금액을 숨겼음
 isProfitCenterChange | bool | Y | 손익센터 변경(→ABUMN)
+deptManagerMissing | bool | Y | 책임 코스트센터에 (요청자 말고) 유효한 부서 관리자가 없음 → 1단계를 자산회계가 대리 결정
 asset | RequestAsset | N | 대상 자산
 approvals | [ApprovalStep] | Y | 승인 단계
 posting | PostingSummary | N | SAP 전기
@@ -916,12 +917,13 @@ W('요청·승인','POST','/asset-requests/{id}:fix','fixAssetRequest','전기 �
    '회계 필드(acquisitionValue, saleAmount, targetCostCenterId, assetClassId, retireType, 회사코드)가 바뀌면 요청을 SUBMITTED로 되돌리고 승인 단계를 새로 만든다(재승인, 직무 분리 H-08).',
    '보정한 사람은 재생성된 승인 단계를 승인할 수 없다(403 ALM-E403).'],
   params=[ID(),('If-Match','header','string','Y','version')], idem='Idempotency-Key')
-W('요청·승인','POST','/asset-requests/{id}:submit','submitAssetRequest','제출','요청자',None,'AssetRequestDetail','200, 409, 422','asset_request, approval, notification','ALM-230',[ '승인 단계 2개 생성: 1 부서 관리자(책임 코스트센터: 신규·이관은 대상, 그 외는 자산의 현재 값), 2 자산회계.', '제출 시 값을 다시 검사한다. 책임 코스트센터가 없으면 422. 1단계 승인자에게 메일(APPROVAL_REQUESTED).'],params=[ID()],idem='Idempotency-Key')
+W('요청·승인','POST','/asset-requests/{id}:submit','submitAssetRequest','제출','요청자',None,'AssetRequestDetail','200, 409, 422','asset_request, approval, notification','ALM-230',[ '승인 단계 2개 생성: 1 부서 관리자(책임 코스트센터: 신규·이관은 대상, 그 외는 자산의 현재 값), 2 자산회계.', '제출 시 값을 다시 검사한다. 책임 코스트센터가 없으면 422. 1단계 승인자에게 메일(APPROVAL_REQUESTED). 부서 관리자가 없으면 자산회계에게.'],params=[ID()],idem='Idempotency-Key')
 W('요청·승인','POST','/asset-requests/{id}:cancel','cancelAssetRequest','취소','요청자, ASSET_MANAGER',None,'AssetRequestDetail','200, 409','asset_request','ALM-230',[ '요청자 본인(request.create) 또는 asset.write가 있는 자산 관리자(범위 안).', 'ACCT_APPROVED 이후(전기 대기)는 sap_posting이 CLAIMED가 아닐 때만 취소.'],params=[ID()])
 W('요청·승인','GET','/approvals/inbox','listApprovalInbox','내 승인함','DEPT_MANAGER, ASSET_ACCOUNTANT, ASSET_MANAGER',None,'ApprovalInboxRowList','200','approval, asset_request, purchase_request','ALM-230, 210',
   ['내 역할·범위에 맞는 PENDING 단계 중 앞 단계가 끝난 것만.'],params=[('kind','query','enum(ASSET_REQUEST,PURCHASE_REQUEST)','N','종류')]+PG)
 W('요청·승인','POST','/approvals/{id}:approve','approve','승인','해당 단계 역할','ApprovalDecisionInput','ApprovalStep','200, 403, 409','approval, asset_request, purchase_request, sap_posting, notification','ALM-230, 210',
   ['승인 자격: 1단계는 책임 코스트센터가 역할 행에 있는 부서 관리자, 2단계는 자산회계(역할 행의 회사코드·사이트·코스트센터 범위). 자격이 없으면 403.',
+   '책임 코스트센터에 (요청자 말고) 유효한 부서 관리자가 없으면 1단계도 자산회계가 대리 결정한다. 의견 앞에 [대리]를 붙여 남긴다. 2단계는 다른 자산회계가 승인해야 한다(직무 분리).',
    '마지막 단계(자산회계) 승인 시 sap_posting(READY)을 만들고 요청을 ACCT_APPROVED로. SAP 자산번호가 없는 자산(NEW_ASSET 제외)은 ALM에 바로 반영하고 POSTED.',
    'SAP 전기 결과가 POSTED면 요청 값(코스트센터·룸·자산명·시리얼·자산클래스, 폐기 RETIRED·매각 DISPOSED)을 자산에 반영한다.',
    '요청자 본인, 앞 단계를 승인한 사람은 승인할 수 없다(403 ALM-E403, 직무 분리).', '이미 결정된 단계·앞 단계가 남은 단계면 409 ALM-E322.', '1단계 승인 → 2단계 승인자에게, 최종 승인 → 요청자에게 메일.'],params=[ID()],idem='Idempotency-Key')

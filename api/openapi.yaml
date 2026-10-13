@@ -4526,7 +4526,7 @@ paths:
 
         - 승인 단계 2개 생성: 1 부서 관리자(책임 코스트센터: 신규·이관은 대상, 그 외는 자산의 현재 값), 2 자산회계.
 
-        - 제출 시 값을 다시 검사한다. 책임 코스트센터가 없으면 422. 1단계 승인자에게 메일(APPROVAL_REQUESTED).'
+        - 제출 시 값을 다시 검사한다. 책임 코스트센터가 없으면 422. 1단계 승인자에게 메일(APPROVAL_REQUESTED). 부서 관리자가 없으면 자산회계에게.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       - $ref: '#/components/parameters/IdempotencyKey'
@@ -4672,6 +4672,8 @@ paths:
 
 
         - 승인 자격: 1단계는 책임 코스트센터가 역할 행에 있는 부서 관리자, 2단계는 자산회계(역할 행의 회사코드·사이트·코스트센터 범위). 자격이 없으면 403.
+
+        - 책임 코스트센터에 (요청자 말고) 유효한 부서 관리자가 없으면 1단계도 자산회계가 대리 결정한다. 의견 앞에 [대리]를 붙여 남긴다. 2단계는 다른 자산회계가 승인해야 한다(직무 분리).
 
         - 마지막 단계(자산회계) 승인 시 sap_posting(READY)을 만들고 요청을 ACCT_APPROVED로. SAP 자산번호가 없는 자산(NEW_ASSET 제외)은 ALM에 바로 반영하고 POSTED.
 
@@ -12836,6 +12838,9 @@ components:
         isProfitCenterChange:
           type: boolean
           description: 손익센터 변경(→ABUMN)
+        deptManagerMissing:
+          type: boolean
+          description: 책임 코스트센터에 (요청자 말고) 유효한 부서 관리자가 없음 → 1단계를 자산회계가 대리 결정
         asset:
           allOf:
           - $ref: '#/components/schemas/RequestAsset'
@@ -12872,6 +12877,7 @@ components:
       - labels
       - amountMasked
       - isProfitCenterChange
+      - deptManagerMissing
       - approvals
       - attachments
       - actions

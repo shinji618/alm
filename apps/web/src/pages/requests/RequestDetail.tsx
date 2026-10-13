@@ -79,6 +79,7 @@ export function RequestDetail() {
           </Panel>
           <Panel>
             <h3 style={{ marginTop: 0 }}>{t('request.detail.approvals')}</h3>
+            {d.deptManagerMissing && ['DRAFT', 'SUBMITTED'].includes(d.status) && <div className={s.notice}>{t('request.detail.proxyNote')}</div>}
             {d.approvals.length ? <Approvals steps={d.approvals} /> : <span className="muted">{t('request.detail.noApprovals')}</span>}
           </Panel>
           <Panel>

@@ -24,7 +24,7 @@ export interface RequestDetail {
   id: string; version: number; requestNo: string; status: RequestStatus; source: string; currentStep: number; requesterId: string; requesterName: string;
   submittedAt?: string; completedAt?: string; createdAt: string; request: RequestInput;
   labels: { assetClass?: string; targetCostCenter?: string; currentCostCenter?: string; targetRoom?: string; poItem?: string };
-  amountMasked: boolean; isProfitCenterChange: boolean;
+  amountMasked: boolean; isProfitCenterChange: boolean; deptManagerMissing: boolean;
   asset?: { id: string; assetTag: string; description: string; status: string; sapAssetNo?: string; companyCode: string };
   approvals: ApprovalStep[];
   posting?: { id: string; postingId: string; postingType: string; status: string; attemptCount: number; sapDocumentNo?: string; sapFiscalYear?: number;

@@ -253,3 +253,24 @@ test('자산 상세: 구매·입고(PO 항목·입고 행)', { skip }, async () 
     unitPrice: 1500, goodsReceipt: { materialDoc: '5000000050', docYear: 2026, docItem: '0001', movementType: '101', quantity: 1, postingDate: '2026-10-13' } });
   assert.equal((await call('mgr', 'GET', `/assets/${ids.sapB}`)).body.purchase, undefined);
 });
+
+test('부서 관리자가 없는 코스트센터: 자산회계가 1단계를 대리 결정([대리] 표시), 2단계는 다른 자산회계', { skip }, async () => {
+  const [a] = await q(`INSERT INTO asset (id, tenant_id, asset_tag, description, category_id, status, source, company_id, site_id, room_id, cost_center_id)
+    VALUES (gen_random_uuid(), $1, 'AT-000200', 'HR laptop', $2, 'IN_STOCK', 'MANUAL', $3, $4, $5, $6) RETURNING id`, [tenantId, ids.cat, ids.co, ids.site, ids.room1, ids.cc200]);
+  await q(`DELETE FROM notification`);
+  const r = await call('mgr', 'POST', '/asset-requests', { requestType: 'RETIRE', assetId: a.id, reason: '분실', retireType: 'LOSS', effectiveDate: '2026-10-20', submit: true });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.deptManagerMissing, true);
+  const mails = await q(`SELECT u.email FROM notification n JOIN app_user u ON u.id = n.recipient_id WHERE n.template = 'APPROVAL_REQUESTED' ORDER BY 1`);
+  assert.deepEqual(mails.map((m) => m.email), ['acct@req.test', 'both@req.test'], 'CC200 부서 관리자가 없어 자산회계에게');
+  assert.equal((await call('dept1', 'GET', '/approvals/inbox')).body.total, 0);
+  assert.equal((await call('acct', 'GET', '/approvals/inbox')).body.items.filter((x: { targetId: string }) => x.targetId === r.body.id)[0].stepNo, 1);
+  const s1 = await step(r.body.id, 1), s2 = await step(r.body.id, 2);
+  assert.equal((await call('dept1', 'POST', `/approvals/${s1}:approve`, {})).status, 404, '다른 코스트센터 부서 관리자에게는 보이지 않음');
+  const a1 = await call('acct', 'POST', `/approvals/${s1}:approve`, { comment: '분실 확인' });
+  assert.equal(a1.status, 200); assert.equal(a1.body.comment, '[대리] 부서 관리자 없음 → 자산회계 결정 · 분실 확인');
+  assert.equal((await call('acct', 'POST', `/approvals/${s2}:approve`, {})).status, 403, '같은 자산회계가 2단계까지는 못 함');
+  const a2 = await call('both', 'POST', `/approvals/${s2}:approve`, {});
+  assert.equal(a2.body.requestStatus, 'POSTED');
+  assert.equal((await q('SELECT status FROM asset WHERE id = $1', [a.id]))[0].status, 'RETIRED');
+});

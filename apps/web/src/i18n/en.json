@@ -379,7 +379,8 @@
       "approved": "Approved",
       "rejected": "Rejected",
       "finalTitle": "Final approval of {{no}}",
-      "finalMessage": "Once approved it is queued for SAP posting (or applied right away for non-SAP assets) and cannot be undone."
+      "finalMessage": "Once approved it is queued for SAP posting (or applied right away for non-SAP assets) and cannot be undone.",
+      "proxyNote": "This cost center has no department manager, so an asset accountant decides step 1 instead. Step 2 must be approved by a different asset accountant."
     },
     "form": {
       "saveDraft": "Save draft",
