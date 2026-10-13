@@ -458,7 +458,8 @@ START-OF-SELECTION.
   IF p_gr = abap_true.
     DATA lt_gr TYPE STANDARD TABLE OF ty_gr.
     DATA(lv_from) = CONV d( sy-datum - p_grday ).
-    SELECT m~mblnr, m~mjahr, m~zeile, m~ebeln, m~ebelp, m~bwart, m~menge, m~budat
+    "  수량: MENGE(기본단위)가 비어 있는 행이 있어(계정지정 소비 입고) ERFMG(입력단위) → STOCK_QTY 순으로 대체
+    SELECT m~mblnr, m~mjahr, m~zeile, m~ebeln, m~ebelp, m~bwart, m~menge, m~erfmg, m~stock_qty, m~budat
       FROM matdoc AS m
       INNER JOIN ekpo AS p ON p~ebeln = m~ebeln AND p~ebelp = m~ebelp
       INNER JOIN ekko AS k ON k~ebeln = m~ebeln
@@ -468,9 +469,23 @@ START-OF-SELECTION.
       ORDER BY m~mblnr, m~mjahr, m~zeile
       INTO TABLE @DATA(lt_mdoc) UP TO @p_max ROWS.
     LOOP AT lt_mdoc INTO DATA(ls_m).
+      DATA(lv_q) = CONV ty_qty( COND #( WHEN ls_m-menge <> 0 THEN abs( ls_m-menge )
+                                        WHEN ls_m-erfmg <> 0 THEN abs( ls_m-erfmg )
+                                        ELSE abs( ls_m-stock_qty ) ) ).
+      WRITE: / |MM03 { ls_m-mblnr }/{ ls_m-mjahr }/{ ls_m-zeile } { ls_m-bwart } PO { ls_m-ebeln }/{ ls_m-ebelp }|,
+               |MENGE { ls_m-menge } ERFMG { ls_m-erfmg } STOCK_QTY { ls_m-stock_qty } → { lv_q }|.
+      "  같은 문서 행이 여러 레코드로 있으면 수량이 있는 행 하나만 보냄
+      READ TABLE lt_gr ASSIGNING FIELD-SYMBOL(<gr>) WITH KEY material_doc = CONV string( ls_m-mblnr )
+           doc_year = |{ ls_m-mjahr }| doc_item = |{ ls_m-zeile }|.
+      IF sy-subrc = 0.
+        IF <gr>-quantity = 0.
+          <gr>-quantity = lv_q.
+        ENDIF.
+        CONTINUE.
+      ENDIF.
       APPEND VALUE #( material_doc = ls_m-mblnr doc_year = |{ ls_m-mjahr }| doc_item = |{ ls_m-zeile }|
                       po_no = ls_m-ebeln po_item = |{ ls_m-ebelp }| movement_type = ls_m-bwart
-                      quantity = ls_m-menge posting_date = |{ ls_m-budat DATE = ISO }| ) TO lt_gr.
+                      quantity = lv_q posting_date = |{ ls_m-budat DATE = ISO }| ) TO lt_gr.
     ENDLOOP.
     IF lt_gr IS INITIAL.
       WRITE: / |MM03: 최근 { p_grday }일 계정지정 A 입고 없음({ lv_from DATE = ISO } 이후)|.
