@@ -9,7 +9,7 @@ export interface Me {
   roles: RoleScope[]; permissions: string[]; navCounts: Record<string, number>;
 }
 type State = { status: 'loading' } | { status: 'anonymous' } | { status: 'error'; message: string } | { status: 'ready'; me: Me };
-interface SessionApi { state: State; me?: Me; can: (perm: string) => boolean; reload: () => void }
+interface SessionApi { state: State; me?: Me; can: (perm: string) => boolean; reload: () => void; /** 화면을 가리지 않고 /me만 다시(메뉴 배지 수 등) */ refresh: () => void }
 
 const Ctx = createContext<SessionApi | null>(null);
 
@@ -25,6 +25,9 @@ export function SessionProvider({ children, initial }: { children: ReactNode; in
       (e) => setState(e instanceof ApiError && (e.status === 401 || e.code === 'ALM-E402') ? { status: 'anonymous' } : { status: 'error', message: String(e.message ?? e) }),
     );
   }, []);
+  const refresh = useCallback(() => {
+    api.get<Me>('/me').then((me) => setState({ status: 'ready', me }), () => undefined);
+  }, []);
   useEffect(() => {
     setUnauthenticatedHandler(() => setState({ status: 'anonymous' }));
     if (!initial) load();
@@ -32,13 +35,13 @@ export function SessionProvider({ children, initial }: { children: ReactNode; in
   const value = useMemo<SessionApi>(() => {
     const me = state.status === 'ready' ? state.me : undefined;
     const perms = new Set(me?.permissions ?? []);
-    return { state, me, can: (p) => perms.has(p), reload: load };
-  }, [state, load]);
+    return { state, me, can: (p) => perms.has(p), reload: load, refresh };
+  }, [state, load, refresh]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 // 공급자 밖(Storybook의 셸 등)에서는 비로그인·권한 없음으로 본다
-const NONE: SessionApi = { state: { status: 'loading' }, can: () => false, reload: () => undefined };
+const NONE: SessionApi = { state: { status: 'loading' }, can: () => false, reload: () => undefined, refresh: () => undefined };
 export function useSession(): SessionApi {
   return useContext(Ctx) ?? NONE;
 }

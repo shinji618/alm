@@ -151,6 +151,12 @@ export async function detail(c: PoolClient, p: Principal, id: string) {
   const reqs = (await c.query(`SELECT id, request_no, request_type, status FROM asset_request
      WHERE asset_id = $1 AND status NOT IN ('POSTED', 'REJECTED', 'CANCELLED') ORDER BY created_at DESC`, [id])).rows;
   const amount = can(p, 'amount.read');
+  // 구매·입고(IF-MM-01·03): 입고로 연결된 PO 항목, 없으면 PO가 이 자산을 지정한 항목
+  const po = (await c.query(`SELECT pi.po_no, pi.item_no, pi.vendor_name, pi.description, pi.quantity::float8 AS quantity, pi.gr_quantity::float8 AS gr_quantity,
+      pi.unit_price, pi.is_deleted, gr.material_doc, gr.doc_year, gr.doc_item, gr.movement_type, gr.quantity::float8 AS gr_qty, gr.posting_date
+     FROM po_item pi LEFT JOIN goods_receipt gr ON gr.id = $2
+    WHERE pi.id = coalesce($1, (SELECT po_item_id FROM po_item_asset WHERE asset_id = $3 ORDER BY created_at DESC LIMIT 1))`,
+  [r.po_item_id, r.goods_receipt_id, id])).rows[0];
   const ps = new Params([id]);
   const writable = can(p, 'asset.write') && !!(await c.query(`SELECT 1 FROM asset a WHERE a.id = $1 AND ${assetScope(p, 'asset.write', ps)}`, ps.values)).rowCount
     && !['DISPOSED'].includes(r.status);
@@ -169,6 +175,13 @@ export async function detail(c: PoolClient, p: Principal, id: string) {
       valueAsOf: r.fiscal_year ? `${r.fiscal_year}/${String(r.period).padStart(3, '0')}` : undefined,
       tcoEstimate: amount ? numOrNull(r.purchase_cost) : null, sapSyncedAt: iso(r.sap_synced_at),
     }),
+    purchase: po ? clean({
+      poNo: po.po_no, poItem: po.item_no, vendorName: po.vendor_name ?? undefined, description: po.description, quantity: po.quantity,
+      grQuantity: po.gr_quantity, unitPrice: amount ? numOrNull(po.unit_price) : null, isDeleted: po.is_deleted || undefined,
+      goodsReceipt: po.material_doc ? { materialDoc: po.material_doc, docYear: po.doc_year, docItem: po.doc_item, movementType: po.movement_type,
+        quantity: po.gr_qty, postingDate: day(po.posting_date) } : undefined,
+      isGrCancelled: r.is_gr_cancelled || undefined,
+    }) : undefined,
     openRequests: reqs.map((x) => ({ id: x.id, requestNo: x.request_no, requestType: x.request_type, status: x.status })),
     editableFields: writable ? PATCHABLE.filter((f) => f !== 'dueBackDate' || r.status === 'IN_USE') : [],
   });

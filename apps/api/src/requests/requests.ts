@@ -1,0 +1,638 @@
+// 자산 요청·승인(ALM-230, openapi listAssetRequests~reject). WBS 4.3. 01 기능정의서 7.1, 09 설계서 2장 S-14·5.2
+//
+//   유형  : NEW_ASSET(AS01) · CHANGE(AS02) · TRANSFER(AS02 시간종속, 손익센터·세그먼트가 바뀌면 ABUMN) · RETIRE(ABAVN) · SALE(ABAON)
+//   상태  : DRAFT → SUBMITTED(1 부서 관리자 대기) → MGR_APPROVED(2 자산회계 대기) → ACCT_APPROVED(전기 대기) → POSTED | POST_ERROR
+//           반려 REJECTED, 취소 CANCELLED. 같은 자산에 진행 중인 요청은 하나만(409 ALM-E315)
+//   승인자: 1단계 = 책임 코스트센터(신규·이관·코스트센터 변경은 대상, 그 외는 자산의 현재 값)의 부서 관리자 역할 행
+//           2단계 = 자산회계(역할 행에 회사코드·사이트·코스트센터가 있으면 그 범위)
+//           요청자 본인 승인 불가, 1단계 승인자는 2단계를 승인할 수 없다(403 ALM-E403, 직무 분리)
+//   최종 승인: SAP 자산(또는 NEW_ASSET)은 sap_posting(READY)을 만들고 ACCT_APPROVED → SAP 결과가 오면 postings.applyPosted가 자산에 반영.
+//              SAP 자산번호가 없는 자산(ALM 전용)은 SAP에 보낼 것이 없으므로 바로 반영하고 POSTED
+//   금액  : 취득가·매각금액은 amount.read, 요청자 본인, 지금 단계의 승인자에게만 보인다(09 4.2)
+import { randomUUID } from 'node:crypto';
+import type { PoolClient } from 'pg';
+import { AlmError, E } from '../common/errors';
+import { Check } from '../common/validate';
+import type { Principal } from '../auth/principal';
+import { assetScope, can, Params, scopeRows } from '../auth/scope';
+import type { MailRequest } from '../notify/mail';
+import { nextNumbers } from '../assets/tags';
+
+export const TYPES = ['NEW_ASSET', 'CHANGE', 'TRANSFER', 'RETIRE', 'SALE'] as const;
+export const REQ_STATUSES = ['DRAFT', 'SUBMITTED', 'MGR_APPROVED', 'ACCT_APPROVED', 'POSTED', 'POST_ERROR', 'REJECTED', 'CANCELLED'] as const;
+const OPEN = ['DRAFT', 'SUBMITTED', 'MGR_APPROVED', 'ACCT_APPROVED', 'POST_ERROR'];
+const STEPS = [[1, 'DEPT_MANAGER'], [2, 'ASSET_ACCOUNTANT']] as const;
+const CHANGE_FIELDS = ['description', 'serialNo'] as const;
+type ReqType = (typeof TYPES)[number];
+
+const iso = (d: unknown) => (d instanceof Date ? d.toISOString() : d ? String(d) : undefined);
+const day = (d: unknown) => (d instanceof Date ? d.toISOString().slice(0, 10) : d ? String(d).slice(0, 10) : undefined);
+const num = (v: unknown) => (v === null || v === undefined ? undefined : Number(v));
+const clean = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
+const likeEsc = (s: string) => s.replace(/[\\%_]/g, (m) => `\\${m}`);
+const path = (id: string) => `/requests/${id}`;
+
+// ---------------- 범위 ----------------
+// request.read 범위: 전체(회사·사이트 제한은 자산 기준), 코스트센터(대상 또는 현재), 본인. 요청자 본인 요청은 항상 보인다
+function requestScope(p: Principal, ps: Params): string {
+  const rows = scopeRows(p, 'request.read');
+  if (rows.some((x) => (x.scope === 'ALL' || x.scope === '-') && !x.companyCode && !x.siteCode)) return 'true';
+  const parts = [`r.requester_id = ${ps.add(p.userId)}`];
+  for (const row of rows) {
+    if (row.scope === 'ALL' || row.scope === '-') {
+      const c: string[] = [];
+      if (row.companyCode) c.push(`a.company_id IN (SELECT id FROM company WHERE company_code = ${ps.add(row.companyCode)})`);
+      if (row.siteCode) c.push(`a.site_id IN (SELECT id FROM site WHERE site_code = ${ps.add(row.siteCode)})`);
+      parts.push(`(${c.join(' AND ')})`);
+    } else if (row.scope === 'CC' && row.costCenterCode) {
+      const cc = ps.add(row.costCenterCode);
+      parts.push(`(r.target_cost_center_id IN (SELECT id FROM cost_center WHERE cost_center_code = ${cc})
+        OR a.cost_center_id IN (SELECT id FROM cost_center WHERE cost_center_code = ${cc}))`);
+    }
+  }
+  return `(${parts.join(' OR ')})`;
+}
+
+// 1단계 책임 코스트센터: 신규·이관·코스트센터 변경은 대상, 그 외는 자산의 현재 값
+const responsibleCc = (r: Record<string, any>) => r.target_cost_center_id ?? r.asset_cost_center_id ?? null;
+
+// 이 사람이 이 단계를 승인할 수 있는가(역할 행 범위). 직무 분리는 따로 본다
+function eligible(p: Principal, role: string, r: Record<string, any>): boolean {
+  if (!p.effectiveRoles.includes(role) || !can(p, 'approval.decide')) return false;
+  const rows = p.roles.filter((x) => x.role === role);
+  if (role === 'DEPT_MANAGER') return rows.some((x) => !!x.costCenterCode && x.costCenterCode === r.responsible_cc_code);
+  return rows.some((x) => (!x.companyCode || x.companyCode === r.company_code) && (!x.siteCode || x.siteCode === r.site_code)
+    && (!x.costCenterCode || x.costCenterCode === r.responsible_cc_code));
+}
+
+// 요청 1건 + 판단에 필요한 코드들
+const BASE = `SELECT r.*, a.asset_tag, a.description AS asset_description, a.status AS asset_status, a.sap_asset_no, a.sap_sub_no, a.company_id,
+    a.cost_center_id AS asset_cost_center_id, a.room_id AS asset_room_id, a.serial_no AS asset_serial_no, a.version AS asset_version,
+    co.company_code, s.site_code, coalesce(tcc.cost_center_code, acc.cost_center_code) AS responsible_cc_code,
+    u.display_name AS requester_name, u.email AS requester_email
+  FROM asset_request r
+  LEFT JOIN asset a ON a.id = r.asset_id
+  LEFT JOIN company co ON co.id = a.company_id
+  LEFT JOIN site s ON s.id = a.site_id
+  LEFT JOIN cost_center tcc ON tcc.id = r.target_cost_center_id
+  LEFT JOIN cost_center acc ON acc.id = a.cost_center_id
+  JOIN app_user u ON u.id = r.requester_id`;
+
+async function load(c: PoolClient, id: string, lock = false): Promise<Record<string, any>> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw E.notFound('요청을 찾을 수 없습니다');
+  if (lock) await c.query('SELECT 1 FROM asset_request WHERE id = $1 FOR UPDATE', [id]);
+  const r = (await c.query(`${BASE} WHERE r.id = $1`, [id])).rows[0];
+  if (!r) throw E.notFound('요청을 찾을 수 없습니다');
+  return r;
+}
+
+async function steps(c: PoolClient, id: string) {
+  return (await c.query(`SELECT ap.*, u.display_name AS approver_name FROM approval ap LEFT JOIN app_user u ON u.id = ap.approver_id
+     WHERE ap.asset_request_id = $1 ORDER BY ap.step_no`, [id])).rows;
+}
+
+// 볼 수 있는가: 범위 안, 요청자, 또는 어느 단계든 승인 자격(결정한 사람 포함)
+async function visible(c: PoolClient, p: Principal, r: Record<string, any>): Promise<boolean> {
+  if (r.requester_id === p.userId) return true;
+  const ps = new Params([r.id]);
+  const inScope = (await c.query(`SELECT 1 FROM asset_request r LEFT JOIN asset a ON a.id = r.asset_id WHERE r.id = $1 AND ${requestScope(p, ps)}`, ps.values)).rowCount;
+  if (inScope) return true;
+  return (await steps(c, r.id)).some((s) => s.approver_id === p.userId || eligible(p, s.approver_role, r));
+}
+
+// ---------------- 목록 ----------------
+export async function listRequests(c: PoolClient, p: Principal, q: Record<string, string | undefined>) {
+  const k = new Check(q);
+  const page = Math.max(1, Number(q.page ?? 1) || 1), pageSize = Math.min(200, Math.max(1, Number(q.pageSize ?? 50) || 50));
+  const types = (q.type ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const statuses = (q.status ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (types.some((t) => !(TYPES as readonly string[]).includes(t))) k.fail('type', TYPES.join(', '));
+  if (statuses.some((t) => !(REQ_STATUSES as readonly string[]).includes(t))) k.fail('status', REQ_STATUSES.join(', '));
+  const assetId = k.uuid(q, 'assetId');
+  k.done();
+  const ps = new Params();
+  const where = [requestScope(p, ps)];
+  if (types.length) where.push(`r.request_type::text = ANY(${ps.add(types)})`);
+  if (statuses.length) where.push(`r.status::text = ANY(${ps.add(statuses)})`);
+  if (q.mine === 'true') where.push(`r.requester_id = ${ps.add(p.userId)}`);
+  if (assetId) where.push(`r.asset_id = ${ps.add(assetId)}`);
+  if (q.q?.trim()) {
+    const t = ps.add(`%${likeEsc(q.q.trim().slice(0, 50))}%`);
+    where.push(`(r.request_no ILIKE ${t} OR a.asset_tag ILIKE ${t} OR a.sap_asset_no ILIKE ${t})`);
+  }
+  const from = `FROM asset_request r LEFT JOIN asset a ON a.id = r.asset_id JOIN app_user u ON u.id = r.requester_id
+    LEFT JOIN approval ap ON ap.asset_request_id = r.id AND ap.step_no = r.current_step AND ap.decision = 'PENDING'
+      AND r.status IN ('SUBMITTED', 'MGR_APPROVED')
+    WHERE ${where.join(' AND ')}`;
+  const total = (await c.query(`SELECT count(*)::int AS n ${from}`, ps.values)).rows[0].n as number;
+  const off = ps.add((page - 1) * pageSize), lim = ps.add(pageSize);
+  const rows = (await c.query(`SELECT r.id, r.request_no, r.request_type, r.status, r.source, a.asset_tag, u.display_name, r.current_step,
+      ap.approver_role, r.submitted_at, r.created_at ${from} ORDER BY coalesce(r.submitted_at, r.created_at) DESC, r.request_no DESC OFFSET ${off} LIMIT ${lim}`,
+  ps.values)).rows;
+  return {
+    items: rows.map((r) => clean({ id: r.id, requestNo: r.request_no, requestType: r.request_type, status: r.status, source: r.source,
+      assetTag: r.asset_tag ?? undefined, requesterName: r.display_name, currentStep: r.current_step, awaitingRole: r.approver_role ?? undefined,
+      submittedAt: iso(r.submitted_at), createdAt: iso(r.created_at) })),
+    page, pageSize, total,
+  };
+}
+
+// ---------------- 상세 ----------------
+export async function getRequest(c: PoolClient, p: Principal, id: string) {
+  const r = await load(c, id);
+  if (!(await visible(c, p, r))) throw E.notFound('요청을 찾을 수 없습니다');
+  return detail(c, p, r);
+}
+
+async function detail(c: PoolClient, p: Principal, r: Record<string, any>) {
+  const st = await steps(c, r.id);
+  const cur = st.find((s) => s.step_no === r.current_step && s.decision === 'PENDING' && ['SUBMITTED', 'MGR_APPROVED'].includes(r.status));
+  const canDecide = !!cur && eligible(p, cur.approver_role, r) && r.requester_id !== p.userId
+    && !st.some((s) => s.step_no < cur.step_no && s.approver_id === p.userId);
+  const amount = can(p, 'amount.read') || r.requester_id === p.userId || canDecide;
+  const posting = (await c.query(`SELECT id, posting_id, posting_type, status, attempt_count, sap_document_no, sap_fiscal_year, sap_asset_no, result_at, messages
+     FROM sap_posting WHERE asset_request_id = $1 ORDER BY created_at DESC LIMIT 1`, [r.id])).rows[0];
+  const codes = (await c.query(`SELECT
+      (SELECT class_code || ' · ' || name FROM asset_class WHERE id = $1) AS cls,
+      (SELECT cost_center_code || ' · ' || name FROM cost_center WHERE id = $2) AS cc,
+      (SELECT room_code || ' · ' || name FROM room WHERE id = $3) AS room,
+      (SELECT cost_center_code || ' · ' || name FROM cost_center WHERE id = $4) AS from_cc,
+      (SELECT po_no || '/' || item_no FROM po_item WHERE id = $5) AS po`,
+  [r.asset_class_id, r.target_cost_center_id, r.target_room_id, r.asset_cost_center_id, r.po_item_id])).rows[0];
+  const isOwnOrMgr = r.requester_id === p.userId || (await assetWritable(c, p, r.asset_id));
+  return clean({
+    id: r.id, version: r.version, requestNo: r.request_no, status: r.status, source: r.source, currentStep: r.current_step,
+    requesterId: r.requester_id, requesterName: r.requester_name, submittedAt: iso(r.submitted_at), completedAt: iso(r.completed_at), createdAt: iso(r.created_at),
+    request: clean({
+      requestType: r.request_type, assetId: r.asset_id ?? undefined, reason: r.reason ?? undefined, assetClassId: r.asset_class_id ?? undefined,
+      acquisitionValue: amount ? num(r.acquisition_value) : undefined, poItemId: r.po_item_id ?? undefined,
+      targetCostCenterId: r.target_cost_center_id ?? undefined, targetRoomId: r.target_room_id ?? undefined, changes: r.changes ?? undefined,
+      effectiveDate: day(r.effective_date), retireType: r.retire_type ?? undefined, saleAmount: amount ? num(r.sale_amount) : undefined,
+      buyer: r.buyer ?? undefined,
+    }),
+    labels: clean({ assetClass: codes.cls ?? undefined, targetCostCenter: codes.cc ?? undefined, targetRoom: codes.room ?? undefined,
+      currentCostCenter: codes.from_cc ?? undefined, poItem: codes.po ?? undefined }),
+    amountMasked: !amount && (r.acquisition_value !== null || r.sale_amount !== null),
+    isProfitCenterChange: r.is_profit_center_change,
+    asset: r.asset_id ? clean({ id: r.asset_id, assetTag: r.asset_tag, description: r.asset_description, status: r.asset_status,
+      sapAssetNo: r.sap_asset_no ? `${r.sap_asset_no}-${r.sap_sub_no ?? '0000'}` : undefined, companyCode: r.company_code }) : undefined,
+    approvals: st.map((s) => clean({ id: s.id, stepNo: s.step_no, approverRole: s.approver_role, approverName: s.approver_name ?? undefined,
+      decision: s.decision, comment: s.comment ?? undefined, decidedAt: iso(s.decided_at) })),
+    posting: posting ? clean({ id: posting.id, postingId: posting.posting_id, postingType: posting.posting_type, status: posting.status,
+      attemptCount: posting.attempt_count, sapDocumentNo: posting.sap_document_no ?? undefined, sapFiscalYear: posting.sap_fiscal_year ?? undefined,
+      sapAssetNo: posting.sap_asset_no ?? undefined, resultAt: iso(posting.result_at), messages: posting.messages ?? [] }) : undefined,
+    attachments: [],
+    actions: clean({
+      approve: canDecide ? cur!.id : undefined,
+      submit: r.status === 'DRAFT' && r.requester_id === p.userId ? true : undefined,
+      edit: r.status === 'DRAFT' && r.requester_id === p.userId ? true : undefined,
+      cancel: cancellable(r.status, posting) && isOwnOrMgr ? true : undefined,
+    }),
+  });
+}
+
+async function assetWritable(c: PoolClient, p: Principal, assetId: string | null): Promise<boolean> {
+  if (!assetId || !can(p, 'asset.write')) return false;
+  const ps = new Params([assetId]);
+  return !!(await c.query(`SELECT 1 FROM asset a WHERE a.id = $1 AND ${assetScope(p, 'asset.write', ps)}`, ps.values)).rowCount;
+}
+
+const cancellable = (status: string, posting?: Record<string, any>) =>
+  ['DRAFT', 'SUBMITTED', 'MGR_APPROVED', 'POST_ERROR'].includes(status)
+  || (status === 'ACCT_APPROVED' && (!posting || ['READY', 'FAILED'].includes(posting.status)));
+
+// ---------------- 작성·수정 ----------------
+interface Input {
+  requestType: ReqType; assetId?: string; reason: string; assetClassId?: string; acquisitionValue?: number; poItemId?: string;
+  targetCostCenterId?: string; targetRoomId?: string; changes?: Record<string, string>; effectiveDate?: string;
+  retireType?: 'SCRAP' | 'LOSS'; saleAmount?: number; buyer?: string; submit?: boolean;
+}
+
+function read(body: unknown): Input {
+  const k = new Check(body);
+  const b = k.obj();
+  const v: Partial<Input> = {
+    requestType: k.oneOf(b, 'requestType', TYPES), assetId: k.uuid(b, 'assetId'), reason: k.str(b, 'reason', { required: true, max: 200 }),
+    assetClassId: k.uuid(b, 'assetClassId'), acquisitionValue: k.num(b, 'acquisitionValue', { min: 0, max: 1e12 }), poItemId: k.uuid(b, 'poItemId'),
+    targetCostCenterId: k.uuid(b, 'targetCostCenterId'), targetRoomId: k.uuid(b, 'targetRoomId'), effectiveDate: k.date(b, 'effectiveDate'),
+    retireType: k.oneOf(b, 'retireType', ['SCRAP', 'SALE', 'LOSS'] as const) as Input['retireType'], saleAmount: k.num(b, 'saleAmount', { min: 0, max: 1e12 }),
+    buyer: k.str(b, 'buyer', { max: 80 }), submit: k.bool(b, 'submit'),
+  };
+  if (!v.requestType) { if (b.requestType === undefined) k.errors.push({ field: 'requestType', code: 'ALM-E101', message: '필수 값입니다' }); }
+  const req = (f: keyof Input, ok: boolean) => { if (!ok) k.errors.push({ field: f, code: 'ALM-E101', message: `${v.requestType}이면 필수입니다` }); };
+  // changes: 허용 필드만(자산명·시리얼). 룸·코스트센터는 targetRoomId·targetCostCenterId로
+  if (b.changes !== undefined && b.changes !== null) {
+    const ch = k.obj(b.changes, 'changes');
+    const out = new Map<string, string>();
+    for (const key of Object.keys(ch)) {
+      if (!(CHANGE_FIELDS as readonly string[]).includes(key)) k.fail(`changes.${key}`, `바꿀 수 있는 필드: ${CHANGE_FIELDS.join(', ')}`);
+    }
+    const d = k.str(ch, 'description', { max: 50, field: 'changes.description' });
+    const s = k.str(ch, 'serialNo', { max: 40, field: 'changes.serialNo' });
+    if (Object.prototype.hasOwnProperty.call(ch, 'description')) { if (!d) k.errors.push({ field: 'changes.description', code: 'ALM-E101', message: '빈 값으로 바꿀 수 없습니다' }); else out.set('description', d); }
+    if (Object.prototype.hasOwnProperty.call(ch, 'serialNo')) out.set('serialNo', s ?? '');
+    if (out.size) v.changes = Object.fromEntries(out);
+  }
+  switch (v.requestType) {
+    case 'NEW_ASSET':
+      req('assetId', !!v.assetId); req('assetClassId', !!v.assetClassId); req('targetCostCenterId', !!v.targetCostCenterId);
+      req('acquisitionValue', v.acquisitionValue !== undefined);
+      if (v.acquisitionValue !== undefined && v.acquisitionValue <= 0) k.fail('acquisitionValue', '0보다 커야 합니다');
+      break;
+    case 'CHANGE':
+      req('assetId', !!v.assetId);
+      if (!v.changes && !v.targetRoomId) k.errors.push({ field: 'changes', code: 'ALM-E101', message: 'changes 또는 targetRoomId 중 하나는 필요합니다' });
+      break;
+    case 'TRANSFER':
+      req('assetId', !!v.assetId); req('targetCostCenterId', !!v.targetCostCenterId); req('effectiveDate', !!v.effectiveDate);
+      break;
+    case 'RETIRE':
+      req('assetId', !!v.assetId); req('retireType', !!v.retireType); req('effectiveDate', !!v.effectiveDate);
+      if ((v.retireType as string) === 'SALE') k.fail('retireType', '매각은 요청 유형 SALE로');
+      break;
+    case 'SALE':
+      req('assetId', !!v.assetId); req('saleAmount', v.saleAmount !== undefined); req('buyer', !!v.buyer);
+      if (v.saleAmount !== undefined && v.saleAmount <= 0) k.fail('saleAmount', '0보다 커야 합니다');
+      break;
+  }
+  k.done();
+  return v as Input;
+}
+
+// 유형과 맞지 않는 값은 버린다(저장 값은 유형에 필요한 것만)
+function normalize(v: Input): Input {
+  const keep: Record<ReqType, (keyof Input)[]> = {
+    NEW_ASSET: ['assetClassId', 'acquisitionValue', 'poItemId', 'targetCostCenterId', 'effectiveDate'],
+    CHANGE: ['changes', 'targetRoomId'],
+    TRANSFER: ['targetCostCenterId', 'targetRoomId', 'effectiveDate'],
+    RETIRE: ['retireType', 'effectiveDate'],
+    SALE: ['saleAmount', 'buyer', 'effectiveDate'],
+  };
+  const base: (keyof Input)[] = ['requestType', 'assetId', 'reason', 'submit'];
+  const allowed = new Set<keyof Input>([...base, ...keep[v.requestType]]);
+  return Object.fromEntries(Object.entries(v).filter(([key]) => allowed.has(key as keyof Input))) as unknown as Input;
+}
+
+// 대상 자산·참조 값 검사 → 저장할 값(손익센터 변경 여부 포함)
+async function validate(c: PoolClient, p: Principal, v: Input, selfId?: string) {
+  const ps = new Params([v.assetId]);
+  const a = (await c.query(`SELECT a.*, co.company_code FROM asset a JOIN company co ON co.id = a.company_id
+     WHERE a.id = $1 AND ${assetScope(p, 'asset.read', ps)}`, ps.values)).rows[0];
+  if (!a) throw new AlmError(404, 'ALM-E404', '대상 자산을 찾을 수 없습니다');
+  const bad = (field: string, message: string): never => { throw E.badRequest(`입력 값을 확인하세요: ${field} ${message}`, { errors: [{ field, code: 'ALM-E100', message }] }); };
+  if (['RETIRED', 'DISPOSED'].includes(a.status)) throw new AlmError(409, 'ALM-E322', `이미 ${a.status === 'RETIRED' ? '폐기' : '처분'}된 자산입니다`);
+  const open = (await c.query(`SELECT request_no FROM asset_request WHERE asset_id = $1 AND status::text = ANY($2) AND id <> coalesce($3::uuid, '00000000-0000-0000-0000-000000000000') LIMIT 1`,
+    [a.id, OPEN, selfId ?? null])).rows[0];
+  if (open) throw new AlmError(409, 'ALM-E315', `이 자산에 진행 중인 요청(${open.request_no})이 있습니다`);
+
+  let pcChange = false;
+  if (v.requestType === 'NEW_ASSET') {
+    if (a.sap_asset_no) throw new AlmError(409, 'ALM-E322', '이미 SAP 자산번호가 있는 자산입니다');
+    const cls = (await c.query('SELECT is_capitalized, is_low_value, is_active FROM asset_class WHERE id = $1', [v.assetClassId])).rows[0];
+    if (!cls?.is_active) bad('assetClassId', '활성 자산클래스가 아닙니다');
+    if (cls.is_capitalized === false || cls.is_low_value) bad('assetClassId', '자본화 자산클래스만 SAP에 등록합니다');
+  }
+  if (v.targetCostCenterId) {
+    const cc = (await c.query(`SELECT id, company_id, is_active FROM cost_center WHERE id = $1`, [v.targetCostCenterId])).rows[0];
+    if (!cc?.is_active || cc.company_id !== a.company_id) bad('targetCostCenterId', '자산 회사코드의 활성 코스트센터가 아닙니다');
+    if (v.requestType === 'TRANSFER') {
+      if (v.targetCostCenterId === a.cost_center_id) bad('targetCostCenterId', '현재 코스트센터와 같습니다');
+      const pcs = (await c.query(`SELECT cc.id, pc.profit_center_code, pc.segment FROM cost_center cc LEFT JOIN profit_center pc ON pc.id = cc.profit_center_id
+         WHERE cc.id = ANY($1)`, [[a.cost_center_id, v.targetCostCenterId].filter(Boolean)])).rows;
+      const from = pcs.find((x) => x.id === a.cost_center_id), to = pcs.find((x) => x.id === v.targetCostCenterId);
+      pcChange = !from || !to || (from.profit_center_code ?? null) !== (to.profit_center_code ?? null) || (from.segment ?? null) !== (to.segment ?? null);
+    }
+  }
+  if (v.targetRoomId) {
+    const room = (await c.query('SELECT r.id FROM room r JOIN site s ON s.id = r.site_id WHERE r.id = $1 AND r.is_active AND s.is_active', [v.targetRoomId])).rows[0];
+    if (!room) bad('targetRoomId', '활성 룸이 아닙니다');
+    if (v.requestType === 'CHANGE' && v.targetRoomId === a.room_id && !v.changes) bad('targetRoomId', '현재 룸과 같습니다');
+  }
+  if (v.poItemId) {
+    const po = (await c.query('SELECT company_id, is_deleted FROM po_item WHERE id = $1', [v.poItemId])).rows[0];
+    if (!po || po.is_deleted || po.company_id !== a.company_id) bad('poItemId', '자산 회사코드의 PO 항목이 아닙니다');
+  }
+  if (v.requestType === 'CHANGE' && v.changes) {
+    const same = Object.entries(v.changes).every(([f, x]) => (f === 'description' ? a.description : a.serial_no ?? '') === x);
+    if (same && (!v.targetRoomId || v.targetRoomId === a.room_id)) bad('changes', '바뀐 값이 없습니다');
+    if (v.changes.serialNo !== undefined && a.sap_asset_no && v.changes.serialNo.length > 18) bad('changes.serialNo', 'SAP 자산의 시리얼은 18자 이하(SERNR)');
+  }
+  return { asset: a, pcChange };
+}
+
+export async function createRequest(c: PoolClient, p: Principal, body: unknown, mails: MailRequest[]) {
+  const v = normalize(read(body));
+  const { asset, pcChange } = await validate(c, p, v);
+  const id = randomUUID();
+  const [no] = await nextNumbers(c, p.tenantId, 'asset_request');
+  await c.query(`INSERT INTO asset_request (id, tenant_id, request_no, request_type, status, source, asset_id, requester_id, reason, asset_class_id,
+      acquisition_value, po_item_id, target_cost_center_id, target_room_id, is_profit_center_change, changes, effective_date, retire_type, sale_amount, buyer,
+      created_by, updated_by)
+    VALUES ($1, $2, $3, $4, 'DRAFT', 'USER', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $6, $6)`,
+  [id, p.tenantId, no, v.requestType, asset.id, p.userId, v.reason, v.assetClassId ?? null, v.acquisitionValue ?? null, v.poItemId ?? null,
+    v.targetCostCenterId ?? null, v.targetRoomId ?? null, pcChange, v.changes ? JSON.stringify(v.changes) : null, v.effectiveDate ?? null,
+    v.requestType === 'SALE' ? 'SALE' : v.retireType ?? null, v.saleAmount ?? null, v.buyer ?? null]);
+  if (v.submit) await doSubmit(c, p, await load(c, id, true), mails);
+  return detail(c, p, await load(c, id));
+}
+
+export async function patchRequest(c: PoolClient, p: Principal, id: string, ifMatch: string | undefined, body: unknown) {
+  const r = await load(c, id, true);
+  if (!(await visible(c, p, r))) throw E.notFound('요청을 찾을 수 없습니다');
+  if (r.requester_id !== p.userId) throw E.forbidden('요청자만 고칠 수 있습니다');
+  if (r.status !== 'DRAFT') throw new AlmError(409, 'ALM-E322', '제출한 요청은 고칠 수 없습니다(취소 후 새로 작성)');
+  checkVersion(r, ifMatch);
+  const v = normalize(read({ ...(body as object), requestType: r.request_type, assetId: r.asset_id }));
+  const { pcChange } = await validate(c, p, v, r.id);
+  await c.query(`UPDATE asset_request SET reason = $2, asset_class_id = $3, acquisition_value = $4, po_item_id = $5, target_cost_center_id = $6,
+      target_room_id = $7, is_profit_center_change = $8, changes = $9, effective_date = $10, retire_type = $11, sale_amount = $12, buyer = $13,
+      updated_at = now(), updated_by = $14, version = version + 1 WHERE id = $1`,
+  [id, v.reason, v.assetClassId ?? null, v.acquisitionValue ?? null, v.poItemId ?? null, v.targetCostCenterId ?? null, v.targetRoomId ?? null, pcChange,
+    v.changes ? JSON.stringify(v.changes) : null, v.effectiveDate ?? null, r.request_type === 'SALE' ? 'SALE' : v.retireType ?? null,
+    v.saleAmount ?? null, v.buyer ?? null, p.userId]);
+  return detail(c, p, await load(c, id));
+}
+
+function checkVersion(r: Record<string, any>, ifMatch: string | undefined) {
+  if (!ifMatch) throw new AlmError(428, 'ALM-E101', 'If-Match 헤더(version)가 필요합니다');
+  if (String(r.version) !== ifMatch.replace(/^W\//, '').replace(/"/g, '')) {
+    throw new AlmError(409, 'ALM-E310', '다른 사람이 먼저 바꿨습니다. 새로 고친 뒤 다시 시도하세요', { currentVersion: r.version });
+  }
+}
+
+// ---------------- 제출·취소 ----------------
+export async function submitRequest(c: PoolClient, p: Principal, id: string, mails: MailRequest[]) {
+  const r = await load(c, id, true);
+  if (!(await visible(c, p, r))) throw E.notFound('요청을 찾을 수 없습니다');
+  if (r.requester_id !== p.userId) throw E.forbidden('요청자만 제출할 수 있습니다');
+  if (r.status !== 'DRAFT') throw new AlmError(409, 'ALM-E322', `이미 ${r.status} 상태입니다`);
+  await doSubmit(c, p, r, mails);
+  return detail(c, p, await load(c, id));
+}
+
+async function doSubmit(c: PoolClient, p: Principal, r: Record<string, any>, mails: MailRequest[]) {
+  if (!responsibleCc(r)) throw new AlmError(422, 'ALM-E100', '자산에 코스트센터가 없어 부서 승인자를 정할 수 없습니다(코스트센터를 먼저 지정)');
+  // 제출 시점에 다시 검사(초안 저장 뒤 자산이 바뀌었을 수 있음)
+  await validate(c, p, normalize({ requestType: r.request_type, assetId: r.asset_id, reason: r.reason, assetClassId: r.asset_class_id ?? undefined,
+    acquisitionValue: num(r.acquisition_value), poItemId: r.po_item_id ?? undefined, targetCostCenterId: r.target_cost_center_id ?? undefined,
+    targetRoomId: r.target_room_id ?? undefined, changes: r.changes ?? undefined, effectiveDate: day(r.effective_date),
+    retireType: r.retire_type ?? undefined, saleAmount: num(r.sale_amount), buyer: r.buyer ?? undefined }), r.id);
+  await c.query(`UPDATE asset_request SET status = 'SUBMITTED', submitted_at = now(), current_step = 1, updated_at = now(), updated_by = $2, version = version + 1
+    WHERE id = $1`, [r.id, p.userId]);
+  await c.query('DELETE FROM approval WHERE asset_request_id = $1', [r.id]);
+  for (const [step, role] of STEPS) {
+    await c.query(`INSERT INTO approval (id, tenant_id, asset_request_id, step_no, approver_role, created_by) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [randomUUID(), p.tenantId, r.id, step, role, p.userId]);
+  }
+  mails.push(...await approverMails(c, r, 'DEPT_MANAGER', 1));
+}
+
+export async function cancelRequest(c: PoolClient, p: Principal, id: string) {
+  const r = await load(c, id, true);
+  if (!(await visible(c, p, r))) throw E.notFound('요청을 찾을 수 없습니다');
+  const own = r.requester_id === p.userId && can(p, 'request.create');
+  if (!own && !(await assetWritable(c, p, r.asset_id))) throw E.forbidden('요청자 또는 범위 안의 자산 관리자만 취소할 수 있습니다');
+  const posting = (await c.query(`SELECT id, status, lease_until FROM sap_posting WHERE asset_request_id = $1 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, [id])).rows[0];
+  if (!cancellable(r.status, posting)) {
+    throw new AlmError(409, 'ALM-E322', r.status === 'ACCT_APPROVED' ? 'SAP이 전기 중입니다. 결과가 온 뒤에 처리하세요' : `${r.status} 상태의 요청은 취소할 수 없습니다`);
+  }
+  if (posting && ['READY', 'FAILED'].includes(posting.status)) {
+    await c.query(`UPDATE sap_posting SET status = 'CANCELLED', lease_until = NULL, updated_at = now(), updated_by = $2, version = version + 1 WHERE id = $1`, [posting.id, p.userId]);
+  }
+  await c.query(`UPDATE approval SET decision = 'SKIPPED', updated_at = now(), updated_by = $2, version = version + 1 WHERE asset_request_id = $1 AND decision = 'PENDING'`, [id, p.userId]);
+  await c.query(`UPDATE asset_request SET status = 'CANCELLED', completed_at = now(), updated_at = now(), updated_by = $2, version = version + 1 WHERE id = $1`, [id, p.userId]);
+  return detail(c, p, await load(c, id));
+}
+
+// ---------------- 승인함 ----------------
+// 내가 결정할 수 있는 지금 단계(앞 단계가 끝난 PENDING). 본인 요청·내가 앞 단계를 승인한 요청은 뺀다
+async function inboxRows(c: PoolClient, p: Principal) {
+  if (!can(p, 'approval.decide')) return [];
+  const roles = STEPS.map(([, r]) => r).filter((r) => p.effectiveRoles.includes(r));
+  if (!roles.length) return [];
+  const rows = (await c.query(`${BASE.replace('SELECT r.*', `SELECT r.*, ap.id AS approval_id, ap.step_no, ap.approver_role, ap.created_at AS step_created,
+      (SELECT max(decided_at) FROM approval x WHERE x.asset_request_id = r.id AND x.step_no < ap.step_no) AS prev_decided`)}
+    JOIN approval ap ON ap.asset_request_id = r.id AND ap.step_no = r.current_step AND ap.decision = 'PENDING'
+    WHERE r.status IN ('SUBMITTED', 'MGR_APPROVED') AND ap.approver_role::text = ANY($1) AND r.requester_id <> $2
+      AND NOT EXISTS (SELECT 1 FROM approval x WHERE x.asset_request_id = r.id AND x.step_no < ap.step_no AND x.approver_id = $2)
+    ORDER BY r.submitted_at, r.request_no`, [roles, p.userId])).rows;
+  return rows.filter((r) => eligible(p, r.approver_role, r));
+}
+
+export async function inboxCount(c: PoolClient, p: Principal): Promise<number> {
+  return (await inboxRows(c, p)).length;
+}
+
+export async function inbox(c: PoolClient, p: Principal, q: Record<string, string | undefined>) {
+  if (q.kind && !['ASSET_REQUEST', 'PURCHASE_REQUEST'].includes(q.kind)) throw E.badRequest('입력 값을 확인하세요: kind ASSET_REQUEST, PURCHASE_REQUEST 중 하나');
+  const page = Math.max(1, Number(q.page ?? 1) || 1), pageSize = Math.min(200, Math.max(1, Number(q.pageSize ?? 50) || 50));
+  const all = q.kind === 'PURCHASE_REQUEST' ? [] : await inboxRows(c, p);
+  const slice = all.slice((page - 1) * pageSize, page * pageSize);
+  const ccNames = new Map((await c.query('SELECT id, cost_center_code FROM cost_center WHERE id = ANY($1)',
+    [slice.map((r) => r.target_cost_center_id).filter(Boolean)])).rows.map((x) => [x.id as string, x.cost_center_code as string]));
+  return {
+    items: slice.map((r) => clean({
+      approvalId: r.approval_id, kind: 'ASSET_REQUEST', targetId: r.id, targetNo: r.request_no, requestType: r.request_type,
+      summary: summary(r, ccNames), requesterName: r.requester_name, stepNo: r.step_no, approverRole: r.approver_role,
+      waitingSince: iso(r.prev_decided ?? r.submitted_at ?? r.step_created),
+      amount: num(r.acquisition_value ?? r.sale_amount),
+    })),
+    page, pageSize, total: all.length,
+  };
+}
+
+function summary(r: Record<string, any>, cc: Map<string, string>): string {
+  const tag = r.asset_tag ?? '';
+  switch (r.request_type as ReqType) {
+    case 'NEW_ASSET': return `${tag} SAP 등록 → ${cc.get(r.target_cost_center_id) ?? ''}`;
+    case 'TRANSFER': return `${tag} → ${cc.get(r.target_cost_center_id) ?? ''}${r.is_profit_center_change ? ' (손익센터 변경)' : ''}`;
+    case 'CHANGE': return `${tag} 변경`;
+    case 'RETIRE': return `${tag} 폐기(${r.retire_type ?? ''})`;
+    case 'SALE': return `${tag} 매각${r.buyer ? ` · ${r.buyer}` : ''}`;
+  }
+}
+
+// ---------------- 승인·반려 ----------------
+async function decidable(c: PoolClient, p: Principal, approvalId: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(approvalId)) throw E.notFound('승인 단계를 찾을 수 없습니다');
+  const ap = (await c.query('SELECT * FROM approval WHERE id = $1', [approvalId])).rows[0];
+  if (!ap?.asset_request_id) throw E.notFound('승인 단계를 찾을 수 없습니다');
+  const r = await load(c, ap.asset_request_id, true);
+  const step = (await c.query('SELECT * FROM approval WHERE id = $1 FOR UPDATE', [approvalId])).rows[0];
+  if (!(await visible(c, p, r)) && !eligible(p, step.approver_role, r)) throw E.notFound('승인 단계를 찾을 수 없습니다');
+  if (step.decision !== 'PENDING' || !['SUBMITTED', 'MGR_APPROVED'].includes(r.status)) throw new AlmError(409, 'ALM-E322', '이미 결정된 단계입니다');
+  if (step.step_no !== r.current_step) throw new AlmError(409, 'ALM-E322', '앞 단계 승인이 끝나지 않았습니다');
+  if (r.requester_id === p.userId) throw E.sod('본인 요청은 승인·반려할 수 없습니다(직무 분리)');
+  const prev = (await c.query('SELECT 1 FROM approval WHERE asset_request_id = $1 AND step_no < $2 AND approver_id = $3', [r.id, step.step_no, p.userId])).rowCount;
+  if (prev) throw E.sod('앞 단계를 승인한 사람은 다음 단계를 결정할 수 없습니다(직무 분리)');
+  if (!eligible(p, step.approver_role, r)) throw E.forbidden(`이 단계(${step.approver_role})의 승인 권한이 없습니다`);
+  return { r, step };
+}
+
+function decision(body: unknown, required: boolean): string | undefined {
+  const k = new Check(body ?? {});
+  const comment = k.str(k.obj(), 'comment', { required, max: 500 });
+  k.done();
+  return comment;
+}
+
+export async function approve(c: PoolClient, p: Principal, approvalId: string, body: unknown, mails: MailRequest[]) {
+  const comment = decision(body, false);
+  const { r, step } = await decidable(c, p, approvalId);
+  await c.query(`UPDATE approval SET decision = 'APPROVED', approver_id = $2, comment = $3, decided_at = now(), updated_at = now(), updated_by = $2,
+      version = version + 1 WHERE id = $1`, [step.id, p.userId, comment ?? null]);
+  const next = STEPS.find(([n]) => n === step.step_no + 1);
+  if (next) {
+    await c.query(`UPDATE asset_request SET status = 'MGR_APPROVED', current_step = $2, updated_at = now(), updated_by = $3, version = version + 1 WHERE id = $1`,
+      [r.id, next[0], p.userId]);
+    mails.push(...await approverMails(c, r, next[1], next[0]));
+  } else {
+    await finalize(c, p, r);
+    mails.push(decidedMail(r, p, 'APPROVED', comment));
+  }
+  return stepOut(c, step.id);
+}
+
+export async function reject(c: PoolClient, p: Principal, approvalId: string, body: unknown, mails: MailRequest[]) {
+  const comment = decision(body, true);
+  const { r, step } = await decidable(c, p, approvalId);
+  await c.query(`UPDATE approval SET decision = 'REJECTED', approver_id = $2, comment = $3, decided_at = now(), updated_at = now(), updated_by = $2,
+      version = version + 1 WHERE id = $1`, [step.id, p.userId, comment]);
+  await c.query(`UPDATE approval SET decision = 'SKIPPED', updated_at = now(), version = version + 1 WHERE asset_request_id = $1 AND decision = 'PENDING'`, [r.id]);
+  await c.query(`UPDATE asset_request SET status = 'REJECTED', completed_at = now(), updated_at = now(), updated_by = $2, version = version + 1 WHERE id = $1`,
+    [r.id, p.userId]);
+  mails.push(decidedMail(r, p, 'REJECTED', comment));
+  return stepOut(c, step.id);
+}
+
+async function stepOut(c: PoolClient, id: string) {
+  const s = (await c.query(`SELECT ap.*, u.display_name FROM approval ap LEFT JOIN app_user u ON u.id = ap.approver_id WHERE ap.id = $1`, [id])).rows[0];
+  const r = (await c.query('SELECT status FROM asset_request WHERE id = $1', [s.asset_request_id])).rows[0];
+  return clean({ id: s.id, stepNo: s.step_no, approverRole: s.approver_role, approverName: s.display_name ?? undefined, decision: s.decision,
+    comment: s.comment ?? undefined, decidedAt: iso(s.decided_at), requestId: s.asset_request_id, requestStatus: r.status });
+}
+
+// 최종 승인: SAP 대상이면 전기 건(READY), 아니면 ALM에 바로 반영
+async function finalize(c: PoolClient, p: Principal, r: Record<string, any>) {
+  const a = (await c.query(`SELECT a.*, r.room_code, cc.cost_center_code FROM asset a LEFT JOIN room r ON r.id = a.room_id
+     LEFT JOIN cost_center cc ON cc.id = a.cost_center_id WHERE a.id = $1 FOR UPDATE OF a`, [r.asset_id])).rows[0];
+  if (!a) throw new AlmError(409, 'ALM-E322', '대상 자산이 없습니다');
+  if (['RETIRED', 'DISPOSED'].includes(a.status)) throw new AlmError(409, 'ALM-E322', '대상 자산이 이미 폐기·처분되었습니다');
+  const type = r.request_type as ReqType;
+  if (type !== 'NEW_ASSET' && !a.sap_asset_no) {
+    await applyLocal(c, p, r, a);
+    await c.query(`UPDATE asset_request SET status = 'POSTED', completed_at = now(), updated_at = now(), updated_by = $2, version = version + 1 WHERE id = $1`,
+      [r.id, p.userId]);
+    return;
+  }
+  if (type === 'NEW_ASSET' && a.sap_asset_no) throw new AlmError(409, 'ALM-E322', '이미 SAP 자산번호가 있는 자산입니다');
+  const { postingType, payload } = await buildPosting(c, r, a);
+  await c.query(`INSERT INTO sap_posting (id, tenant_id, posting_id, posting_type, company_id, asset_request_id, asset_id, posting_date, value_date, payload,
+      approved_by, approved_at, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, current_date, $8, $9, $10, now(), $10)`,
+  [randomUUID(), p.tenantId, r.request_no, postingType, a.company_id, r.id, a.id, day(r.effective_date) ?? null, JSON.stringify(payload), p.userId]);
+  await c.query(`UPDATE asset_request SET status = 'ACCT_APPROVED', updated_at = now(), updated_by = $2, version = version + 1 WHERE id = $1`, [r.id, p.userId]);
+}
+
+async function buildPosting(c: PoolClient, r: Record<string, any>, a: Record<string, any>): Promise<{ postingType: string; payload: Record<string, unknown> }> {
+  const code = async (sql: string, id: string | null) => (id ? (await c.query(sql, [id])).rows[0] : undefined);
+  const tcc = await code(`SELECT cc.cost_center_code, pc.profit_center_code FROM cost_center cc LEFT JOIN profit_center pc ON pc.id = cc.profit_center_id
+     WHERE cc.id = $1`, r.target_cost_center_id);
+  const room = await code('SELECT room_code FROM room WHERE id = $1', r.target_room_id);
+  switch (r.request_type as ReqType) {
+    case 'NEW_ASSET': {
+      const cls = await code('SELECT class_code FROM asset_class WHERE id = $1', r.asset_class_id);
+      const po = await code('SELECT po_no, item_no FROM po_item WHERE id = $1', r.po_item_id);
+      return { postingType: 'ASSET_CREATE', payload: clean({
+        assetClass: cls?.class_code, description: a.description, costCenter: tcc?.cost_center_code, capDate: day(r.effective_date),
+        serialNo: a.serial_no ? String(a.serial_no).slice(0, 18) : undefined, inventoryNo: a.asset_tag,
+        location: a.room_code ? String(a.room_code).slice(0, 10) : undefined, poNo: po?.po_no, poItem: po?.item_no }) };
+    }
+    case 'CHANGE': {
+      const ch = (r.changes ?? {}) as Record<string, string>;
+      const fields = clean({ description: ch.description, serialNo: ch.serialNo, location: room?.room_code ? String(room.room_code).slice(0, 10) : undefined });
+      return { postingType: 'ASSET_CHANGE', payload: { fields } };
+    }
+    case 'TRANSFER':
+      if (r.is_profit_center_change) {
+        return { postingType: 'ASSET_TRANSFER', payload: { newCostCenter: tcc?.cost_center_code, newProfitCenter: tcc?.profit_center_code ?? '',
+          percent: 100, createNewSubNo: false } };
+      }
+      return { postingType: 'ASSET_CHANGE', payload: clean({ fields: clean({ costCenter: tcc?.cost_center_code,
+        location: room?.room_code ? String(room.room_code).slice(0, 10) : undefined }), costCenterValidFrom: day(r.effective_date) }) };
+    case 'RETIRE':
+      return { postingType: 'ASSET_RETIRE', payload: { retireType: r.retire_type, isPartial: false, reason: String(r.reason ?? '').slice(0, 50) } };
+    case 'SALE':
+      return { postingType: 'ASSET_RETIRE', payload: { retireType: 'SALE', saleAmount: Number(r.sale_amount), isPartial: false,
+        reason: String(r.reason ?? r.buyer ?? '').slice(0, 50) } };
+  }
+}
+
+// ALM 전용 자산: 최종 승인 즉시 반영
+async function applyLocal(c: PoolClient, p: Principal, r: Record<string, any>, a: Record<string, any>) {
+  const changes = await applyRequest(c, r, a);
+  await c.query(`INSERT INTO asset_event (id, tenant_id, asset_id, event_type, actor_id, channel, changes, asset_request_id, reason)
+    VALUES ($1, $2, $3, $4, $5, 'UI', $6, $7, $8)`,
+  [randomUUID(), p.tenantId, a.id, ['RETIRE', 'SALE'].includes(r.request_type) ? (r.request_type === 'SALE' ? 'DISPOSED' : 'RETIRED') : 'UPDATED', p.userId,
+    JSON.stringify({ requestNo: r.request_no, ...changes }), r.id, String(r.reason ?? '').slice(0, 200)]);
+}
+
+// 요청 값을 자산에 반영(ALM 전용은 승인 시, SAP 자산은 전기 결과가 POSTED일 때 postings.applyPosted가 부른다). 바뀐 값 {열: {before, after}}
+export async function applyRequest(c: PoolClient, r: Record<string, any>, a: Record<string, any>): Promise<Record<string, unknown>> {
+  const out = new Map<string, unknown>();
+  const set = async (col: 'description' | 'serial_no' | 'room_id' | 'site_id' | 'cost_center_id' | 'status' | 'asset_class_id' | 'is_capitalized', after: unknown) => {
+    if ((a[col] ?? null) === (after ?? null)) return;
+    out.set(col, { before: a[col] ?? null, after: after ?? null });
+  };
+  const ch = (r.changes ?? {}) as Record<string, string>;
+  if (ch.description) await set('description', ch.description);
+  if (ch.serialNo !== undefined) await set('serial_no', ch.serialNo || null);
+  if (r.target_room_id) {
+    const site = (await c.query('SELECT site_id FROM room WHERE id = $1', [r.target_room_id])).rows[0]?.site_id ?? null;
+    await set('room_id', r.target_room_id);
+    await set('site_id', site);
+  }
+  if (r.target_cost_center_id) await set('cost_center_id', r.target_cost_center_id);
+  if (r.request_type === 'NEW_ASSET') {
+    if (r.asset_class_id) await set('asset_class_id', r.asset_class_id);
+    await set('is_capitalized', true);
+  }
+  if (r.request_type === 'RETIRE') await set('status', 'RETIRED');
+  if (r.request_type === 'SALE') await set('status', 'DISPOSED');
+  if (!out.size) return {};
+  const val = (col: string) => (out.has(col) ? (out.get(col) as { after: unknown }).after : null);
+  // 고정 SQL: 열마다 (바꿀지, 새 값)
+  await c.query(`UPDATE asset SET
+      description = CASE WHEN $2 THEN $3 ELSE description END, serial_no = CASE WHEN $4 THEN $5 ELSE serial_no END,
+      room_id = CASE WHEN $6 THEN $7::uuid ELSE room_id END, site_id = CASE WHEN $8 THEN $9::uuid ELSE site_id END,
+      cost_center_id = CASE WHEN $10 THEN $11::uuid ELSE cost_center_id END, status = CASE WHEN $12 THEN $13::asset_status ELSE status END,
+      asset_class_id = CASE WHEN $14 THEN $15::uuid ELSE asset_class_id END, is_capitalized = CASE WHEN $16 THEN $17::boolean ELSE is_capitalized END,
+      assigned_user_id = CASE WHEN $12 THEN NULL ELSE assigned_user_id END, assigned_at = CASE WHEN $12 THEN NULL ELSE assigned_at END,
+      updated_at = now(), version = version + 1 WHERE id = $1`,
+  [a.id, out.has('description'), val('description'), out.has('serial_no'), val('serial_no'), out.has('room_id'), val('room_id'),
+    out.has('site_id'), val('site_id'), out.has('cost_center_id'), val('cost_center_id'), out.has('status'), val('status'),
+    out.has('asset_class_id'), val('asset_class_id'), out.has('is_capitalized'), val('is_capitalized')]);
+  if (out.has('status')) {
+    await c.query(`UPDATE asset_assignment SET returned_at = now(), updated_at = now(), version = version + 1 WHERE asset_id = $1 AND returned_at IS NULL`, [a.id]);
+  }
+  return Object.fromEntries(out);
+}
+
+// ---------------- 알림 ----------------
+async function approverMails(c: PoolClient, r: Record<string, any>, role: string, stepNo: number): Promise<MailRequest[]> {
+  const users = (await c.query(`SELECT DISTINCT u.id FROM user_role ur JOIN app_user u ON u.id = ur.user_id
+      LEFT JOIN company co ON co.id = ur.company_id LEFT JOIN site s ON s.id = ur.site_id LEFT JOIN cost_center cc ON cc.id = ur.cost_center_id
+     WHERE ur.role = $1 AND u.is_active AND u.id <> $2
+       AND (ur.valid_from IS NULL OR ur.valid_from <= current_date) AND (ur.valid_until IS NULL OR ur.valid_until >= current_date)
+       AND (CASE WHEN $1 = 'DEPT_MANAGER' THEN cc.cost_center_code = $3
+            ELSE (ur.company_id IS NULL OR co.company_code = $4) AND (ur.site_id IS NULL OR s.site_code = $5) AND (ur.cost_center_id IS NULL OR cc.cost_center_code = $3) END)`,
+  [role, r.requester_id, r.responsible_cc_code, r.company_code, r.site_code])).rows;
+  return users.map((u) => ({ recipientId: u.id as string, template: 'APPROVAL_REQUESTED', subjectType: 'ASSET_REQUEST', subjectId: r.id,
+    params: { requester: r.requester_name, requestType: r.request_type, requestNo: r.request_no, target: r.asset_tag ?? '', path: path(r.id) },
+    dedupeKey: `APPROVAL_REQUESTED:${r.id}:${stepNo}:${u.id}`.slice(0, 120) }));
+}
+
+function decidedMail(r: Record<string, any>, p: Principal, decision: 'APPROVED' | 'REJECTED', comment?: string): MailRequest {
+  return { recipientId: r.requester_id, template: 'APPROVAL_DECIDED', subjectType: 'ASSET_REQUEST', subjectId: r.id,
+    params: { approver: p.displayName, requestNo: r.request_no, decision, comment, path: path(r.id) },
+    dedupeKey: `APPROVAL_DECIDED:${r.id}:${decision}`.slice(0, 120) };
+}

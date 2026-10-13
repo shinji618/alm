@@ -183,7 +183,8 @@
       "noAssignments": "할당 이력이 없습니다.",
       "noAttachments": "첨부가 없습니다.",
       "system": "시스템",
-      "notFound": "자산이 없거나 내 범위 밖입니다."
+      "notFound": "자산이 없거나 내 범위 밖입니다.",
+      "newRequest": "요청"
     },
     "fin": {
       "isCapitalized": "자본화",
@@ -238,6 +239,163 @@
       "size": "크기",
       "by": "올린 사람",
       "at": "올린 일시"
+    },
+    "po": {
+      "title": "구매·입고",
+      "none": "연결된 PO가 없습니다.",
+      "po": "PO/항목",
+      "vendor": "공급업체",
+      "text": "품목 텍스트",
+      "qty": "입고/PO 수량",
+      "unitPrice": "단가",
+      "gr": "입고문서",
+      "grDate": "입고일",
+      "notReceived": "아직 입고 안 됨",
+      "flags": "표시",
+      "deleted": "PO 삭제",
+      "grCancelled": "입고 취소"
+    }
+  },
+  "request": {
+    "list": {
+      "description": "신규 SAP 등록·변경·이관·폐기·매각 요청과 승인(부서 관리자 → 자산회계 → SAP 전기)",
+      "inbox": "내 승인함",
+      "all": "요청 목록",
+      "inboxEmpty": "지금 승인할 요청이 없습니다.",
+      "search": "요청번호·자산태그·SAP 자산번호",
+      "allTypes": "모든 유형",
+      "allStatus": "모든 상태",
+      "mine": "요청자",
+      "everyone": "전체",
+      "mineOnly": "내 요청"
+    },
+    "col": {
+      "no": "요청번호",
+      "type": "유형",
+      "status": "상태",
+      "asset": "자산",
+      "requester": "요청자",
+      "awaiting": "대기 단계",
+      "submitted": "제출",
+      "summary": "내용",
+      "step": "단계",
+      "amount": "금액",
+      "waiting": "대기 시작"
+    },
+    "type": {
+      "NEW_ASSET": "SAP 신규 등록",
+      "CHANGE": "위치·마스터 변경",
+      "TRANSFER": "이관(코스트센터)",
+      "RETIRE": "폐기·분실",
+      "SALE": "매각"
+    },
+    "status": {
+      "DRAFT": "임시 저장",
+      "SUBMITTED": "부서 승인 대기",
+      "MGR_APPROVED": "자산회계 승인 대기",
+      "ACCT_APPROVED": "SAP 전기 대기",
+      "POSTED": "완료",
+      "POST_ERROR": "전기 오류",
+      "REJECTED": "반려",
+      "CANCELLED": "취소"
+    },
+    "decision": {
+      "PENDING": "대기",
+      "APPROVED": "승인",
+      "REJECTED": "반려",
+      "SKIPPED": "건너뜀"
+    },
+    "retireType": {
+      "SCRAP": "폐기",
+      "SALE": "매각",
+      "LOSS": "분실"
+    },
+    "flow": {
+      "submit": "제출",
+      "mgr": "부서 관리자",
+      "acct": "자산회계",
+      "sap": "SAP 전기"
+    },
+    "field": {
+      "reason": "사유",
+      "sapAsset": "SAP 자산",
+      "assetClass": "자산클래스",
+      "costCenter": "코스트센터",
+      "fromCostCenter": "현재 코스트센터",
+      "acquisitionValue": "취득가",
+      "capDate": "취득일(가치일)",
+      "poItem": "참조 PO",
+      "effectiveDate": "이관일",
+      "pcChange": "손익센터 변경",
+      "room": "새 룸",
+      "description": "자산명",
+      "serialNo": "시리얼",
+      "retireType": "폐기 유형",
+      "retireDate": "폐기·매각일",
+      "saleAmount": "매각금액",
+      "buyer": "매입처"
+    },
+    "posting": {
+      "type": "전기 유형",
+      "status": "전기 상태",
+      "attempts": "시도",
+      "document": "SAP 전표",
+      "assetNo": "SAP 자산번호",
+      "resultAt": "결과 수신",
+      "statuses": {
+        "READY": "SAP 가져가기 대기",
+        "CLAIMED": "SAP 처리 중",
+        "POSTED": "전기 완료",
+        "FAILED": "전기 실패",
+        "CANCELLED": "취소"
+      }
+    },
+    "detail": {
+      "notFound": "요청이 없거나 내 범위 밖입니다.",
+      "by": "{{name}} · {{at}}",
+      "submit": "제출",
+      "cancel": "요청 취소",
+      "approve": "승인",
+      "reject": "반려",
+      "cancelTitle": "{{no}} 요청을 취소할까요?",
+      "cancelMessage": "승인 대기 중인 단계와 SAP 전기 대기 건이 함께 취소됩니다.",
+      "cancelled": "요청을 취소했습니다",
+      "submitted": "제출했습니다. 부서 관리자 승인을 기다립니다.",
+      "flow": "진행",
+      "values": "요청 내용",
+      "approvals": "승인",
+      "posting": "SAP 전기",
+      "noApprovals": "제출하면 승인 단계가 생깁니다.",
+      "step": "{{no}}단계",
+      "masked": "권한 없음",
+      "pcChangeYes": "예(ABUMN 이관)",
+      "pcChangeNo": "아니요(AS02 코스트센터 변경)",
+      "rejectedNote": "반려된 요청입니다. 자산은 바뀌지 않았습니다. 필요하면 새로 요청하세요.",
+      "postErrorNote": "SAP 전기에 실패했습니다. 자산회계가 SAP 연계 화면에서 보정 후 재처리합니다.",
+      "localOnly": "SAP 자산이 아니므로 최종 승인 즉시 ALM에만 반영합니다.",
+      "noPosting": "최종 승인 후 SAP 전기 건이 생깁니다.",
+      "comment": "의견",
+      "commentRequired": "반려 사유를 입력하세요",
+      "approved": "승인했습니다",
+      "rejected": "반려했습니다",
+      "finalTitle": "{{no}} 최종 승인",
+      "finalMessage": "승인하면 SAP 전기 대기열에 올라가고(SAP 자산이 아니면 바로 반영) 되돌릴 수 없습니다."
+    },
+    "form": {
+      "saveDraft": "임시 저장",
+      "submit": "제출",
+      "saved": "{{no}}을(를) 임시 저장했습니다",
+      "submitted": "{{no}}을(를) 제출했습니다",
+      "sameCostCenter": "현재 코스트센터와 같습니다",
+      "nothingChanged": "바꿀 값을 하나 이상 입력하세요",
+      "localHint": "SAP 자산이 아니므로 승인 즉시 ALM에만 반영됩니다.",
+      "hint": {
+        "NEW_ASSET": "승인 후 SAP에 고정자산을 만듭니다(AS01).",
+        "CHANGE": "룸·자산명·시리얼을 바꿉니다(AS02).",
+        "TRANSFER": "코스트센터를 옮깁니다. 손익센터가 바뀌면 ABUMN 이관.",
+        "RETIRE": "폐기·분실 처리(ABAVN). 승인·전기 후 Retired.",
+        "SALE": "매각 처리(ABAON). 승인·전기 후 Disposed."
+      }
     }
   }
 }

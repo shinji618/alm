@@ -7,7 +7,7 @@ export interface Catalog {
   roles: { code: string; name: string }[];
   permissions: { key: string }[];
   grants: Record<string, Record<string, Scope>>;
-  operations: Record<string, string | null>;
+  operations: Record<string, string | string[] | null>;   // 배열 = 그중 하나만 있으면 된다(예: 요청 취소 = 요청자 또는 자산 관리자)
   implicit: { role: string; excludedIf: string[] };
   exclusiveRoles: string[];
 }
@@ -38,6 +38,6 @@ export function permissionsOf(roles: string[], c = catalog()): Map<string, Scope
 }
 
 // operationId → 필요한 권한 키. null이면 인증 없이 호출(로그인 단계), undefined면 카탈로그에 없는 작업(배포 오류)
-export function permissionFor(operationId: string, c = catalog()): string | null | undefined {
+export function permissionFor(operationId: string, c = catalog()): string | string[] | null | undefined {
   return operationId in c.operations ? c.operations[operationId] : undefined;
 }

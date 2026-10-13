@@ -9,9 +9,11 @@ import { Login } from '@/pages/Login';
 import { AssetList } from '@/pages/assets/AssetList';
 import { AssetDetail } from '@/pages/assets/AssetDetail';
 import { AssetCreate } from '@/pages/assets/AssetCreate';
+import { RequestList } from '@/pages/requests/RequestList';
+import { RequestDetail } from '@/pages/requests/RequestDetail';
 
 // 만든 화면(그 외 메뉴는 아직 자리 화면)
-const BUILT = new Set(['/assets', '/design']);
+const BUILT = new Set(['/assets', '/requests', '/design']);
 
 function Routed() {
   const { t } = useTranslation();
@@ -34,6 +36,8 @@ function Routed() {
         <Route path="/assets" element={<AssetList />} />
         <Route path="/assets/new" element={<AssetCreate />} />
         <Route path="/assets/:id" element={<AssetDetail />} />
+        <Route path="/requests" element={<RequestList />} />
+        <Route path="/requests/:id" element={<RequestDetail />} />
         {NAV_ITEMS.filter((i) => !BUILT.has(i.path)).map((i) => (
           <Route key={i.path} path={i.path} element={<Placeholder />} />
         ))}

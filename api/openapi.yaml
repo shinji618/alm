@@ -4308,6 +4308,10 @@ paths:
 
         - 유형별 필수: NEW_ASSET(자산클래스, 코스트센터, 취득가) · CHANGE(changes 또는 룸) · TRANSFER(코스트센터, 이관일) · RETIRE(폐기 유형, 폐기일) · SALE(매각금액, 매입처).
 
+        - NEW_ASSET은 SAP 자산번호가 없는 ALM 자산(assetId)을 SAP에 등록하는 요청이다. 자본화 클래스만. changes는 description·serialNo만(룸은 targetRoomId).
+
+        - 대상 자산은 요청자의 asset.read 범위 안. RETIRED·DISPOSED는 409 ALM-E322. 유형에 없는 값은 버린다. submit=true면 저장과 함께 제출, 아니면 DRAFT.
+
         - 같은 자산에 진행 중인 요청이 있으면 409 ALM-E315.
 
         - TRANSFER는 코스트센터의 손익센터·세그먼트를 비교해 is_profit_center_change를 서버가 정한다.
@@ -4517,10 +4521,12 @@ paths:
       summary: 제출
       tags:
       - WEB
-      description: 'ALM-230 · 테이블: asset_request, approval
+      description: 'ALM-230 · 테이블: asset_request, approval, notification
 
 
-        - 승인 단계 2개 생성: 1 부서 관리자(대상 코스트센터 책임), 2 자산회계.'
+        - 승인 단계 2개 생성: 1 부서 관리자(책임 코스트센터: 신규·이관은 대상, 그 외는 자산의 현재 값), 2 자산회계.
+
+        - 제출 시 값을 다시 검사한다. 책임 코스트센터가 없으면 422. 1단계 승인자에게 메일(APPROVAL_REQUESTED).'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       - $ref: '#/components/parameters/IdempotencyKey'
@@ -4665,11 +4671,17 @@ paths:
       description: 'ALM-230, 210 · 테이블: approval, asset_request, purchase_request, sap_posting, notification
 
 
-        - 마지막 단계(자산회계) 승인 시 sap_posting(READY)을 만들고 요청을 ACCT_APPROVED로.
+        - 승인 자격: 1단계는 책임 코스트센터가 역할 행에 있는 부서 관리자, 2단계는 자산회계(역할 행의 회사코드·사이트·코스트센터 범위). 자격이 없으면 403.
 
-        - 요청자 본인은 승인할 수 없다(403 ALM-E403, 직무 분리).
+        - 마지막 단계(자산회계) 승인 시 sap_posting(READY)을 만들고 요청을 ACCT_APPROVED로. SAP 자산번호가 없는 자산(NEW_ASSET 제외)은 ALM에 바로 반영하고 POSTED.
 
-        - 이미 결정된 단계면 409.'
+        - SAP 전기 결과가 POSTED면 요청 값(코스트센터·룸·자산명·시리얼·자산클래스, 폐기 RETIRED·매각 DISPOSED)을 자산에 반영한다.
+
+        - 요청자 본인, 앞 단계를 승인한 사람은 승인할 수 없다(403 ALM-E403, 직무 분리).
+
+        - 이미 결정된 단계·앞 단계가 남은 단계면 409 ALM-E322.
+
+        - 1단계 승인 → 2단계 승인자에게, 최종 승인 → 요청자에게 메일.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       - $ref: '#/components/parameters/IdempotencyKey'
@@ -10601,6 +10613,10 @@ components:
           allOf:
           - $ref: '#/components/schemas/AssetFinancial'
           description: Financial & SAP
+        purchase:
+          allOf:
+          - $ref: '#/components/schemas/AssetPurchase'
+          description: 구매·입고(IF-MM-01·03). PO 항목이 연결된 자산만
         openRequests:
           type: array
           items:
@@ -10623,6 +10639,77 @@ components:
       - financial
       - openRequests
       - editableFields
+    AssetPurchase:
+      type: object
+      description: 자산의 구매·입고(입고로 연결된 PO 항목, 없으면 PO가 이 자산을 지정한 항목)
+      properties:
+        poNo:
+          type: string
+          description: PO 번호
+        poItem:
+          type: string
+          description: PO 항목
+        vendorName:
+          type: string
+          description: 공급업체
+        description:
+          type: string
+          description: 품목 텍스트
+        quantity:
+          type: number
+          description: PO 수량
+        grQuantity:
+          type: number
+          description: 입고 수량(누계)
+        unitPrice:
+          type: number
+          description: 단가(권한 없으면 null)
+        isDeleted:
+          type: boolean
+          description: PO 항목 삭제 표시
+        goodsReceipt:
+          allOf:
+          - $ref: '#/components/schemas/GoodsReceiptRef'
+          description: 이 자산의 입고 행
+        isGrCancelled:
+          type: boolean
+          description: 입고 취소됨(102·122)
+      required:
+      - poNo
+      - poItem
+      - description
+      - quantity
+      - grQuantity
+    GoodsReceiptRef:
+      type: object
+      description: 입고 행
+      properties:
+        materialDoc:
+          type: string
+          description: 자재문서
+        docYear:
+          type: integer
+          description: 문서 연도
+        docItem:
+          type: string
+          description: 문서 항목
+        movementType:
+          type: string
+          description: 이동유형
+        quantity:
+          type: number
+          description: 수량
+        postingDate:
+          type: string
+          format: date
+          description: 전기일
+      required:
+      - materialDoc
+      - docYear
+      - docItem
+      - movementType
+      - quantity
+      - postingDate
     RequestRef:
       type: object
       description: 요청 참조
@@ -12402,6 +12489,13 @@ components:
           type: string
           format: date-time
           description: 결정 일시
+        requestId:
+          type: string
+          format: uuid
+          description: '승인·반려 응답: 요청 id'
+        requestStatus:
+          type: string
+          description: '승인·반려 응답: 요청 상태'
       required:
       - id
       - stepNo
@@ -12582,6 +12676,10 @@ components:
           type: string
           format: date-time
           description: 제출
+        createdAt:
+          type: string
+          format: date-time
+          description: 작성
       required:
       - id
       - requestNo
@@ -12590,6 +12688,7 @@ components:
       - source
       - requesterName
       - currentStep
+      - createdAt
     AssetRequestSummaryList:
       type: object
       description: 자산 요청 목록
@@ -12698,16 +12797,48 @@ components:
         status:
           type: string
           description: 상태
+        source:
+          type: string
+          description: 출처
+        currentStep:
+          type: integer
+          description: 현재 단계
+        requesterId:
+          type: string
+          format: uuid
+          description: 요청자
+        requesterName:
+          type: string
+          description: 요청자 이름
+        submittedAt:
+          type: string
+          format: date-time
+          description: 제출
+        completedAt:
+          type: string
+          format: date-time
+          description: 전기 완료·반려·취소
+        createdAt:
+          type: string
+          format: date-time
+          description: 작성
         request:
           allOf:
           - $ref: '#/components/schemas/AssetRequestInput'
-          description: 값
+          description: 값(금액은 amount.read·요청자·지금 단계 승인자만)
+        labels:
+          allOf:
+          - $ref: '#/components/schemas/RequestLabels'
+          description: 화면 표시용 코드·이름
+        amountMasked:
+          type: boolean
+          description: 금액을 숨겼음
         isProfitCenterChange:
           type: boolean
           description: 손익센터 변경(→ABUMN)
         asset:
           allOf:
-          - $ref: '#/components/schemas/AssetSummary'
+          - $ref: '#/components/schemas/RequestAsset'
           description: 대상 자산
         approvals:
           type: array
@@ -12723,15 +12854,92 @@ components:
           items:
             $ref: '#/components/schemas/Attachment'
           description: 첨부
+        actions:
+          allOf:
+          - $ref: '#/components/schemas/RequestActions'
+          description: 이 사용자가 지금 할 수 있는 처리
       required:
       - id
       - version
       - requestNo
       - status
+      - source
+      - currentStep
+      - requesterId
+      - requesterName
+      - createdAt
       - request
+      - labels
+      - amountMasked
       - isProfitCenterChange
       - approvals
       - attachments
+      - actions
+    RequestLabels:
+      type: object
+      description: 요청 표시용
+      properties:
+        assetClass:
+          type: string
+          description: 자산클래스 코드 · 이름
+        targetCostCenter:
+          type: string
+          description: 대상 코스트센터
+        currentCostCenter:
+          type: string
+          description: 현재 코스트센터
+        targetRoom:
+          type: string
+          description: 새 룸
+        poItem:
+          type: string
+          description: 참조 PO/항목
+    RequestAsset:
+      type: object
+      description: 요청 대상 자산
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: id
+        assetTag:
+          type: string
+          description: 자산태그
+        description:
+          type: string
+          description: 자산명
+        status:
+          type: string
+          description: 상태
+        sapAssetNo:
+          type: string
+          description: SAP 자산번호-보조번호
+        companyCode:
+          type: string
+          description: 회사코드
+      required:
+      - id
+      - assetTag
+      - description
+      - status
+      - companyCode
+    RequestActions:
+      type: object
+      description: 가능한 처리
+      properties:
+        approve:
+          type: string
+          format: uuid
+          description: 승인·반려할 approval.id(지금 단계의 승인 자격, 직무 분리 통과)
+        submit:
+          type: boolean
+          description: 제출
+        edit:
+          type: boolean
+          description: 수정(DRAFT, 요청자)
+        cancel:
+          type: boolean
+          description: 취소
     PostingSummary:
       type: object
       description: SAP 전기 요약
@@ -12798,6 +13006,12 @@ components:
         targetNo:
           type: string
           description: AR-/PR- 번호
+        requestType:
+          type: string
+          description: 요청 유형
+        approverRole:
+          type: string
+          description: 단계 역할
         summary:
           type: string
           description: '요약 (예: 이관 · AT-000123 → 1000-4310)'
@@ -12819,6 +13033,8 @@ components:
       - kind
       - targetId
       - targetNo
+      - requestType
+      - approverRole
       - summary
       - requesterName
       - stepNo

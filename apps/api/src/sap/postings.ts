@@ -12,6 +12,7 @@ import { AlmError } from '../common/errors';
 import type { SapConn } from '../auth/sap';
 import type { MailRequest } from '../notify/mail';
 import { Batch, logRun } from './inbound';
+import { applyRequest } from '../requests/requests';
 
 export const LEASE_SECONDS = 900;
 export const MAX_ATTEMPTS = 5;
@@ -211,16 +212,11 @@ async function applyPosted(c: PoolClient, conn: SapConn, p: Record<string, any>,
   }
   if (!p.asset_id) return;
   const changes: Record<string, unknown> = { postingId: p.posting_id, type };
-  // 할당에 따른 코스트센터 변경(CHANGE·TRANSFER 요청): SAP 전기가 끝난 지금 ALM 코스트센터를 바꾼다
-  if ((type === 'ASSET_CHANGE' || type === 'ASSET_TRANSFER') && p.asset_request_id) {
-    const cc = (await c.query('SELECT target_cost_center_id FROM asset_request WHERE id = $1', [p.asset_request_id])).rows[0]?.target_cost_center_id;
-    if (cc) {
-      const before = (await c.query('SELECT cost_center_id FROM asset WHERE id = $1', [p.asset_id])).rows[0]?.cost_center_id ?? null;
-      if (before !== cc) {
-        await c.query('UPDATE asset SET cost_center_id = $2, updated_at = now(), version = version + 1 WHERE id = $1', [p.asset_id, cc]);
-        changes.cost_center_id = { before, after: cc };
-      }
-    }
+  // 요청 값(코스트센터·룸·자산명·시리얼·자산클래스·폐기 상태)을 SAP 전기가 끝난 지금 ALM 자산에 반영한다
+  if (p.asset_request_id) {
+    const req = (await c.query('SELECT * FROM asset_request WHERE id = $1', [p.asset_request_id])).rows[0];
+    const cur = (await c.query('SELECT * FROM asset WHERE id = $1 FOR UPDATE', [p.asset_id])).rows[0];
+    if (req && cur) Object.assign(changes, await applyRequest(c, req, cur));
   }
   if ((type === 'ASSET_CREATE' || type === 'ASSET_TRANSFER') && r.assetNo) {
     // 같은 회사코드·자산번호가 다른 ALM 자산에 이미 있으면(SAP 수신이 먼저 만든 경우 등) 409로 사람이 확인
@@ -242,11 +238,13 @@ async function applyPosted(c: PoolClient, conn: SapConn, p: Record<string, any>,
   const campaign = p.count_item_id ? (await c.query('SELECT campaign_id FROM count_item WHERE id = $1', [p.count_item_id])).rows[0]?.campaign_id ?? null : null;
   await event(c, conn, p.asset_id, 'SAP_POSTED', changes, p.asset_request_id, campaign, r);
   if (type === 'ASSET_RETIRE') {
+    // 요청이 없는 전기(이전 데이터)도 폐기 상태로
     const cur = (await c.query('SELECT status FROM asset WHERE id = $1', [p.asset_id])).rows[0];
     if (cur && !['RETIRED', 'DISPOSED'].includes(cur.status)) {
       await c.query(`UPDATE asset SET status = 'RETIRED', updated_at = now(), version = version + 1 WHERE id = $1`, [p.asset_id]);
-      await event(c, conn, p.asset_id, 'RETIRED', { postingId: p.posting_id, before: cur.status }, p.asset_request_id, null, r);
     }
+    const now = (await c.query('SELECT status FROM asset WHERE id = $1', [p.asset_id])).rows[0]?.status ?? 'RETIRED';
+    await event(c, conn, p.asset_id, now === 'DISPOSED' ? 'DISPOSED' : 'RETIRED', { postingId: p.posting_id }, p.asset_request_id, null, r);
   }
 }
 

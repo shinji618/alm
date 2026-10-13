@@ -248,8 +248,29 @@ lastCountDate | date | N | 마지막 실사일
 lastSeenAt | datetime | N | Discovery 마지막 확인
 notes | string | N | 메모
 financial | AssetFinancial | Y | Financial & SAP
+purchase | AssetPurchase | N | 구매·입고(IF-MM-01·03). PO 항목이 연결된 자산만
 openRequests | [RequestRef] | Y | 진행 중인 요청
 editableFields | [string] | Y | 이 사용자가 지금 고칠 수 있는 필드
+''')
+schema('AssetPurchase', '자산의 구매·입고(입고로 연결된 PO 항목, 없으면 PO가 이 자산을 지정한 항목)', '''
+poNo | string | Y | PO 번호
+poItem | string | Y | PO 항목
+vendorName | string | N | 공급업체
+description | string | Y | 품목 텍스트
+quantity | number | Y | PO 수량
+grQuantity | number | Y | 입고 수량(누계)
+unitPrice | number | N | 단가(권한 없으면 null)
+isDeleted | bool | N | PO 항목 삭제 표시
+goodsReceipt | GoodsReceiptRef | N | 이 자산의 입고 행
+isGrCancelled | bool | N | 입고 취소됨(102·122)
+''')
+schema('GoodsReceiptRef', '입고 행', '''
+materialDoc | string | Y | 자재문서
+docYear | int | Y | 문서 연도
+docItem | string | Y | 문서 항목
+movementType | string | Y | 이동유형
+quantity | number | Y | 수량
+postingDate | date | Y | 전기일
 ''')
 schema('RequestRef', '요청 참조', '''
 id | uuid | Y | id
@@ -732,6 +753,8 @@ approverName | string | N | 승인자
 decision | enum(PENDING,APPROVED,REJECTED,SKIPPED) | Y | 결정
 comment | string | N | 의견
 decidedAt | datetime | N | 결정 일시
+requestId | uuid | N | 승인·반려 응답: 요청 id
+requestStatus | string | N | 승인·반려 응답: 요청 상태
 ''')
 schema('PoItemRow', 'SAP 자산 PO 항목(입고 대기)', '''
 id | uuid | Y | po_item.id
@@ -782,6 +805,7 @@ requesterName | string | Y | 요청자
 currentStep | int | Y | 현재 단계
 awaitingRole | string | N | 대기 중인 승인 역할
 submittedAt | datetime | N | 제출
+createdAt | datetime | Y | 작성
 ''')
 lst('AssetRequestSummary', '자산 요청 목록')
 schema('AssetRequestInput', '자산 요청 작성. 유형별 필수 값은 처리 규칙 참고', '''
@@ -805,12 +829,43 @@ id | uuid | Y | id
 version | int | Y | 낙관적 잠금
 requestNo | string | Y | 번호
 status | string | Y | 상태
-request | AssetRequestInput | Y | 값
+source | string | Y | 출처
+currentStep | int | Y | 현재 단계
+requesterId | uuid | Y | 요청자
+requesterName | string | Y | 요청자 이름
+submittedAt | datetime | N | 제출
+completedAt | datetime | N | 전기 완료·반려·취소
+createdAt | datetime | Y | 작성
+request | AssetRequestInput | Y | 값(금액은 amount.read·요청자·지금 단계 승인자만)
+labels | RequestLabels | Y | 화면 표시용 코드·이름
+amountMasked | bool | Y | 금액을 숨겼음
 isProfitCenterChange | bool | Y | 손익센터 변경(→ABUMN)
-asset | AssetSummary | N | 대상 자산
+asset | RequestAsset | N | 대상 자산
 approvals | [ApprovalStep] | Y | 승인 단계
 posting | PostingSummary | N | SAP 전기
 attachments | [Attachment] | Y | 첨부
+actions | RequestActions | Y | 이 사용자가 지금 할 수 있는 처리
+''')
+schema('RequestLabels', '요청 표시용', '''
+assetClass | string | N | 자산클래스 코드 · 이름
+targetCostCenter | string | N | 대상 코스트센터
+currentCostCenter | string | N | 현재 코스트센터
+targetRoom | string | N | 새 룸
+poItem | string | N | 참조 PO/항목
+''')
+schema('RequestAsset', '요청 대상 자산', '''
+id | uuid | Y | id
+assetTag | string | Y | 자산태그
+description | string | Y | 자산명
+status | string | Y | 상태
+sapAssetNo | string | N | SAP 자산번호-보조번호
+companyCode | string | Y | 회사코드
+''')
+schema('RequestActions', '가능한 처리', '''
+approve | uuid | N | 승인·반려할 approval.id(지금 단계의 승인 자격, 직무 분리 통과)
+submit | bool | N | 제출
+edit | bool | N | 수정(DRAFT, 요청자)
+cancel | bool | N | 취소
 ''')
 schema('PostingSummary', 'SAP 전기 요약', '''
 id | uuid | Y | sap_posting.id
@@ -827,6 +882,8 @@ approvalId | uuid | Y | approval.id
 kind | enum(ASSET_REQUEST,PURCHASE_REQUEST) | Y | 종류
 targetId | uuid | Y | 요청 id
 targetNo | string | Y | AR-/PR- 번호
+requestType | string | Y | 요청 유형
+approverRole | string | Y | 단계 역할
 summary | string | Y | 요약 (예: 이관 · AT-000123 → 1000-4310)
 requesterName | string | Y | 요청자
 stepNo | int | Y | 단계
@@ -841,6 +898,8 @@ RQ = [('type','query','string','N','유형'),('status','query','string','N','상
 W('요청·승인','GET','/asset-requests','listAssetRequests','자산 요청 목록','로그인 사용자(범위)',None,'AssetRequestSummaryList','200','asset_request, approval','ALM-230',[ 'EMPLOYEE는 본인 요청.'],params=RQ)
 W('요청·승인','POST','/asset-requests','createAssetRequest','자산 요청 작성','로그인 사용자','AssetRequestInput','AssetRequestDetail','201, 400, 409, 422','asset_request, approval, number_sequence','ALM-230',
   ['유형별 필수: NEW_ASSET(자산클래스, 코스트센터, 취득가) · CHANGE(changes 또는 룸) · TRANSFER(코스트센터, 이관일) · RETIRE(폐기 유형, 폐기일) · SALE(매각금액, 매입처).',
+   'NEW_ASSET은 SAP 자산번호가 없는 ALM 자산(assetId)을 SAP에 등록하는 요청이다. 자본화 클래스만. changes는 description·serialNo만(룸은 targetRoomId).',
+   '대상 자산은 요청자의 asset.read 범위 안. RETIRED·DISPOSED는 409 ALM-E322. 유형에 없는 값은 버린다. submit=true면 저장과 함께 제출, 아니면 DRAFT.',
    '같은 자산에 진행 중인 요청이 있으면 409 ALM-E315.', 'TRANSFER는 코스트센터의 손익센터·세그먼트를 비교해 is_profit_center_change를 서버가 정한다.', 'Retired·Disposed는 이 요청으로만 바뀐다.'],
   idem='Idempotency-Key', ok='201')
 W('요청·승인','GET','/asset-requests/{id}','getAssetRequest','자산 요청 상세','요청자·승인자·ASSET_MANAGER·ASSET_ACCOUNTANT',None,'AssetRequestDetail','200, 403, 404','asset_request, approval, sap_posting, attachment','ALM-230',[ '범위 안이거나 요청자·승인 단계 승인자. 범위 밖이면 404.', '현재 승인 단계의 승인자에게는 amount.read가 없어도 금액을 보여 준다(승인 판단용).'],params=[ID()])
@@ -857,12 +916,15 @@ W('요청·승인','POST','/asset-requests/{id}:fix','fixAssetRequest','전기 �
    '회계 필드(acquisitionValue, saleAmount, targetCostCenterId, assetClassId, retireType, 회사코드)가 바뀌면 요청을 SUBMITTED로 되돌리고 승인 단계를 새로 만든다(재승인, 직무 분리 H-08).',
    '보정한 사람은 재생성된 승인 단계를 승인할 수 없다(403 ALM-E403).'],
   params=[ID(),('If-Match','header','string','Y','version')], idem='Idempotency-Key')
-W('요청·승인','POST','/asset-requests/{id}:submit','submitAssetRequest','제출','요청자',None,'AssetRequestDetail','200, 409, 422','asset_request, approval','ALM-230',[ '승인 단계 2개 생성: 1 부서 관리자(대상 코스트센터 책임), 2 자산회계.'],params=[ID()],idem='Idempotency-Key')
+W('요청·승인','POST','/asset-requests/{id}:submit','submitAssetRequest','제출','요청자',None,'AssetRequestDetail','200, 409, 422','asset_request, approval, notification','ALM-230',[ '승인 단계 2개 생성: 1 부서 관리자(책임 코스트센터: 신규·이관은 대상, 그 외는 자산의 현재 값), 2 자산회계.', '제출 시 값을 다시 검사한다. 책임 코스트센터가 없으면 422. 1단계 승인자에게 메일(APPROVAL_REQUESTED).'],params=[ID()],idem='Idempotency-Key')
 W('요청·승인','POST','/asset-requests/{id}:cancel','cancelAssetRequest','취소','요청자, ASSET_MANAGER',None,'AssetRequestDetail','200, 409','asset_request','ALM-230',[ '요청자 본인(request.create) 또는 asset.write가 있는 자산 관리자(범위 안).', 'ACCT_APPROVED 이후(전기 대기)는 sap_posting이 CLAIMED가 아닐 때만 취소.'],params=[ID()])
 W('요청·승인','GET','/approvals/inbox','listApprovalInbox','내 승인함','DEPT_MANAGER, ASSET_ACCOUNTANT, ASSET_MANAGER',None,'ApprovalInboxRowList','200','approval, asset_request, purchase_request','ALM-230, 210',
   ['내 역할·범위에 맞는 PENDING 단계 중 앞 단계가 끝난 것만.'],params=[('kind','query','enum(ASSET_REQUEST,PURCHASE_REQUEST)','N','종류')]+PG)
 W('요청·승인','POST','/approvals/{id}:approve','approve','승인','해당 단계 역할','ApprovalDecisionInput','ApprovalStep','200, 403, 409','approval, asset_request, purchase_request, sap_posting, notification','ALM-230, 210',
-  ['마지막 단계(자산회계) 승인 시 sap_posting(READY)을 만들고 요청을 ACCT_APPROVED로.', '요청자 본인은 승인할 수 없다(403 ALM-E403, 직무 분리).', '이미 결정된 단계면 409.'],params=[ID()],idem='Idempotency-Key')
+  ['승인 자격: 1단계는 책임 코스트센터가 역할 행에 있는 부서 관리자, 2단계는 자산회계(역할 행의 회사코드·사이트·코스트센터 범위). 자격이 없으면 403.',
+   '마지막 단계(자산회계) 승인 시 sap_posting(READY)을 만들고 요청을 ACCT_APPROVED로. SAP 자산번호가 없는 자산(NEW_ASSET 제외)은 ALM에 바로 반영하고 POSTED.',
+   'SAP 전기 결과가 POSTED면 요청 값(코스트센터·룸·자산명·시리얼·자산클래스, 폐기 RETIRED·매각 DISPOSED)을 자산에 반영한다.',
+   '요청자 본인, 앞 단계를 승인한 사람은 승인할 수 없다(403 ALM-E403, 직무 분리).', '이미 결정된 단계·앞 단계가 남은 단계면 409 ALM-E322.', '1단계 승인 → 2단계 승인자에게, 최종 승인 → 요청자에게 메일.'],params=[ID()],idem='Idempotency-Key')
 W('요청·승인','POST','/approvals/{id}:reject','reject','반려','해당 단계 역할','ApprovalDecisionInput','ApprovalStep','200, 400, 403, 409','approval, asset_request, purchase_request, notification','ALM-230, 210',[ 'comment 필수. 요청은 REJECTED, 자산은 바뀌지 않음. 요청자에게 알림.'],params=[ID()],idem='Idempotency-Key')
 
 # ---------------- counts ----------------

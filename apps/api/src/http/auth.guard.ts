@@ -44,7 +44,7 @@ export class AuthGuard implements CanActivate {
     const channel = channelOfPath(req.path);
     req.alm.channel = channel;
 
-    if (channel === 'SAP') return this.sap(req, claims, perm, ctx.switchToHttp().getResponse<Response>());
+    if (channel === 'SAP') return this.sap(req, claims, String(perm), ctx.switchToHttp().getResponse<Response>());
 
     // 웹 → alm-web, /pda/* → alm-pda (ST03: PDA 토큰으로 웹 API 403 ALM-E407)
     const expected = channel === 'PDA' ? this.cfg.cognito.pdaClientId : this.cfg.cognito.webClientId;
@@ -60,7 +60,7 @@ export class AuthGuard implements CanActivate {
       [`u:${channel === 'PDA' ? 'pda' : 'web'}:${principal.userId}`, channel === 'PDA' ? LIMITS.pdaUser : LIMITS.webUser],
       [`t:${principal.tenantId}`, LIMITS.tenant]]);
 
-    if (!principal.permissions.has(perm)) {
+    if (!(Array.isArray(perm) ? perm.some((x) => principal!.permissions.has(x)) : principal.permissions.has(perm))) {
       log.warn('access denied', { op, perm, userId: principal.userId, correlationId: req.alm.correlationId });
       await this.event(principal.tenantId, req, { type: 'ACCESS_DENIED', actorId: principal.userId, channel,
         target: `${req.method} ${req.path}`, detail: { operation: op, permission: perm } });

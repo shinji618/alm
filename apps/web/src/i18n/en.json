@@ -183,7 +183,8 @@
       "noAssignments": "No assignments yet.",
       "noAttachments": "No attachments.",
       "system": "System",
-      "notFound": "Asset not found or outside your scope."
+      "notFound": "Asset not found or outside your scope.",
+      "newRequest": "New request"
     },
     "fin": {
       "isCapitalized": "Capitalized",
@@ -238,6 +239,163 @@
       "size": "Size",
       "by": "Uploaded by",
       "at": "Uploaded"
+    },
+    "po": {
+      "title": "Purchasing & goods receipt",
+      "none": "No linked PO.",
+      "po": "PO / item",
+      "vendor": "Vendor",
+      "text": "Item text",
+      "qty": "Received / PO qty",
+      "unitPrice": "Unit price",
+      "gr": "Material document",
+      "grDate": "GR date",
+      "notReceived": "Not received yet",
+      "flags": "Flags",
+      "deleted": "PO deleted",
+      "grCancelled": "GR cancelled"
+    }
+  },
+  "request": {
+    "list": {
+      "description": "SAP registration, change, transfer, retirement and sale requests with approval (department manager → asset accountant → SAP posting)",
+      "inbox": "My approvals",
+      "all": "Requests",
+      "inboxEmpty": "Nothing to approve right now.",
+      "search": "Request no., asset tag, SAP asset no.",
+      "allTypes": "All types",
+      "allStatus": "All statuses",
+      "mine": "Requester",
+      "everyone": "Everyone",
+      "mineOnly": "My requests"
+    },
+    "col": {
+      "no": "Request",
+      "type": "Type",
+      "status": "Status",
+      "asset": "Asset",
+      "requester": "Requester",
+      "awaiting": "Waiting on",
+      "submitted": "Submitted",
+      "summary": "Summary",
+      "step": "Step",
+      "amount": "Amount",
+      "waiting": "Waiting since"
+    },
+    "type": {
+      "NEW_ASSET": "Register in SAP",
+      "CHANGE": "Location / master change",
+      "TRANSFER": "Transfer (cost center)",
+      "RETIRE": "Retire / loss",
+      "SALE": "Sale"
+    },
+    "status": {
+      "DRAFT": "Draft",
+      "SUBMITTED": "Awaiting manager",
+      "MGR_APPROVED": "Awaiting accountant",
+      "ACCT_APPROVED": "Awaiting SAP posting",
+      "POSTED": "Completed",
+      "POST_ERROR": "Posting error",
+      "REJECTED": "Rejected",
+      "CANCELLED": "Cancelled"
+    },
+    "decision": {
+      "PENDING": "Pending",
+      "APPROVED": "Approved",
+      "REJECTED": "Rejected",
+      "SKIPPED": "Skipped"
+    },
+    "retireType": {
+      "SCRAP": "Scrap",
+      "SALE": "Sale",
+      "LOSS": "Loss"
+    },
+    "flow": {
+      "submit": "Submit",
+      "mgr": "Department manager",
+      "acct": "Asset accountant",
+      "sap": "SAP posting"
+    },
+    "field": {
+      "reason": "Reason",
+      "sapAsset": "SAP asset",
+      "assetClass": "Asset class",
+      "costCenter": "Cost center",
+      "fromCostCenter": "Current cost center",
+      "acquisitionValue": "Acquisition value",
+      "capDate": "Capitalization (value) date",
+      "poItem": "PO reference",
+      "effectiveDate": "Transfer date",
+      "pcChange": "Profit center change",
+      "room": "New room",
+      "description": "Description",
+      "serialNo": "Serial",
+      "retireType": "Retirement type",
+      "retireDate": "Retirement / sale date",
+      "saleAmount": "Sale amount",
+      "buyer": "Buyer"
+    },
+    "posting": {
+      "type": "Posting type",
+      "status": "Posting status",
+      "attempts": "Attempts",
+      "document": "SAP document",
+      "assetNo": "SAP asset no.",
+      "resultAt": "Result received",
+      "statuses": {
+        "READY": "Waiting for SAP",
+        "CLAIMED": "SAP processing",
+        "POSTED": "Posted",
+        "FAILED": "Failed",
+        "CANCELLED": "Cancelled"
+      }
+    },
+    "detail": {
+      "notFound": "The request does not exist or is outside your scope.",
+      "by": "{{name}} · {{at}}",
+      "submit": "Submit",
+      "cancel": "Cancel request",
+      "approve": "Approve",
+      "reject": "Reject",
+      "cancelTitle": "Cancel request {{no}}?",
+      "cancelMessage": "Pending approval steps and any waiting SAP posting are cancelled too.",
+      "cancelled": "Request cancelled",
+      "submitted": "Submitted. Waiting for the department manager.",
+      "flow": "Progress",
+      "values": "Request",
+      "approvals": "Approvals",
+      "posting": "SAP posting",
+      "noApprovals": "Approval steps are created on submit.",
+      "step": "Step {{no}}",
+      "masked": "Restricted",
+      "pcChangeYes": "Yes (ABUMN transfer)",
+      "pcChangeNo": "No (AS02 cost center change)",
+      "rejectedNote": "This request was rejected. The asset was not changed. Create a new request if needed.",
+      "postErrorNote": "SAP posting failed. The asset accountant fixes and retries it in SAP integration.",
+      "localOnly": "Not an SAP asset, so it is applied in ALM right after final approval.",
+      "noPosting": "The SAP posting is created after final approval.",
+      "comment": "Comment",
+      "commentRequired": "Enter a reason for rejection",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "finalTitle": "Final approval of {{no}}",
+      "finalMessage": "Once approved it is queued for SAP posting (or applied right away for non-SAP assets) and cannot be undone."
+    },
+    "form": {
+      "saveDraft": "Save draft",
+      "submit": "Submit",
+      "saved": "Saved {{no}} as a draft",
+      "submitted": "Submitted {{no}}",
+      "sameCostCenter": "Same as the current cost center",
+      "nothingChanged": "Enter at least one value to change",
+      "localHint": "Not an SAP asset, so it is applied in ALM right after approval.",
+      "hint": {
+        "NEW_ASSET": "Creates the fixed asset in SAP after approval (AS01).",
+        "CHANGE": "Changes room, description or serial (AS02).",
+        "TRANSFER": "Moves the cost center. ABUMN transfer if the profit center changes.",
+        "RETIRE": "Scrap or loss (ABAVN). Retired after approval and posting.",
+        "SALE": "Sale (ABAON). Disposed after approval and posting."
+      }
     }
   }
 }

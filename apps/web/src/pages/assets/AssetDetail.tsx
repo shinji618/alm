@@ -1,6 +1,6 @@
 // ALM-111 자산 상세: 일반(수정) · 금액·SAP · 이력 · 할당 · 첨부, 할당·반납·수리
 import { useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ViewHeader } from '@/components/layout';
 import {
@@ -12,10 +12,11 @@ import { stageCodeColorVar, statusCodeTone } from '@/lib/status';
 import { useAsync } from '@/lib/useAsync';
 import { useSession } from '@/lib/session';
 import type { AssetDetail as Detail, ChangeResult, Lookups, LookupItem } from './types';
+import { RequestDrawer } from '../requests/RequestDrawer';
 import s from './assets.module.css';
 
 type Tab = 'general' | 'financial' | 'history' | 'assignments' | 'attachments';
-type Action = 'edit' | 'checkOut' | 'checkIn' | 'repairIn' | 'repairOut' | undefined;
+type Action = 'edit' | 'checkOut' | 'checkIn' | 'repairIn' | 'repairOut' | 'request' | undefined;
 
 export function AssetDetail() {
   const { id = '' } = useParams();
@@ -27,7 +28,7 @@ export function AssetDetail() {
   const [tab, setTab] = useState<Tab>('general');
   const [action, setAction] = useState<Action>();
   const a = useAsync((sig) => api.get<Detail>(`/assets/${id}`, sig), [id]);
-  const lk = useAsync((sig) => api.get<Lookups>('/lookups?types=sites,rooms,costCenters,categories,models,users,vendors', sig), []);
+  const lk = useAsync((sig) => api.get<Lookups>('/lookups?types=sites,rooms,costCenters,assetClasses,categories,models,users,vendors', sig), []);
   const L = lk.data ?? {};
   const name = (xs: LookupItem[] | undefined, v?: string) => { const x = xs?.find((i) => i.id === v); return x ? `${x.code} · ${x.label}` : v ? '…' : undefined; };
 
@@ -50,6 +51,7 @@ export function AssetDetail() {
   const d = a.data;
   const assign = can('asset.assign');
   const editable = (d?.editableFields.length ?? 0) > 0;
+  const requestable = !!d && can('request.create') && !['RETIRED', 'DISPOSED'].includes(d.status) && d.openRequests.length === 0;
 
   return (
     <>
@@ -70,11 +72,14 @@ export function AssetDetail() {
             {assign && d.status === 'IN_USE' && <Button onClick={() => setAction('checkIn')}>{t('asset.detail.checkIn')}</Button>}
             {assign && ['IN_STOCK', 'IN_USE'].includes(d.status) && <Button onClick={() => setAction('repairIn')}>{t('asset.detail.repairIn')}</Button>}
             {assign && d.status === 'IN_REPAIR' && <Button onClick={() => setAction('repairOut')}>{t('asset.detail.repairOut')}</Button>}
+            {requestable && <Button onClick={() => setAction('request')}>{t('asset.detail.newRequest')}</Button>}
           </>
         )} />
       {d && d.openRequests.length > 0 && (
         <div className={s.notice}>
-          {t('asset.detail.openRequests')}: {d.openRequests.map((r) => `${r.requestNo} (${r.requestType} · ${r.status})`).join(', ')}
+          {t('asset.detail.openRequests')}: {d.openRequests.map((r, i) => (
+            <span key={r.id}>{i > 0 && ', '}<Link to={`/requests/${r.id}`} className="mono">{r.requestNo}</Link> ({t(`request.type.${r.requestType}`)} · {t(`request.status.${r.status}`)})</span>
+          ))}
         </div>
       )}
       <Panel padded={false}>
@@ -83,7 +88,7 @@ export function AssetDetail() {
         <div style={{ padding: 16 }}>
           {!d ? <span className="muted">{t('common.loading')}</span>
             : tab === 'general' ? <General d={d} L={L} lang={lang} name={name} />
-            : tab === 'financial' ? <Financial d={d} lang={lang} />
+            : tab === 'financial' ? <><Financial d={d} lang={lang} /><h3>{t('asset.po.title')}</h3><Purchase d={d} lang={lang} /></>
             : tab === 'history' ? <History id={id} lang={lang} />
             : tab === 'assignments' ? <Assignments id={id} lang={lang} />
             : <Attachments id={id} />}
@@ -92,6 +97,7 @@ export function AssetDetail() {
 
       {d && action === 'edit' && <EditDrawer d={d} L={L} onClose={() => setAction(undefined)} onDone={(r) => done(r, t('asset.detail.saved'))}
         onConflict={() => { setAction(undefined); a.reload(); toast.show(t('asset.detail.conflict'), 'error'); }} />}
+      {d && action === 'request' && <RequestDrawer d={d} L={L} onClose={() => setAction(undefined)} onDone={(id) => nav(`/requests/${id}`)} />}
       {d && action === 'checkOut' && <CheckOutDrawer d={d} L={L} onClose={() => setAction(undefined)} onDone={(r) => done(r, t('asset.detail.checkOut'))} />}
       {d && action === 'checkIn' && <CheckInDrawer d={d} L={L} onClose={() => setAction(undefined)} onDone={(r) => done(r, t('asset.detail.checkIn'))} />}
       {d && (action === 'repairIn' || action === 'repairOut') && <RepairDrawer d={d} L={L} dir={action === 'repairIn' ? 'IN' : 'OUT'}
@@ -144,6 +150,26 @@ function Financial({ d, lang }: { d: Detail; lang: Lang }) {
       { label: t('asset.fin.valueAsOf'), value: f.valueAsOf },
       { label: t('asset.fin.tco'), value: <span className="num">{formatUsd(f.tcoEstimate, 2)}</span> },
       { label: t('asset.fin.sapSyncedAt'), value: f.sapSyncedAt && formatDateTime(f.sapSyncedAt) },
+    ]} />
+  );
+}
+
+// 구매·입고(IF-MM-01·03): PO 항목과 이 자산의 입고 행
+function Purchase({ d, lang }: { d: Detail; lang: Lang }) {
+  const { t } = useTranslation();
+  const p = d.purchase;
+  if (!p) return <span className="muted">{t('asset.po.none')}</span>;
+  const g = p.goodsReceipt;
+  return (
+    <KeyValue items={[
+      { label: t('asset.po.po'), value: <span className="mono">{p.poNo}/{p.poItem}</span> },
+      { label: t('asset.po.vendor'), value: p.vendorName },
+      { label: t('asset.po.text'), value: p.description },
+      { label: t('asset.po.qty'), value: `${p.grQuantity} / ${p.quantity}` },
+      { label: t('asset.po.unitPrice'), value: <span className="num">{formatUsd(p.unitPrice, 2)}</span> },
+      { label: t('asset.po.gr'), value: g ? <span className="mono">{g.materialDoc}/{g.docYear}/{g.docItem} · {g.movementType}</span> : t('asset.po.notReceived') },
+      { label: t('asset.po.grDate'), value: g && formatDate(g.postingDate, lang) },
+      { label: t('asset.po.flags'), value: [p.isDeleted && t('asset.po.deleted'), p.isGrCancelled && t('asset.po.grCancelled')].filter(Boolean).join(', ') || undefined },
     ]} />
   );
 }
