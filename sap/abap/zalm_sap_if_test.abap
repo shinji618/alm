@@ -14,6 +14,11 @@
 *&   - OP01: GET /sap/run-requests (대기 요청을 '가져감'으로 바꿈)
 *&   - POST: POST /sap/postings:claim - 전기 대상을 15분 잠그고 시도 횟수를 올린다.
 *&           결과는 회신하지 않으므로 DEV에서만, 대상이 없을 때 확인용으로 쓴다(기본 해제)
+*&   - PST: IF-AA-03 자산 생성 전기 - claim(ASSET_CREATE) → BAPI_FIXEDASSET_CREATE1
+*&          → COMMIT → POST /sap/postings/{id}/result (POSTED 자산번호 / FAILED BAPI 메시지)
+*&          같은 INVNR(자산태그) 자산이 이미 있으면 새로 만들지 않고 그 번호로 POSTED 회신(재실행 안전)
+*&          P_LOC: STORT(위치=룸 코드)도 넘긴다. T499S에 없는 위치면 BAPI 오류이므로 기본 해제
+*&          P_TRUN: BAPI 시험 실행(TESTRUN) - SAP에 만들지 않고 메시지만 출력, ALM 회신 안 함(잠금은 15분 뒤 풀림)
 *&   clientId·비밀은 화면 입력(SM59 사용자 필드 12자 제한, 13 런북 7-2)
 *&---------------------------------------------------------------------*
 REPORT zalm_sap_if_test.
@@ -34,7 +39,10 @@ PARAMETERS: p_md  AS CHECKBOX DEFAULT 'X',
             p_gr  AS CHECKBOX DEFAULT ' ',
             p_rc  AS CHECKBOX DEFAULT ' ',
             p_opr AS CHECKBOX DEFAULT 'X',
-            p_clm AS CHECKBOX DEFAULT ' '.
+            p_clm AS CHECKBOX DEFAULT ' ',
+            p_pst AS CHECKBOX DEFAULT ' ',
+            p_loc AS CHECKBOX DEFAULT ' ',
+            p_trun AS CHECKBOX DEFAULT ' '.
 
 TYPES: ty_amount TYPE p LENGTH 15 DECIMALS 2.
 TYPES: BEGIN OF ty_company,
@@ -136,6 +144,50 @@ TYPES: BEGIN OF ty_company,
          room         TYPE string,
          deact_date   TYPE string,
        END OF ty_recon.
+" IF-AA-03 전기 봉투(claim 응답)와 결과 회신
+TYPES: BEGIN OF ty_create_pl,
+         asset_class  TYPE string,
+         description  TYPE string,
+         cost_center  TYPE string,
+         cap_date     TYPE string,
+         serial_no    TYPE string,
+         inventory_no TYPE string,
+         location     TYPE string,
+         room         TYPE string,
+         po_no        TYPE string,
+         po_item      TYPE string,
+       END OF ty_create_pl,
+       BEGIN OF ty_envelope,
+         posting_id   TYPE string,
+         type         TYPE string,
+         company_code TYPE string,
+         posting_date TYPE string,
+         value_date   TYPE string,
+         attempt      TYPE i,
+         payload      TYPE ty_create_pl,
+       END OF ty_envelope,
+       BEGIN OF ty_claim,
+         batch_id      TYPE string,
+         lease_seconds TYPE i,
+         items         TYPE STANDARD TABLE OF ty_envelope WITH EMPTY KEY,
+       END OF ty_claim,
+       BEGIN OF ty_res_msg,
+         type   TYPE string,
+         id     TYPE string,
+         number TYPE string,
+         text   TYPE string,
+       END OF ty_res_msg,
+       BEGIN OF ty_res_asset,
+         asset_no     TYPE string,
+         sub_no       TYPE string,
+         inventory_no TYPE string,
+       END OF ty_res_asset,
+       BEGIN OF ty_result,
+         posting_id TYPE string,
+         status     TYPE string,
+         asset      TYPE ty_res_asset,
+         messages   TYPE STANDARD TABLE OF ty_res_msg WITH EMPTY KEY,
+       END OF ty_result.
 
 *----------------------------------------------------------------------*
 CLASS lcl_api DEFINITION.
@@ -149,6 +201,9 @@ CLASS lcl_api DEFINITION.
                            it_recs TYPE STANDARD TABLE iv_size TYPE i iv_compress TYPE abap_bool DEFAULT abap_true.
     "! 단건 호출(GET·POST)과 응답 출력
     METHODS request IMPORTING iv_method TYPE string iv_path TYPE string iv_body TYPE string OPTIONAL iv_key TYPE string OPTIONAL.
+    "! 단건 호출 후 상태·본문을 돌려준다(출력도 함)
+    METHODS exec IMPORTING iv_method TYPE string iv_path TYPE string iv_body TYPE string OPTIONAL iv_key TYPE string OPTIONAL
+                 EXPORTING ev_status TYPE i ev_body TYPE string.
   PRIVATE SECTION.
     DATA: mv_dest TYPE rfcdest, mv_sys TYPE string, mv_bukrs TYPE string, mv_token TYPE string.
     METHODS headers IMPORTING iv_key TYPE string OPTIONAL RETURNING VALUE(rt_headers) TYPE tihttpnvp.
@@ -275,12 +330,15 @@ CLASS lcl_api IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD request.
-    DATA: lv_status TYPE i, lv_resp TYPE string.
+    exec( iv_method = iv_method iv_path = iv_path iv_body = iv_body iv_key = iv_key ).
+  ENDMETHOD.
+
+  METHOD exec.
     call( EXPORTING iv_method = iv_method iv_path = iv_path iv_ctype = 'application/json; charset=utf-8' iv_body = iv_body
                     it_headers = headers( iv_key )
-          IMPORTING ev_status = lv_status ev_body = lv_resp ).
-    out( |{ iv_method } { iv_path } → HTTP { lv_status }| ).
-    out( |  { lv_resp }| ).
+          IMPORTING ev_status = ev_status ev_body = ev_body ).
+    out( |{ iv_method } { iv_path } → HTTP { ev_status }| ).
+    out( |  { ev_body }| ).
   ENDMETHOD.
 
   METHOD out.
@@ -522,4 +580,112 @@ START-OF-SELECTION.
   IF p_clm = abap_true.
     go_api->request( iv_method = 'POST' iv_path = '/sap/postings:claim' iv_key = |{ gv_batch }-POST|
                      iv_body = |\{"batchId":"{ gv_batch }-POST","maxItems":10\}| ).
+  ENDIF.
+
+  "---------------- IF-AA-03 자산 생성 전기(claim → BAPI → 결과 회신) ----------------
+  IF p_pst = abap_true.
+    DATA: ls_claim  TYPE ty_claim,
+          ls_res    TYPE ty_result,
+          lv_cstat  TYPE i,
+          lv_cbody  TYPE string,
+          ls_key    TYPE bapi1022_key,
+          ls_gen    TYPE bapi1022_feglg001,
+          ls_genx   TYPE bapi1022_feglg001x,
+          ls_time   TYPE bapi1022_feglg003,
+          ls_timex  TYPE bapi1022_feglg003x,
+          ls_pinf   TYPE bapi1022_feglg002,
+          ls_pinfx  TYPE bapi1022_feglg002x,
+          lv_anln1  TYPE bapi1022_1-assetmaino,
+          lv_anln2  TYPE bapi1022_1-assetsubno,
+          ls_ret    TYPE bapiret2,
+          lv_invnr  TYPE anla-invnr.
+
+    go_api->exec( EXPORTING iv_method = 'POST' iv_path = '/sap/postings:claim' iv_key = |{ gv_batch }-PST|
+                            iv_body = |\{"batchId":"{ gv_batch }-PST","maxItems":10,"types":["ASSET_CREATE"]\}|
+                  IMPORTING ev_status = lv_cstat ev_body = lv_cbody ).
+    IF lv_cstat = 200.
+      /ui2/cl_json=>deserialize( EXPORTING json = lv_cbody pretty_name = /ui2/cl_json=>pretty_mode-camel_case
+                                 CHANGING data = ls_claim ).
+    ENDIF.
+    WRITE / |전기 대상 { lines( ls_claim-items ) }건|.
+
+    LOOP AT ls_claim-items INTO DATA(ls_env) WHERE type = 'ASSET_CREATE'.
+      CLEAR: ls_res, ls_key, ls_gen, ls_genx, ls_time, ls_timex, ls_pinf, ls_pinfx, lv_anln1, lv_anln2, ls_ret.
+      ls_res-posting_id = ls_env-posting_id.
+      DATA(ls_pl) = ls_env-payload.
+      WRITE / |{ ls_env-posting_id } { ls_env-company_code } { ls_pl-inventory_no } { ls_pl-asset_class } { ls_pl-cost_center } "{ ls_pl-description }"|.
+
+      " 재실행 안전: 같은 자산태그(INVNR) 자산이 이미 있으면 그 번호로 회신
+      lv_invnr = ls_pl-inventory_no.
+      SELECT SINGLE anln1, anln2 FROM anla
+        WHERE bukrs = @ls_env-company_code AND invnr = @lv_invnr
+        INTO (@lv_anln1, @lv_anln2).
+      IF sy-subrc = 0.
+        WRITE / |  이미 있음 → { lv_anln1 }-{ lv_anln2 }|.
+      ELSE.
+        ls_key-companycode = ls_env-company_code.
+        ls_gen-assetclass = |{ ls_pl-asset_class ALPHA = IN WIDTH = 8 }|.
+        ls_gen-descript   = ls_pl-description.
+        ls_gen-serial_no  = ls_pl-serial_no.
+        ls_gen-invent_no  = ls_pl-inventory_no.
+        ls_genx-assetclass = ls_genx-descript = ls_genx-invent_no = abap_true.
+        ls_genx-serial_no = xsdbool( ls_pl-serial_no IS NOT INITIAL ).
+        ls_time-costcenter = |{ ls_pl-cost_center ALPHA = IN WIDTH = 10 }|.
+        ls_timex-costcenter = abap_true.
+        IF p_loc = abap_true AND ls_pl-location IS NOT INITIAL.
+          ls_time-location = ls_pl-location.
+          ls_timex-location = abap_true.
+        ENDIF.
+        IF ls_pl-room IS NOT INITIAL.
+          ls_time-room = ls_pl-room.
+          ls_timex-room = abap_true.
+        ENDIF.
+        IF ls_pl-cap_date IS NOT INITIAL.
+          ls_pinf-cap_date = replace( val = ls_pl-cap_date sub = '-' with = '' occ = 0 ).
+          ls_pinfx-cap_date = abap_true.
+        ENDIF.
+
+        CALL FUNCTION 'BAPI_FIXEDASSET_CREATE1'
+          EXPORTING
+            key                = ls_key
+            testrun            = p_trun
+            generaldata        = ls_gen
+            generaldatax       = ls_genx
+            postinginformation = ls_pinf
+            postinginformationx = ls_pinfx
+            timedependentdata  = ls_time
+            timedependentdatax = ls_timex
+          IMPORTING
+            asset              = lv_anln1
+            subnumber          = lv_anln2
+            return             = ls_ret.
+        WRITE / |  BAPI { ls_ret-type } { ls_ret-id }/{ ls_ret-number } { ls_ret-message }|.
+
+        IF ls_ret-type CA 'EA'.
+          CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+          ls_res-status = 'FAILED'.
+          APPEND VALUE #( type = ls_ret-type id = ls_ret-id number = ls_ret-number text = ls_ret-message ) TO ls_res-messages.
+        ELSEIF p_trun = abap_true.
+          CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+          WRITE / '  시험 실행 - ALM에 회신하지 않음'.
+          CONTINUE.
+        ELSE.
+          CALL FUNCTION 'BAPI_TRANSACTION_COMMIT' EXPORTING wait = abap_true.
+          WRITE / |  생성 → { lv_anln1 }-{ lv_anln2 }|.
+        ENDIF.
+      ENDIF.
+
+      IF ls_res-status IS INITIAL.
+        IF p_trun = abap_true.
+          WRITE / '  시험 실행 - ALM에 회신하지 않음'.
+          CONTINUE.
+        ENDIF.
+        ls_res-status = 'POSTED'.
+        ls_res-asset = VALUE #( asset_no = lv_anln1 sub_no = lv_anln2 inventory_no = ls_pl-inventory_no ).
+      ENDIF.
+      DATA(lv_rjson) = /ui2/cl_json=>serialize( data = ls_res pretty_name = /ui2/cl_json=>pretty_mode-camel_case
+                                                compress = abap_true ).
+      go_api->request( iv_method = 'POST' iv_path = |/sap/postings/{ ls_env-posting_id }/result|
+                       iv_key = |{ gv_batch }-RES-{ ls_env-posting_id }| iv_body = lv_rjson ).
+    ENDLOOP.
   ENDIF.
