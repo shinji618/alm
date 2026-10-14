@@ -9,7 +9,7 @@ import { migrate, loadMigrations } from '../src/ops/migrate';
 const host = process.env.TEST_PG_HOST;
 const port = Number(process.env.TEST_PG_PORT || 5432);
 
-test('RDS 조건: CREATEROLE 소유자로 부트스트랩·0001·0002 적용, 감사 소유권 이전·SET 권한 회수, 기존 행 보존', { skip: !host && 'TEST_PG_HOST 없음' }, async (t) => {
+test('RDS 조건: CREATEROLE 소유자로 부트스트랩·0001·0002·이후 적용, 감사 소유권 이전·SET 권한 회수, 기존 행 보존', { skip: !host && 'TEST_PG_HOST 없음' }, async (t) => {
   const su = new Client({ host, port, user: 'postgres', database: 'postgres' });
   await su.connect();
   if ((await su.query(`SELECT 1 FROM pg_roles WHERE rolname = 'alm_app'`)).rowCount) { await su.end(); t.skip('역할이 이미 있음(새 클러스터 필요)'); return; }
@@ -30,7 +30,9 @@ test('RDS 조건: CREATEROLE 소유자로 부트스트랩·0001·0002 적용, �
       (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', 'LOGIN', 'USER', 'WEB', now()),
       (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', 'LOGIN', 'USER', 'WEB', now() - interval '40 days')`);
     const before = (await sd.query(`SELECT count(*)::int AS n FROM audit_log`)).rows[0].n;
-    assert.deepEqual(await migrate(c, ms), ['0002_audit_partitions.sql']);
+    assert.deepEqual(await migrate(c, ms.slice(0, 2)), ['0002_audit_partitions.sql']);
+    // 0003 이후(회사 설정 등)도 같은 조건(마스터 = 슈퍼유저 아님)에서 적용되어야 한다
+    assert.deepEqual(await migrate(c, ms), ms.slice(2).map((m) => m.file));
     assert.deepEqual(await migrate(c, ms), []);
     const q = async (sql: string) => (await c.query(sql)).rows;
     assert.deepEqual(await q(`SELECT tablename, tableowner FROM pg_tables WHERE tablename IN ('audit_log', 'asset', 'security_event') ORDER BY tablename`),
