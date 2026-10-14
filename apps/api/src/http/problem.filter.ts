@@ -13,9 +13,12 @@ export class ProblemFilter implements ExceptionFilter {
     const correlationId = req.alm?.correlationId;
     let status = 500, code = 'ALM-E500', detail = '처리 중 오류가 발생했습니다';
     let errors: unknown;
+    let ext: Record<string, unknown> = {};
     if (err instanceof AlmError) {
       ({ status, code } = err); detail = err.message;
       if (status < 500 && Array.isArray(err.detail?.errors)) errors = err.detail.errors;   // 필드별 오류(FieldError)
+      // 화면이 쓰는 확장 필드만 내보낸다(그 외 detail은 로그에만)
+      if (status < 500 && err.detail) ext = Object.fromEntries(Object.entries(err.detail).filter(([k]) => PUBLIC_EXT.has(k)));
       if (status >= 500) log.error(err.message, { code, correlationId, detail: err.detail });
       else if (err.detail) log.warn(err.message, { code, correlationId, detail: err.detail });
     } else if (err instanceof HttpException) {
@@ -30,9 +33,10 @@ export class ProblemFilter implements ExceptionFilter {
     }
     res.status(status).type('application/problem+json').json({
       type: `https://alm.bsgapps.com/errors/${code}`, title: titleOf(status), status, code, detail, correlationId,
-      ...(errors ? { errors } : {}),
+      ...(errors ? { errors } : {}), ...ext,
     });
   }
 }
 
+const PUBLIC_EXT = new Set(['currentVersion', 'needsConfirm']);
 const titleOf = (s: number) => ({ 400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden', 404: 'Not Found', 409: 'Conflict', 413: 'Payload Too Large', 429: 'Too Many Requests' } as Record<number, string>)[s] ?? 'Internal Server Error';

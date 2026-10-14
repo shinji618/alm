@@ -871,6 +871,7 @@ approve | uuid | N | 승인·반려할 approval.id(지금 단계의 승인 자�
 submit | bool | N | 제출
 edit | bool | N | 수정(DRAFT, 요청자)
 cancel | bool | N | 취소
+fix | bool | N | 전기 오류 보정(POST_ERROR, sap.finance)
 ''')
 schema('PostingSummary', 'SAP 전기 요약', '''
 id | uuid | Y | sap_posting.id
@@ -1165,7 +1166,10 @@ direction | enum(SAP_TO_ALM,ALM_TO_SAP) | Y | 방향
 lastRunAt | datetime | N | 마지막 실행
 lastStatus | enum(SUCCESS,PARTIAL,FAILED) | N | 결과
 lastRecordCount | int | N | 건수
-isOverdue | bool | Y | 예정 주기 2회 이상 미실행
+everyMinutes | int | Y | 예정 주기(분)
+isOverdue | bool | Y | 예정 주기 2회 이상 미실행(SAP이 가져가는 IF는 마지막 호출 기준)
+runnable | bool | N | 수동 실행 요청 가능(IF-MD-01·AA-01·AA-02·MM-01·RC-01)
+runPending | bool | N | 대기 중인 수동 실행 요청 있음
 ''')
 schema('SapStatus', '연결 상태', '''
 systemId | string | Y | 시스템 (예: PRD-100)
@@ -1185,6 +1189,8 @@ errorCount | int | Y | 오류
 startedAt | datetime | Y | 시작
 finishedAt | datetime | N | 종료
 correlationId | string | N | 추적 ID
+httpStatus | int | N | 응답 코드
+sapSystem | string | N | SAP 시스템
 ''')
 lst('IfRunRow', 'IF 실행 로그')
 schema('IfMessageRow', 'IF 건별 결과', '''
@@ -1206,12 +1212,23 @@ approvedAt | datetime | N | 최종 승인
 leaseUntil | datetime | N | 잠금 만료
 sapDocumentNo | string | N | 전표
 lastMessage | string | N | 마지막 SAP 메시지
+companyCode | string | Y | 회사코드
+exhausted | bool | N | 시도 초과(ALM-E306) — 재전기 전 SAP 확인 필요
+updatedAt | datetime | Y | 마지막 변경
 ''')
 lst('PostingRow', '전기 큐')
 schema('PostingDetail', '전기 상세', '''
-summary | PostingSummary | Y | 요약
-payload | object | Y | SAP에 보낸 봉투
+summary | object | Y | PostingRow + sapFiscalYear·sapAssetNo·sapPoNo·resultAt·claimBatchId·claimedAt·messages
+payload | object | Y | SAP에 보낸 payload
+postingDate | date | N | 전기일
+valueDate | date | N | 가치일
 requestNo | string | N | 연결 요청
+requestId | uuid | N | 연결 요청 id
+requestStatus | string | N | 연결 요청 상태
+assetId | uuid | N | 대상 자산
+''')
+schema('PostingRetry', '재전기', '''
+confirmSapChecked | bool | N | 시도 초과(ALM-E306) 건: SAP에 전기되지 않았음을 확인함
 ''')
 schema('RunRequestInput', 'SAP 수동 실행 요청(F-310-04)', '''
 interfaceId | enum(IF-MD-01,IF-AA-01,IF-AA-02,IF-MM-01,IF-RC-01) | Y | 실행할 수신 IF
@@ -1237,6 +1254,7 @@ id | uuid | Y | id
 runType | string | Y | WEEKLY / CAMPAIGN
 snapshotAt | datetime | Y | 스냅샷
 status | string | Y | 상태
+batchId | string | Y | SAP 배치
 sapCount | int | Y | SAP 자산
 almCount | int | Y | ALM 자본화 자산
 diffCount | int | Y | 차이
@@ -1250,8 +1268,12 @@ assetTag | string | N | ALM 자산
 sapAssetNo | string | N | SAP 자산
 almValue | string | N | ALM 값
 sapValue | string | N | SAP 값
-suggestedAction | enum(SAP_TO_ALM,ALM_TO_SAP,REVIEW,IGNORE) | Y | 규칙 제안
+suggestedAction | enum(SAP_TO_ALM,ALM_TO_SAP,REVIEW,IGNORE) | Y | 규칙 제안(처리 후에는 실제 처리)
 status | enum(OPEN,RESOLVED,IGNORED) | Y | 상태
+assetId | uuid | N | ALM 자산 id
+allowedActions | [string] | Y | 이 유형에 할 수 있는 처리
+resolvedBy | string | N | 처리자
+resolvedAt | datetime | N | 처리 일시
 ''')
 lst('ReconDiffRow', '대사 차이 목록')
 schema('ReconResolve', '대사 차이 처리', '''
@@ -1284,6 +1306,8 @@ companyCode | string | Y | 회사코드
 oauthClientId | string | Y | 클라이언트 ID
 lastCallAt | datetime | N | 마지막 호출
 isActive | bool | Y | 사용
+companySapEnabled | bool | Y | 회사가 SAP 연계를 씀(끄면 이 연결 호출을 받지 않음)
+allowedCidrs | [string] | Y | 허용 IP
 ''')
 schema('SapConnectionList', 'SAP 연결 목록', '''
 items | [SapConnectionRow] | Y | 행
@@ -1302,16 +1326,35 @@ W('SAP 연계','GET','/integration/sap/runs','listSapRuns','IF 실행 로그',AC
 W('SAP 연계','GET','/integration/sap/runs/{id}/messages','listSapRunMessages','IF 건별 결과',AC,None,'IfMessageRowList','200, 404','sap_if_message','ALM-310',[ '-'],params=CI+[('result','query','string','N','OK, ERROR')]+PG)
 W('SAP 연계','GET','/integration/sap/postings','listPostings','전기 큐',AC,None,'PostingRowList','200','sap_posting','ALM-310',[ '기본 FAILED·READY·CLAIMED.'],params=[('status','query','string','N','상태'),('type','query','string','N','유형'),('q','query','string','N','요청번호·자산태그')]+PG)
 W('SAP 연계','GET','/integration/sap/postings/{id}','getPosting','전기 상세',AC,None,'PostingDetail','200, 404','sap_posting','ALM-310',[ '-'],params=CI)
-W('SAP 연계','POST','/integration/sap/postings/{id}:retry','retryPosting','재전기',AC,None,'PostingSummary','200, 409','sap_posting, asset_request','ALM-310',
+W('SAP 연계','POST','/integration/sap/postings/{id}:retry','retryPosting','재전기',AC,'PostingRetry','PostingRow','200, 409','sap_posting, asset_request','ALM-310',
   ['FAILED만. 연결 요청의 현재 값으로 payload를 다시 만들고 READY, attempt는 0부터(F-310-03).', '같은 postingId를 쓰므로 SAP BKTXT·로그 확인으로 중복 전기가 막힌다.', '재시도 초과(ALM-E306) 건은 SAP에 이미 전기됐을 수 있으므로, 화면이 SAP 전표·자산 확인 체크를 받은 뒤에만 재전기한다.'],params=CI,idem='Idempotency-Key')
-W('SAP 연계','POST','/integration/sap/postings/{id}:cancel','cancelPosting','전기 취소',AC,None,'PostingSummary','200, 409','sap_posting, asset_request','ALM-310',[ 'READY·FAILED만. 연결 요청은 CANCELLED.'],params=CI)
+W('SAP 연계','POST','/integration/sap/postings/{id}:cancel','cancelPosting','전기 취소',AC,None,'PostingRow','200, 409','sap_posting, asset_request','ALM-310',[ 'READY·FAILED만. 연결 요청은 CANCELLED(대기 단계 SKIPPED).'],params=CI)
+schema('RunRequestRow', 'SAP 실행 요청(화면)', '''
+id | uuid | Y | id
+interfaceId | string | Y | IF
+runType | string | N | IF-RC-01
+campaignCode | string | N | 캠페인
+isClosing | bool | N | 마감 실행
+status | string | Y | PENDING·PICKED·DONE
+requestedAt | datetime | Y | 요청
+requestedBy | string | N | 요청자
+pickedAt | datetime | N | SAP이 가져감
+doneAt | datetime | N | 실행 로그 생김
+''')
+schema('RunRequestRowList', 'SAP 실행 요청 목록(최근 50건)', '''
+items | [RunRequestRow] | Y | 행
+''')
+W('SAP 연계','GET','/integration/sap/run-requests','listRunRequests','SAP 수동 실행 요청 목록',AC,None,'RunRequestRowList','200','sap_run_request','ALM-310',[ '최근 50건.'])
 W('SAP 연계','POST','/integration/sap/run-requests','createRunRequest','SAP 수동 실행 요청',AC,'RunRequestInput','RunRequest','201, 409','sap_run_request','ALM-310',
   ['ALM은 SAP을 직접 호출하지 않는다. 요청을 남기면 15분 주기 SAP 잡이 GET /sap/run-requests로 가져가 해당 수신 잡을 바로 실행한다.', '같은 IF의 PENDING이 있으면 409.',
    'isClosing = true(IF-AA-02 마감 실행)는 sap.finance가 있어야 한다(없으면 403 ALM-E401).'],ok='201')
 W('SAP 연계','GET','/integration/sap/reconciliation/runs','listReconRuns','대사 실행 목록',AC,None,'ReconRunRowList','200','recon_run, recon_diff','ALM-310',[ '-'],params=PG)
 W('SAP 연계','GET','/integration/sap/reconciliation/runs/{id}/diffs','listReconDiffs','대사 차이',AC,None,'ReconDiffRowList','200, 404','recon_diff, asset','ALM-310',[ '-'],params=CI+[('diffType','query','string','N','유형'),('status','query','string','N','기본 OPEN')]+PG)
 W('SAP 연계','POST','/integration/sap/reconciliation/diffs:resolve','resolveReconDiffs','대사 차이 처리',AC,'ReconResolve','BulkResult','200, 207, 400','recon_diff, asset, sap_posting, asset_event','ALM-310',
-  ['SAP_TO_ALM: ALM 값을 SAP 값으로 바꾸고 asset_event. ALM_TO_SAP: ASSET_CHANGE 전기 건 생성. SAP_ONLY는 ALM 자산 생성 + 실사 필요 표시.'],idem='Idempotency-Key')
+  ['건별 처리(오류가 있으면 207). 유형별 처리: SAP_ONLY(SAP_TO_ALM·IGNORE), ALM_ONLY(IGNORE), COST_CENTER(SAP_TO_ALM·IGNORE), LOCATION·SERIAL(ALM_TO_SAP·SAP_TO_ALM·IGNORE), TAG(ALM_TO_SAP·IGNORE), RETIRED(SAP_TO_ALM·IGNORE).',
+   'SAP_TO_ALM: 코스트센터·룸·시리얼을 SAP 값으로, RETIRED는 ALM RETIRED(할당 종료), SAP_ONLY는 IF-AA-01 수동 실행 요청(한 번).',
+   'ALM_TO_SAP: 변경 요청(출처 RECONCILIATION, 승인 생략) + ASSET_CHANGE 전기 건(IF-AA-04). 같은 자산에 진행 중인 요청이 있으면 그 건 ALM-E315.',
+   'SAP 연계를 끈 회사의 자산은 ALM-E322.'],idem='Idempotency-Key')
 W('SAP 연계','GET','/integration/sap/field-mappings','listFieldMappings','필드 매핑',AC+', ASSET_MANAGER',None,'FieldMappingList','200','field_mapping','ALM-310',[ '-'])
 W('SAP 연계','PATCH','/integration/sap/field-mappings/{id}','patchFieldMapping','필드 매핑 설명 수정',SA,'FieldMappingPatch','FieldMappingRow','200, 404','field_mapping','ALM-310',[ '-'],params=CI)
 W('SAP 연계','GET','/integration/sap/connections','listSapConnections','SAP 연결 목록',SA,None,'SapConnectionList','200','sap_connection','ALM-310',[ '-'])

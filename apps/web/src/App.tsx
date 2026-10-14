@@ -13,9 +13,10 @@ import { RequestList } from '@/pages/requests/RequestList';
 import { RequestDetail } from '@/pages/requests/RequestDetail';
 import { CompanySettings } from '@/pages/admin/CompanySettings';
 import { FinMasters } from '@/pages/admin/FinMasters';
+import { SapIntegration } from '@/pages/sap/SapIntegration';
 
 // 만든 화면(그 외 메뉴는 아직 자리 화면)
-const BUILT = new Set(['/assets', '/requests', '/admin/companies', '/admin/fin-masters', '/design']);
+const BUILT = new Set(['/assets', '/requests', '/sap', '/admin/companies', '/admin/fin-masters', '/design']);
 
 function Routed() {
   const { t } = useTranslation();
@@ -40,6 +41,7 @@ function Routed() {
         <Route path="/assets/:id" element={<AssetDetail />} />
         <Route path="/requests" element={<RequestList />} />
         <Route path="/requests/:id" element={<RequestDetail />} />
+        <Route path="/sap" element={<SapIntegration />} />
         <Route path="/admin/companies" element={<CompanySettings />} />
         <Route path="/admin/fin-masters" element={<FinMasters />} />
         {NAV_ITEMS.filter((i) => !BUILT.has(i.path)).map((i) => (

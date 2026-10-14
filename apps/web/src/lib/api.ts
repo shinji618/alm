@@ -63,7 +63,8 @@ export async function request<T>(path: string, o: RequestOptions = {}): Promise<
 
 export const api = {
   get: async <T>(path: string, signal?: AbortSignal) => (await request<T>(path, { signal })).data,
-  post: async <T>(path: string, body: unknown = {}) => (await request<T>(path, { method: 'POST', body })).data,
+  post: async <T>(path: string, body: unknown = {}, ifMatch?: number | string) =>
+    (await request<T>(path, { method: 'POST', body, headers: ifMatch === undefined ? undefined : { 'if-match': `"${ifMatch}"` } })).data,
   patch: async <T>(path: string, body: unknown, ifMatch: number | string) => (await request<T>(path, { method: 'PATCH', body, headers: { 'if-match': `"${ifMatch}"` } })).data,
 };
 

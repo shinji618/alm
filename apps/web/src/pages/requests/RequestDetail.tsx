@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ViewHeader } from '@/components/layout';
-import { AssetTag, Button, Drawer, EmptyState, FormGrid, KeyValue, Panel, StatusPill, Steps, TextareaField, Timeline, useConfirm, useToast } from '@/components/ui';
+import { AssetTag, Button, Drawer, EmptyState, FormGrid, KeyValue, Panel, SelectField, StatusPill, Steps, TextField, TextareaField, Timeline, useConfirm, useToast } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
 import { formatDate, formatDateTime, formatUsd, type Lang } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
@@ -21,6 +21,7 @@ export function RequestDetail() {
   const { refresh } = useSession();
   const r = useAsync((sig) => api.get<Detail>(`/asset-requests/${id}`, sig), [id]);
   const [deciding, setDeciding] = useState<'approve' | 'reject'>();
+  const [fixing, setFixing] = useState(false);
   const [busy, setBusy] = useState(false);
 
   if (r.error) {
@@ -62,6 +63,7 @@ export function RequestDetail() {
             <Button onClick={() => nav('/requests')}>{t('nav.requests')}</Button>
             {d.actions.submit && <Button variant="primary" disabled={busy} onClick={submit}>{t('request.detail.submit')}</Button>}
             {d.actions.cancel && <Button disabled={busy} onClick={cancel}>{t('request.detail.cancel')}</Button>}
+            {d.actions.fix && <Button variant="primary" disabled={busy} onClick={() => setFixing(true)}>{t('request.fix.title')}</Button>}
             {d.actions.approve && <Button disabled={busy} onClick={() => setDeciding('reject')}>{t('request.detail.reject')}</Button>}
             {d.actions.approve && <Button variant="primary" disabled={busy} onClick={() => setDeciding('approve')}>{t('request.detail.approve')}</Button>}
           </>
@@ -89,6 +91,7 @@ export function RequestDetail() {
           </Panel>
         </>
       )}
+      {d && fixing && <FixDrawer d={d} onClose={() => setFixing(false)} onDone={(n) => { setFixing(false); r.setData(n); refresh(); }} />}
       {d && deciding && d.actions.approve && (
         <DecisionDrawer d={d} kind={deciding} approvalId={d.actions.approve} onClose={() => setDeciding(undefined)}
           onDone={(st) => { setDeciding(undefined); toast.show(t(st.decision === 'REJECTED' ? 'request.detail.rejected' : 'request.detail.approved'), 'success'); r.reload(); refresh(); }} />
@@ -222,6 +225,64 @@ function DecisionDrawer({ d, kind, approvalId, onClose, onDone }: { d: Detail; k
         <div className={s.formActions}>
           <Button onClick={onClose}>{t('common.cancel')}</Button>
           <Button variant="primary" type="submit" disabled={saving}>{title}</Button>
+        </div>
+      </FormGrid>
+    </Drawer>
+  );
+}
+
+// 전기 오류 보정(자산회계): 기술 필드는 바로 재전기, 회계 필드를 바꾸면 승인을 처음부터 다시 받는다
+function FixDrawer({ d, onClose, onDone }: { d: Detail; onClose: () => void; onDone: (n: Detail) => void }) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const q = d.request;
+  const [f, setF] = useState({ effectiveDate: q.effectiveDate ?? '', description: q.changes?.description ?? '', serialNo: q.changes?.serialNo ?? '',
+    acquisitionValue: q.acquisitionValue !== undefined ? String(q.acquisitionValue) : '', saleAmount: q.saleAmount !== undefined ? String(q.saleAmount) : '',
+    retireType: q.retireType ?? '', comment: '' });
+  const [error, setError] = useState<string>();
+  const [saving, setSaving] = useState(false);
+  const set = (k: keyof typeof f, v: string) => setF((x) => ({ ...x, [k]: v }));
+  const changes: Record<string, unknown> = {};
+  if (q.requestType === 'CHANGE' && f.description !== (q.changes?.description ?? '')) changes.description = f.description;
+  if (q.requestType === 'CHANGE' && f.serialNo !== (q.changes?.serialNo ?? '')) changes.serialNo = f.serialNo;
+  if (q.requestType === 'NEW_ASSET' && f.acquisitionValue && Number(f.acquisitionValue) !== q.acquisitionValue) changes.acquisitionValue = Number(f.acquisitionValue);
+  if (q.requestType === 'SALE' && f.saleAmount && Number(f.saleAmount) !== q.saleAmount) changes.saleAmount = Number(f.saleAmount);
+  if (q.requestType === 'RETIRE' && f.retireType && f.retireType !== q.retireType) changes.retireType = f.retireType;
+  const reapproval = ['acquisitionValue', 'saleAmount', 'retireType'].some((k) => k in changes);
+  const submit = async () => {
+    if (!f.comment.trim()) { setError(t('request.fix.commentRequired')); return; }
+    setSaving(true);
+    try {
+      const body = { comment: f.comment.trim(), ...(f.effectiveDate && f.effectiveDate !== q.effectiveDate ? { effectiveDate: f.effectiveDate } : {}),
+        ...(Object.keys(changes).length ? { changes } : {}) };
+      const n = await api.post<Detail>(`/asset-requests/${d.id}:fix`, body, d.version);
+      toast.show(t(n.status === 'SUBMITTED' ? 'request.fix.reapproval' : 'request.fix.queued'), 'success');
+      onDone(n);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : String(e), 'error');
+    } finally { setSaving(false); }
+  };
+  return (
+    <Drawer open onClose={onClose} label={t('request.fix.title')} title={`${t('request.fix.title')} · ${d.requestNo}`}>
+      <FormGrid onSubmit={() => void submit()}>
+        <TextField label={t('request.fix.date')} type="date" value={f.effectiveDate} onChange={(x) => set('effectiveDate', x.target.value)} />
+        {q.requestType === 'CHANGE' && (
+          <>
+            <TextField label={t('request.field.description')} maxLength={50} value={f.description} onChange={(x) => set('description', x.target.value)} />
+            <TextField label={t('request.field.serialNo')} maxLength={18} value={f.serialNo} onChange={(x) => set('serialNo', x.target.value)} />
+          </>
+        )}
+        {q.requestType === 'NEW_ASSET' && <TextField label={t('request.field.acquisitionValue')} type="number" min="0" step="0.01" value={f.acquisitionValue} onChange={(x) => set('acquisitionValue', x.target.value)} />}
+        {q.requestType === 'SALE' && <TextField label={t('request.field.saleAmount')} type="number" min="0" step="0.01" value={f.saleAmount} onChange={(x) => set('saleAmount', x.target.value)} />}
+        {q.requestType === 'RETIRE' && (
+          <SelectField label={t('request.field.retireType')} value={f.retireType} options={['SCRAP', 'LOSS'].map((x) => ({ value: x, label: t(`request.retireType.${x}`) }))}
+            onChange={(x) => set('retireType', x.target.value)} />
+        )}
+        <TextareaField label={t('request.fix.comment')} required maxLength={500} value={f.comment} error={error} onChange={(x) => { set('comment', x.target.value); setError(undefined); }} />
+        <div className={s.notice} style={{ gridColumn: '1 / -1' }}>{t(reapproval ? 'request.fix.reapprovalNote' : 'request.fix.queueNote')}</div>
+        <div className={s.formActions}>
+          <Button onClick={onClose}>{t('common.cancel')}</Button>
+          <Button variant="primary" type="submit" disabled={saving}>{t('request.fix.submit')}</Button>
         </div>
       </FormGrid>
     </Drawer>

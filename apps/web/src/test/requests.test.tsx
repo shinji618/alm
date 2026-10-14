@@ -120,4 +120,33 @@ describe('request screens (ALM-230)', () => {
     expect(posted[0]).toMatchObject({ requestType: 'TRANSFER', assetId: 'a1', reason: 'Move to sales', targetCostCenterId: 'cc3', submit: true });
     expect(await screen.findByText('CC300 · Sales')).toBeInTheDocument();
   });
+
+  it('fix posting error: accounting change restarts approval, sent with If-Match', async () => {
+    window.history.pushState({}, '', '/requests/r9');
+    const acctMe: Me = { ...approver, permissions: ['request.read', 'sap.finance', 'approval.decide'] };
+    const sent: { body: unknown; ifMatch?: string }[] = [];
+    const base = detail({ id: 'r9', version: 5, status: 'POST_ERROR', request: { requestType: 'RETIRE', assetId: 'a1', reason: 'old', retireType: 'SCRAP', effectiveDate: '2026-10-01' },
+      approvals: [], actions: { fix: true }, posting: { id: 'p9', postingId: 'AR-00009', postingType: 'ASSET_RETIRE', status: 'FAILED', attemptCount: 1, messages: [{ type: 'E', id: 'AA', number: '1', text: 'closed' }] } });
+    mockFetch((url, init) => {
+      if (url.endsWith('/asset-requests/r9:fix')) {
+        sent.push({ body: JSON.parse(String(init.body)), ifMatch: (init.headers as Record<string, string>)['if-match'] });
+        return { body: { ...base, status: 'SUBMITTED', actions: {} } };
+      }
+      if (url.endsWith('/asset-requests/r9')) return { body: base };
+      if (url.endsWith('/me')) return { body: acctMe };
+      return undefined;
+    });
+    render(<App initialMe={acctMe} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Fix posting error' }));
+    const drawer = screen.getByRole('dialog');
+    await user.selectOptions(within(drawer).getByLabelText(/^Retirement type/), 'LOSS');
+    expect(within(drawer).getByText(/restarts approval/)).toBeInTheDocument();
+    await user.click(within(drawer).getByRole('button', { name: 'Fix' }));
+    expect(await within(drawer).findByText('Enter a reason')).toBeInTheDocument();
+    await user.type(within(drawer).getByLabelText(/^Reason/), 'It was lost');
+    await user.click(within(drawer).getByRole('button', { name: 'Fix' }));
+    await waitFor(() => expect(sent).toEqual([{ body: { comment: 'It was lost', changes: { retireType: 'LOSS' } }, ifMatch: '"5"' }]));
+    expect(await screen.findByText('Awaiting manager')).toBeInTheDocument();
+  });
 });

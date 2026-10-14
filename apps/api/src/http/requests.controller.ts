@@ -56,6 +56,16 @@ export class RequestsController {
     return this.withMail(ctx, (c, mails) => rq.submitRequest(c, ctx.principal!, id, mails));
   }
 
+  @Post('asset-requests/:id\\:fix')
+  @HttpCode(200)
+  @Operation('fixAssetRequest')
+  async fix(@Ctx() ctx: AlmContext, @Param('id') id: string, @Headers('if-match') ifMatch: string | undefined, @Body() body: unknown,
+            @Res({ passthrough: true }) res: Response) {
+    const r = await this.withMail(ctx, (c, mails) => rq.fixRequest(c, ctx.principal!, id, ifMatch, body, mails));
+    res.setHeader('ETag', `"${r.version}"`);
+    return r;
+  }
+
   @Post('asset-requests/:id\\:cancel')
   @HttpCode(200)
   @Operation('cancelAssetRequest')

@@ -29,7 +29,7 @@ export interface RequestDetail {
   approvals: ApprovalStep[];
   posting?: { id: string; postingId: string; postingType: string; status: string; attemptCount: number; sapDocumentNo?: string; sapFiscalYear?: number;
     sapAssetNo?: string; resultAt?: string; messages: BapiMessage[] };
-  actions: { approve?: string; submit?: boolean; edit?: boolean; cancel?: boolean };
+  actions: { approve?: string; submit?: boolean; edit?: boolean; cancel?: boolean; fix?: boolean };
 }
 export interface InboxRow {
   approvalId: string; kind: 'ASSET_REQUEST' | 'PURCHASE_REQUEST'; targetId: string; targetNo: string; requestType: RequestType; summary: string;

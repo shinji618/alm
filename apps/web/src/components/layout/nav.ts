@@ -38,7 +38,7 @@ export const NAV: NavGroup[] = [
   {
     labelKey: 'nav.integration',
     items: [
-      { path: '/sap', labelKey: 'nav.sap', screenId: 'ALM-310', wbs: '4.6', feature: 'sap' },
+      { path: '/sap', labelKey: 'nav.sap', screenId: 'ALM-310', wbs: '4.6', feature: 'sap', perm: 'sap.status' },
       { path: '/design', labelKey: 'nav.design', screenId: 'DS', wbs: '3.5' },
     ],
   },

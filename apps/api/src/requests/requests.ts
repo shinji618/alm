@@ -203,6 +203,7 @@ async function detail(c: PoolClient, p: Principal, r: Record<string, any>) {
       submit: r.status === 'DRAFT' && r.requester_id === p.userId ? true : undefined,
       edit: r.status === 'DRAFT' && r.requester_id === p.userId ? true : undefined,
       cancel: cancellable(r.status, posting) && isOwnOrMgr ? true : undefined,
+      fix: r.status === 'POST_ERROR' && can(p, 'sap.finance') ? true : undefined,
     }),
   });
 }
@@ -494,6 +495,8 @@ async function decidable(c: PoolClient, p: Principal, approvalId: string) {
   if (step.decision !== 'PENDING' || !['SUBMITTED', 'MGR_APPROVED'].includes(r.status)) throw new AlmError(409, 'ALM-E322', '이미 결정된 단계입니다');
   if (step.step_no !== r.current_step) throw new AlmError(409, 'ALM-E322', '앞 단계 승인이 끝나지 않았습니다');
   if (r.requester_id === p.userId) throw E.sod('본인 요청은 승인·반려할 수 없습니다(직무 분리)');
+  // 전기 오류 보정(:fix)으로 다시 만든 단계는 보정한 사람이 결정할 수 없다(H-08)
+  if (step.created_by === p.userId) throw E.sod('이 요청을 보정한 사람은 다시 만든 승인 단계를 결정할 수 없습니다(직무 분리)');
   const prev = (await c.query('SELECT 1 FROM approval WHERE asset_request_id = $1 AND step_no < $2 AND approver_id = $3', [r.id, step.step_no, p.userId])).rowCount;
   if (prev) throw E.sod('앞 단계를 승인한 사람은 다음 단계를 결정할 수 없습니다(직무 분리)');
   if (!eligible(p, step.approver_role, r)) throw E.forbidden(`이 단계(${step.approver_role})의 승인 권한이 없습니다`);
@@ -566,10 +569,107 @@ async function finalize(c: PoolClient, p: Principal, r: Record<string, any>) {
   }
   if (type === 'NEW_ASSET' && a.sap_asset_no) throw new AlmError(409, 'ALM-E322', '이미 SAP 자산번호가 있는 자산입니다');
   const { postingType, payload } = await buildPosting(c, r, a);
-  await c.query(`INSERT INTO sap_posting (id, tenant_id, posting_id, posting_type, company_id, asset_request_id, asset_id, posting_date, value_date, payload,
-      approved_by, approved_at, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, current_date, $8, $9, $10, now(), $10)`,
-  [randomUUID(), p.tenantId, r.request_no, postingType, a.company_id, r.id, a.id, day(r.effective_date) ?? null, JSON.stringify(payload), p.userId]);
+  await upsertPosting(c, p, r, a, postingType, payload);
   await c.query(`UPDATE asset_request SET status = 'ACCT_APPROVED', updated_at = now(), updated_by = $2, version = version + 1 WHERE id = $1`, [r.id, p.userId]);
+}
+
+// 전기 건: 요청번호 = postingId. 실패·취소된 같은 번호가 있으면(전기 오류 보정 뒤 재승인) 그 행을 다시 READY로
+async function upsertPosting(c: PoolClient, p: Principal, r: Record<string, any>, a: Record<string, any>, postingType: string, payload: Record<string, unknown>) {
+  const res = await c.query(`INSERT INTO sap_posting (id, tenant_id, posting_id, posting_type, company_id, asset_request_id, asset_id, posting_date, value_date, payload,
+      approved_by, approved_at, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, current_date, $8, $9, $10, now(), $10)
+    ON CONFLICT (tenant_id, posting_id) DO UPDATE SET posting_type = EXCLUDED.posting_type, status = 'READY', posting_date = EXCLUDED.posting_date,
+      value_date = EXCLUDED.value_date, payload = EXCLUDED.payload, approved_by = EXCLUDED.approved_by, approved_at = now(), attempt_count = 0,
+      claim_batch_id = NULL, claimed_at = NULL, lease_until = NULL, result_at = NULL, messages = NULL, updated_at = now(), updated_by = EXCLUDED.approved_by,
+      version = sap_posting.version + 1
+    WHERE sap_posting.status IN ('FAILED', 'CANCELLED') AND sap_posting.asset_request_id = EXCLUDED.asset_request_id`,
+  [randomUUID(), p.tenantId, r.request_no, postingType, a.company_id, r.id, a.id, day(r.effective_date) ?? null, JSON.stringify(payload), p.userId]);
+  if (!res.rowCount) throw new AlmError(409, 'ALM-E302', `전기 ${r.request_no}이(가) 이미 진행 중이거나 끝났습니다`);
+}
+
+// 재전기(ALM-310 :retry)·보정(:fix): 요청의 지금 값으로 payload를 다시 만든다. 요청이 없거나 SAP 대상이 아니면 undefined
+export async function rebuildPosting(c: PoolClient, requestId: string): Promise<{ postingType: string; payload: Record<string, unknown> } | undefined> {
+  const r = await load(c, requestId);
+  const a = (await c.query(`SELECT a.*, r.room_code FROM asset a LEFT JOIN room r ON r.id = a.room_id WHERE a.id = $1`, [r.asset_id])).rows[0];
+  if (!a || !r.sap_enabled) return undefined;
+  return buildPosting(c, r, a);
+}
+
+// ---------------- 전기 오류 보정(:fix, ALM-230·310, sap.finance) ----------------
+//   POST_ERROR인 요청만. 기술 필드(effectiveDate, 자산명·시리얼, 룸, 매입처, 사유)만 바꾸면 전기를 다시 READY(시도 0)로.
+//   회계 필드(취득가, 매각금액, 코스트센터, 자산클래스, 폐기 유형)가 바뀌면 SUBMITTED로 되돌리고 승인 단계를 새로 만든다(재승인).
+//   보정한 사람은 다시 만든 단계를 결정할 수 없다(decidable). 보정 사유는 자산 이력에 남긴다
+const FIX_TECH = ['effectiveDate', 'description', 'serialNo', 'targetRoomId', 'buyer', 'reason'] as const;
+const FIX_ACCT = ['acquisitionValue', 'saleAmount', 'targetCostCenterId', 'assetClassId', 'retireType'] as const;
+
+export async function fixRequest(c: PoolClient, p: Principal, id: string, ifMatch: string | undefined, body: unknown, mails: MailRequest[]) {
+  const r = await load(c, id, true);
+  if (!(await visible(c, p, r))) throw E.notFound('요청을 찾을 수 없습니다');
+  if (r.status !== 'POST_ERROR') throw new AlmError(409, 'ALM-E322', '전기 오류(POST_ERROR)인 요청만 보정합니다');
+  checkVersion(r, ifMatch);
+  const k = new Check(body);
+  const b = k.obj();
+  const comment = k.str(b, 'comment', { required: true, max: 500 });
+  const effectiveDate = k.date(b, 'effectiveDate');
+  const ch = b.changes === undefined || b.changes === null ? {} : k.obj(b.changes, 'changes');
+  const allowed = new Set<string>([...FIX_TECH, ...FIX_ACCT]);
+  for (const key of Object.keys(ch)) if (!allowed.has(key)) k.fail(`changes.${key}`, `바꿀 수 있는 필드: ${[...allowed].join(', ')}`);
+  const v = {
+    description: k.str(ch, 'description', { max: 50, field: 'changes.description' }), serialNo: k.str(ch, 'serialNo', { max: 18, field: 'changes.serialNo' }),
+    targetRoomId: k.uuid(ch, 'targetRoomId', { field: 'changes.targetRoomId' }), buyer: k.str(ch, 'buyer', { max: 80, field: 'changes.buyer' }),
+    reason: k.str(ch, 'reason', { max: 200, field: 'changes.reason' }),
+    acquisitionValue: k.num(ch, 'acquisitionValue', { min: 0.01, max: 1e12, field: 'changes.acquisitionValue' }),
+    saleAmount: k.num(ch, 'saleAmount', { min: 0.01, max: 1e12, field: 'changes.saleAmount' }),
+    targetCostCenterId: k.uuid(ch, 'targetCostCenterId', { field: 'changes.targetCostCenterId' }), assetClassId: k.uuid(ch, 'assetClassId', { field: 'changes.assetClassId' }),
+    retireType: k.oneOf(ch, 'retireType', ['SCRAP', 'LOSS'] as const, 'changes.retireType'),
+  };
+  if (effectiveDate === undefined && !Object.keys(ch).length) k.errors.push({ field: 'changes', code: 'ALM-E101', message: '바꿀 값이 없습니다' });
+  k.done();
+  const has = (f: string) => Object.prototype.hasOwnProperty.call(ch, f);
+  const old = (f: string) => (f === 'effectiveDate' ? day(r.effective_date) : f === 'acquisitionValue' ? num(r.acquisition_value) : f === 'saleAmount' ? num(r.sale_amount)
+    : f === 'targetCostCenterId' ? r.target_cost_center_id : f === 'assetClassId' ? r.asset_class_id : f === 'retireType' ? r.retire_type
+      : f === 'targetRoomId' ? r.target_room_id : f === 'buyer' ? r.buyer : f === 'reason' ? r.reason : (r.changes ?? {})[f]);
+  const valOf = new Map<string, unknown>(Object.entries(v));
+  const accounting = FIX_ACCT.some((f) => has(f) && (valOf.get(f) ?? null) !== (old(f) ?? null));
+  const changes = { ...(r.changes ?? {}), ...(has('description') ? { description: v.description } : {}), ...(has('serialNo') ? { serialNo: v.serialNo ?? '' } : {}) };
+  await c.query(`UPDATE asset_request SET effective_date = coalesce($2::date, effective_date),
+      changes = CASE WHEN $3 THEN $4::jsonb ELSE changes END, target_room_id = CASE WHEN $5 THEN $6::uuid ELSE target_room_id END,
+      buyer = CASE WHEN $7 THEN $8 ELSE buyer END, reason = coalesce($9, reason),
+      acquisition_value = CASE WHEN $10 THEN $11::numeric ELSE acquisition_value END, sale_amount = CASE WHEN $12 THEN $13::numeric ELSE sale_amount END,
+      target_cost_center_id = CASE WHEN $14 THEN $15::uuid ELSE target_cost_center_id END, asset_class_id = CASE WHEN $16 THEN $17::uuid ELSE asset_class_id END,
+      retire_type = CASE WHEN $18 THEN $19::retire_type ELSE retire_type END, updated_at = now(), updated_by = $20, version = version + 1 WHERE id = $1`,
+  [id, effectiveDate ?? null, has('description') || has('serialNo'), JSON.stringify(changes), has('targetRoomId'), v.targetRoomId ?? null, has('buyer'), v.buyer ?? null,
+    v.reason ?? null, has('acquisitionValue'), v.acquisitionValue ?? null, has('saleAmount'), v.saleAmount ?? null, has('targetCostCenterId'), v.targetCostCenterId ?? null,
+    has('assetClassId'), v.assetClassId ?? null, has('retireType'), v.retireType ?? null, p.userId]);
+  // 바뀐 값으로 다시 검사(코스트센터·클래스·룸 유효성)
+  const nr = await load(c, id);
+  await validate(c, p, normalize({ requestType: nr.request_type, assetId: nr.asset_id, reason: nr.reason, assetClassId: nr.asset_class_id ?? undefined,
+    acquisitionValue: num(nr.acquisition_value), poItemId: nr.po_item_id ?? undefined, targetCostCenterId: nr.target_cost_center_id ?? undefined,
+    targetRoomId: nr.target_room_id ?? undefined, changes: nr.changes ?? undefined, effectiveDate: day(nr.effective_date),
+    retireType: nr.retire_type ?? undefined, saleAmount: num(nr.sale_amount), buyer: nr.buyer ?? undefined }), id);
+  await c.query(`INSERT INTO asset_event (id, tenant_id, asset_id, event_type, actor_id, channel, changes, asset_request_id, reason)
+    VALUES ($1, $2, $3, 'UPDATED', $4, 'UI', $5, $6, $7)`,
+  [randomUUID(), p.tenantId, r.asset_id, p.userId, JSON.stringify({ requestNo: r.request_no, fix: { effectiveDate, ...ch }, reapproval: accounting }), id,
+    `전기 오류 보정: ${comment}`.slice(0, 200)]);
+  const posting = (await c.query(`SELECT id FROM sap_posting WHERE asset_request_id = $1 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, [id])).rows[0];
+  if (accounting) {
+    // 재승인: 전기는 취소해 두고 최종 승인 때 같은 번호로 다시 READY
+    if (posting) await c.query(`UPDATE sap_posting SET status = 'CANCELLED', lease_until = NULL, updated_at = now(), updated_by = $2, version = version + 1 WHERE id = $1`, [posting.id, p.userId]);
+    await c.query(`UPDATE asset_request SET status = 'SUBMITTED', current_step = 1, updated_at = now(), version = version + 1 WHERE id = $1`, [id]);
+    await c.query('DELETE FROM approval WHERE asset_request_id = $1', [id]);
+    for (const [step, role] of STEPS.slice(0, Math.max(1, Number(nr.approval_steps ?? 2)))) {
+      await c.query(`INSERT INTO approval (id, tenant_id, asset_request_id, step_no, approver_role, created_by) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [randomUUID(), p.tenantId, id, step, role, p.userId]);
+    }
+    mails.push(...await approverMails(c, nr, nr.dept_exists ? 'DEPT_MANAGER' : proxyRole(nr), 1));
+  } else {
+    const built = await rebuildPosting(c, id);
+    if (!built || !posting) throw new AlmError(409, 'ALM-E322', 'SAP 전기 대상이 아닙니다');
+    await c.query(`UPDATE sap_posting SET status = 'READY', payload = $2, value_date = coalesce($3::date, value_date), attempt_count = 0, messages = NULL,
+        lease_until = NULL, claim_batch_id = NULL, result_at = NULL, updated_at = now(), updated_by = $4, version = version + 1 WHERE id = $1`,
+    [posting.id, JSON.stringify(built.payload), effectiveDate ?? null, p.userId]);
+    await c.query(`UPDATE asset_request SET status = 'ACCT_APPROVED', updated_at = now(), version = version + 1 WHERE id = $1`, [id]);
+  }
+  return detail(c, p, await load(c, id));
 }
 
 async function buildPosting(c: PoolClient, r: Record<string, any>, a: Record<string, any>): Promise<{ postingType: string; payload: Record<string, unknown> }> {

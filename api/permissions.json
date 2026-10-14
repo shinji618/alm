@@ -475,6 +475,7 @@
   "listFieldMappings": "sap.monitor",
   "retryPosting": "sap.operate",
   "createRunRequest": "sap.operate",
+  "listRunRequests": "sap.monitor",
   "cancelPosting": "sap.finance",
   "resolveReconDiffs": "sap.finance",
   "patchFieldMapping": "sap.config",

@@ -19,6 +19,7 @@ import { MemoryCounterStore, SharedLimiter } from '../common/shared';
 import { FilesController } from './files.controller';
 import { AssetsController } from './assets.controller';
 import { RequestsController } from './requests.controller';
+import { SapWebController } from './sap-web.controller';
 import type { FileStore } from '../files/files';
 
 @Module({})
@@ -26,7 +27,7 @@ export class AppModule {
   static create(deps: { cfg: Config; db: Db; cognito: Cognito; principals?: PrincipalCache; limiter?: SharedLimiter; files?: FileStore; mailer?: Mailer }): DynamicModule {
     return {
       module: AppModule,
-      controllers: [HealthController, AuthController, MeController, AdminController, PdaController, SapController, FilesController, AssetsController, RequestsController],
+      controllers: [HealthController, AuthController, MeController, AdminController, PdaController, SapController, FilesController, AssetsController, RequestsController, SapWebController],
       providers: [
         { provide: CONFIG, useValue: deps.cfg },
         { provide: DB, useValue: deps.db },

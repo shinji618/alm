@@ -3,6 +3,7 @@
 //                        "users":[{"email":"a@example.com","displayName":"홍길동","roles":["SYS_ADMIN"]}]}'
 // 소유자(마스터)로 접속한다: tenant·tenant_domain은 앱 계정이 쓸 수 없다(09 8장). 다시 실행해도 같은 결과(멱등).
 import { randomUUID } from 'node:crypto';
+import { seedFieldMappings } from '../sap/mappings';
 import { Client } from 'pg';
 import { log } from '../common/log';
 
@@ -118,6 +119,7 @@ export async function seed(c: Client, s: SeedInput): Promise<{ tenantId: string;
         [randomUUID(), tenantId, sc.systemId, co.id, sc.clientId, JSON.stringify(sc.allowedCidrs ?? [])]);
     }
     const mc = s.masters ? await seedMasters(c, tenantId, s.masters) : undefined;
+    await seedFieldMappings(c, tenantId);   // 기본 필드 매핑(비어 있을 때만)
     await c.query('COMMIT');
     log.info('seed done', { tenant: t.code, tenantId, domains: s.domains ?? [], masters: mc, users: (s.users ?? []).map((u) => u.email.replace(/^(.).*@/, '$1***@')),
       companies: (s.companies ?? []).map((x) => x.code), sapConnections: (s.sapConnections ?? []).map((x) => `${x.systemId}/${x.companyCode}`) });
