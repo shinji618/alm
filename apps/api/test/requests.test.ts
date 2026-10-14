@@ -318,3 +318,34 @@ test('회사 설정: SAP 연계를 끈 회사(승인 1단계·0단계), SAP 신�
   assert.equal(sale.status, 201); assert.equal(sale.body.status, 'POSTED'); assert.equal(sale.body.approvals.length, 0);
   assert.equal((await q('SELECT status FROM asset WHERE id = $1', [n2]))[0].status, 'DISPOSED');
 });
+
+test('코스트센터·자산클래스 직접 관리: SAP 끈 회사만, 중복·사용 중 비활성 409, 직접 만든 클래스는 SAP 등록 불가', { skip }, async () => {
+  const [co2] = await q(`SELECT id FROM company WHERE company_code = '2000'`);
+  assert.equal((await call('emp', 'GET', '/admin/cost-centers')).status, 403);
+  const cc = await call('mgr', 'POST', '/admin/cost-centers', { companyId: co2.id, costCenterCode: 'N200', name: 'NoSAP HR', responsible: 'Kim' });
+  assert.equal(cc.status, 201);
+  assert.deepEqual([cc.body.controllingArea, cc.body.editable, cc.body.assetCount], ['ALM', true, 0]);
+  assert.equal((await call('mgr', 'POST', '/admin/cost-centers', { companyId: co2.id, costCenterCode: 'CC100', name: 'dup' })).status, 409, 'SAP 코스트센터와 같은 코드');
+  const sapCo = await call('mgr', 'POST', '/admin/cost-centers', { companyId: ids.co, costCenterCode: 'X1', name: 'x' });
+  assert.equal(sapCo.status, 409); assert.equal(sapCo.body.code, 'ALM-E322');
+  assert.equal((await call('mgr', 'PATCH', `/admin/cost-centers/${ids.cc100}`, { name: 'x' })).status, 409, 'SAP 회사 코스트센터는 수정 불가');
+  const [n100] = await q(`SELECT id FROM cost_center WHERE cost_center_code = 'N100'`);
+  const inUse = await call('mgr', 'PATCH', `/admin/cost-centers/${n100.id}`, { isActive: false });
+  assert.equal(inUse.status, 200, 'N100 자산은 모두 폐기·처분됨');
+  const list = await call('mgr', 'GET', `/admin/cost-centers?companyId=${co2.id}`);
+  assert.deepEqual(list.body.items.map((x: { costCenterCode: string; isActive: boolean }) => [x.costCenterCode, x.isActive]), [['N100', false], ['N200', true]]);
+
+  const cls = await call('mgr', 'POST', '/admin/asset-classes', { classCode: 'ALM-IT', name: 'IT equipment', defaultUsefulLifeYears: 4 });
+  assert.equal(cls.status, 201);
+  assert.deepEqual([cls.body.isManual, cls.body.isCapitalized, cls.body.defaultUsefulLifeYears], [true, true, 4]);
+  assert.equal((await call('mgr', 'POST', '/admin/asset-classes', { classCode: '00003200', name: 'dup' })).status, 409);
+  assert.equal((await call('mgr', 'PATCH', `/admin/asset-classes/${ids.cls}`, { name: 'x' })).status, 409, 'SAP 클래스는 수정 불가');
+  assert.equal((await call('mgr', 'PATCH', `/admin/asset-classes/${cls.body.id}`, { defaultUsefulLifeYears: 3 })).body.defaultUsefulLifeYears, 3);
+  const lk = await call('mgr', 'GET', '/lookups?types=assetClasses');
+  assert.equal(lk.body.assetClasses.find((x: { code: string }) => x.code === 'ALM-IT').extra.isManual, true);
+
+  const [a] = await q(`INSERT INTO asset (id, tenant_id, asset_tag, description, category_id, status, source, company_id, site_id, room_id, cost_center_id)
+    VALUES (gen_random_uuid(), $1, 'AT-000300', 'SAP co laptop', $2, 'IN_STOCK', 'MANUAL', $3, $4, $5, $6) RETURNING id`, [tenantId, ids.cat, ids.co, ids.site, ids.room1, ids.cc100]);
+  const na = await call('mgr', 'POST', '/asset-requests', { requestType: 'NEW_ASSET', assetId: a.id, reason: 'x', assetClassId: cls.body.id, targetCostCenterId: ids.cc100, acquisitionValue: 10 });
+  assert.equal(na.status, 400); assert.equal(na.body.errors[0].field, 'assetClassId');
+});

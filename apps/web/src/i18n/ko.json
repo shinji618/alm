@@ -31,7 +31,8 @@
     "sap": "SAP FI-AA",
     "design": "디자인 시스템",
     "admin": "관리",
-    "companies": "회사·SAP 연계"
+    "companies": "회사·SAP 연계",
+    "finMasters": "코스트센터·자산클래스"
   },
   "common": {
     "clear": "초기화",
@@ -439,5 +440,33 @@
     "saved": "저장했습니다",
     "created": "회사 {{code}}를 등록했습니다",
     "codeHint": "대문자·숫자 1~4자"
+  },
+  "fin": {
+    "title": "코스트센터·자산클래스",
+    "description": "SAP 연계를 쓰지 않는 회사의 코스트센터와 자산클래스를 직접 관리합니다. SAP 회사의 코스트센터와 SAP 자산클래스는 SAP에서 들어오므로 읽기 전용입니다.",
+    "costCenters": "코스트센터",
+    "assetClasses": "자산클래스",
+    "ccCode": "코스트센터",
+    "responsible": "책임자",
+    "source": "출처",
+    "manual": "직접 등록",
+    "sap": "SAP",
+    "assets": "자산 수",
+    "active": "사용",
+    "allCompanies": "모든 회사",
+    "noSap": "SAP 미사용",
+    "addCostCenter": "코스트센터 등록",
+    "editCostCenter": "코스트센터 수정",
+    "needNoSapCompany": "직접 등록하려면 먼저 관리 > 회사·SAP 연계에서 SAP 연계를 끈 회사를 만드세요.",
+    "codeHint": "영문·숫자·_.- 1~10자",
+    "classCode": "자산클래스",
+    "lowValue": "저가자산",
+    "addAssetClass": "자산클래스 등록",
+    "editAssetClass": "자산클래스 수정",
+    "classHint": "직접 만든 클래스는 SAP 등록에 쓸 수 없습니다.",
+    "classCodeHint": "영문·숫자·_.- 1~8자",
+    "lifeHint": "1~50년",
+    "searchCc": "코스트센터·이름",
+    "searchClass": "클래스·이름"
   }
 }

@@ -135,8 +135,9 @@ name | vc(50) | NN | TXK50
 is_low_value | bool | NN =false | 저가자산 여부
 is_capitalized | bool | NN =true | 자본화 대상. true면 등록 시 SAP 생성 요청
 default_useful_life_years | int | | 내용연수 기본값(년)
+is_manual | bool | NN =false | ALM에서 직접 등록(SAP 연계를 쓰지 않는 회사용). SAP 수신이 비활성화하지 않고, SAP 신규 등록 요청에 쓸 수 없다. 같은 코드가 SAP에서 오면 SAP 것으로 바뀜
 is_active | bool | NN =true | 사용 여부
-''', uniques=[('tenant_id','class_code')], screens='ALM-112')
+''', uniques=[('tenant_id','class_code')], screens='ALM-112, 관리')
 t('org','site','사이트','ALM 사이트(건물·거점). SAP 위치(T499S)와 연결', '''
 site_code | vc(10) | NN | 사이트 코드 (예: ATL1)
 name | vc(60) | NN | 이름

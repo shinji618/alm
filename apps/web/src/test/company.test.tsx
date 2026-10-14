@@ -66,4 +66,30 @@ describe('company settings', () => {
     expect(screen.getByText('$1,200.00')).toBeInTheDocument();
     expect(screen.queryByText('$99.00')).not.toBeInTheDocument();
   });
+
+  it('cost centers: SAP rows read-only, add one for a non-SAP company', async () => {
+    window.history.pushState({}, '', '/admin/fin-masters');
+    const me: Me = { ...admin, permissions: ['admin.config', 'master.read', 'master.write'] };
+    const posted: unknown[] = [];
+    mockFetch((url, init) => {
+      if (url.includes('/lookups?types=companies')) return { body: { companies: [{ id: 'c1', code: '1000', label: 'BSG', extra: { sapEnabled: true } }, { id: 'c2', code: '2000', label: 'No SAP Inc', extra: { sapEnabled: false } }] } };
+      if (url.includes('/admin/cost-centers') && init.method === 'POST') { posted.push(JSON.parse(String(init.body))); return { status: 201, body: {} }; }
+      if (url.includes('/admin/cost-centers')) return { body: { items: [{ id: 'k1', companyId: 'c1', companyCode: '1000', costCenterCode: 'FBSG01', name: 'FCM', controllingArea: 'A000',
+        isActive: true, editable: false, assetCount: 2, version: 1 }] } };
+      return undefined;
+    });
+    render(<App initialMe={me} />);
+    const user = userEvent.setup();
+    const row = (await screen.findByText('FBSG01')).closest('tr')!;
+    expect(within(row).getByText('SAP')).toBeInTheDocument();
+    await user.click(row);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Add cost center' }));
+    const drawer = screen.getByRole('dialog');
+    expect((within(drawer).getByLabelText(/^Company code/) as HTMLSelectElement).value).toBe('c2');
+    await user.type(within(drawer).getByLabelText(/^Cost center/), 'N100');
+    await user.type(within(drawer).getByLabelText(/^Name/), 'NoSAP IT');
+    await user.click(within(drawer).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(posted).toEqual([{ companyId: 'c2', costCenterCode: 'N100', name: 'NoSAP IT' }]));
+  });
 });

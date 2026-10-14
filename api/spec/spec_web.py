@@ -1438,6 +1438,68 @@ W('관리','PATCH','/admin/companies/{id}','patchCompany','회사 설정 변경'
     '끄기 전에 그 회사의 SAP 전기 대기·처리 중·실패 건이 있으면 409 ALM-E322(SAP 연계 화면에서 처리·취소 뒤).',
     '승인 단계 2(부서 관리자 → 자산회계) · 1(부서 관리자, 없으면 자산 관리자 대리) · 0(승인 없음, 범위 안의 자산 관리자만 제출, 바로 반영). 1·0은 SAP 연계를 끈 회사만(400). SAP을 켜면 2로 맞춘다.',
     '진행 중인 요청은 이미 만든 승인 단계를 그대로 따른다.'],params=[ID()])
+schema('CostCenterRow', '코스트센터(관리)', '''
+id | uuid | Y | id
+companyId | uuid | Y | 회사
+companyCode | string(4) | Y | 회사코드
+costCenterCode | string(10) | Y | 코스트센터
+name | string(20) | Y | 이름
+responsible | string(20) | N | 책임자
+controllingArea | string(4) | Y | 관리 영역(직접 등록은 ALM)
+isActive | bool | Y | 사용
+editable | bool | Y | 직접 수정 가능(SAP 연계를 끈 회사)
+assetCount | int | Y | 이 코스트센터의 자산(폐기·처분 제외)
+version | int | Y | 낙관적 잠금
+''')
+schema('CostCenterRowList', '코스트센터 목록', '''
+items | [CostCenterRow] | Y | 행
+''')
+schema('CostCenterInput', '코스트센터 등록', '''
+companyId | uuid | Y | SAP 연계를 끈 회사
+costCenterCode | string(10) | Y | 영문·숫자·_.- (테넌트에서 유일)
+name | string(20) | Y | 이름
+responsible | string(20) | N | 책임자
+''')
+schema('CostCenterPatch', '코스트센터 수정', '''
+name | string(20) | N | 이름
+responsible | string(20) | N | 책임자
+isActive | bool | N | 사용
+''')
+schema('AssetClassRow', '자산클래스(관리)', '''
+id | uuid | Y | id
+classCode | string(8) | Y | 클래스
+name | string(50) | Y | 이름
+isLowValue | bool | Y | 저가자산
+isCapitalized | bool | Y | 자본화
+defaultUsefulLifeYears | int | N | 내용연수 기본값(년)
+isManual | bool | Y | ALM에서 직접 등록(수정 가능)
+isActive | bool | Y | 사용
+assetCount | int | Y | 이 클래스의 자산(폐기·처분 제외)
+version | int | Y | 낙관적 잠금
+''')
+schema('AssetClassRowList', '자산클래스 목록', '''
+items | [AssetClassRow] | Y | 행
+''')
+schema('AssetClassInput', '자산클래스 등록·수정(수정은 보낸 필드만)', '''
+classCode | string(8) | N | 등록 시 필수. 영문·숫자·_.-
+name | string(50) | N | 등록 시 필수
+defaultUsefulLifeYears | int | N | 1~50
+isLowValue | bool | N | 기본 false
+isCapitalized | bool | N | 기본 true
+isActive | bool | N | 수정 시만
+''')
+MA = 'SYS_ADMIN, ASSET_MANAGER'
+W('관리','GET','/admin/cost-centers','listCostCenters','코스트센터 관리 목록',MA+', ASSET_ACCOUNTANT, AUDITOR',None,'CostCenterRowList','200, 400','cost_center, company','관리',
+  [ 'SAP 회사의 코스트센터는 읽기 전용(editable=false).'],params=[('companyId','query','uuid','N','회사')])
+W('관리','POST','/admin/cost-centers','createCostCenter','코스트센터 등록',MA,'CostCenterInput','CostCenterRow','201, 400, 404, 409','cost_center, audit_log','관리',
+  [ 'SAP 연계를 끈 회사만(SAP 회사는 IF-MD-01, 409 ALM-E322). 관리 영역은 ALM.', '코스트센터 코드는 테넌트에서 유일(409 ALM-E321).'],ok='201')
+W('관리','PATCH','/admin/cost-centers/{id}','patchCostCenter','코스트센터 수정',MA,'CostCenterPatch','CostCenterRow','200, 400, 404, 409','cost_center, audit_log','관리',
+  [ 'SAP 연계를 끈 회사만(409 ALM-E322).', '폐기·처분이 아닌 자산이 쓰고 있으면 비활성화 불가(409 ALM-E318).'],params=[ID()])
+W('관리','GET','/admin/asset-classes','listAssetClasses','자산클래스 관리 목록',MA+', ASSET_ACCOUNTANT, AUDITOR',None,'AssetClassRowList','200','asset_class','관리',[ 'SAP 클래스는 읽기 전용(isManual=false).'])
+W('관리','POST','/admin/asset-classes','createAssetClass','자산클래스 등록',MA,'AssetClassInput','AssetClassRow','201, 400, 409','asset_class, audit_log','관리',
+  [ 'SAP 연계를 쓰지 않는 회사용(is_manual). SAP 수신(isLast)은 직접 만든 클래스를 비활성화하지 않는다.', '직접 만든 클래스는 SAP 등록(registerInSap·NEW_ASSET)에 쓸 수 없다(400).', '같은 코드가 있으면 409 ALM-E321. 같은 코드가 나중에 SAP에서 오면 SAP 클래스로 바뀐다.'],ok='201')
+W('관리','PATCH','/admin/asset-classes/{id}','patchAssetClass','자산클래스 수정',MA,'AssetClassInput','AssetClassRow','200, 400, 404, 409','asset_class, audit_log','관리',
+  [ '직접 만든 클래스만(SAP 클래스는 409 ALM-E322). classCode는 바꾸지 않는다.', '자산·카테고리가 쓰고 있으면 비활성화 불가(409 ALM-E318).'],params=[ID()])
 W('관리','GET','/admin/settings','listSettings',  '설정',SA,None,'SettingList','200','setting','관리',[ '-'])
 W('관리','PUT','/admin/settings/{key}','putSetting','설정 저장',SA,'SettingRow','SettingRow','200, 400','setting, audit_log','관리',[ '키별 값 형식 검사(SettingRow.value 설명). 모르는 키는 400 ALM-E100.'],params=[('key','path','string(60)','Y','키')])
 W('관리','GET','/admin/audit-logs','listAuditLogs','감사 로그 조회','SYS_ADMIN, ASSET_ACCOUNTANT',None,'AuditRowList','200','audit_log','관리',[ '10년 보관. 13개월 지난 기간은 보관 저장소에서 비동기 조회(내보내기로 안내).'],

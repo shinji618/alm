@@ -24,7 +24,8 @@ export function RequestDrawer({ d, L, onClose, onDone }: { d: AssetDetail; L: Lo
   const set = (k: keyof typeof f, v: string) => setF((x) => ({ ...x, [k]: v }));
   const companyCode = d.financial.companyCode;
   const ccs = useMemo(() => (L.costCenters ?? []).filter((c) => !c.extra?.companyCode || c.extra.companyCode === companyCode), [L.costCenters, companyCode]);
-  const classes = useMemo(() => (L.assetClasses ?? []).filter((c) => c.extra?.isCapitalized !== false && c.extra?.isLowValue !== true), [L.assetClasses]);
+  // SAP 신규 등록: SAP 자산클래스(직접 만든 클래스 제외) 중 자본화 클래스만
+  const classes = useMemo(() => (L.assetClasses ?? []).filter((c) => c.extra?.isCapitalized !== false && c.extra?.isLowValue !== true && c.extra?.isManual !== true), [L.assetClasses]);
 
   const body = (): RequestInput => {
     const base = { requestType: f.type, assetId: d.id, reason: f.reason.trim() };

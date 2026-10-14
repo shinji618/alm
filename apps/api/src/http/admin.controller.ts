@@ -7,6 +7,7 @@ import { log } from '../common/log';
 import * as users from '../admin/users';
 import * as cfg from '../admin/config';
 import * as companies from '../admin/companies';
+import * as fin from '../admin/finmasters';
 import { AlmContext, Ctx, Operation, txOf } from './context';
 import { DB, PRINCIPALS } from './tokens';
 
@@ -97,5 +98,45 @@ export class AdminController {
   @Operation('patchCompany')
   patchCompany(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) {
     return this.db.withTx(txOf(ctx), (c) => companies.patchCompany(c, id, ctx.principal!.userId, body));
+  }
+
+  @Get('cost-centers')
+  @Operation('listCostCenters')
+  listCostCenters(@Ctx() ctx: AlmContext, @Query() q: Record<string, string>) {
+    return this.db.withTx(txOf(ctx), (c) => fin.listCostCenters(c, q));
+  }
+
+  @Post('cost-centers')
+  @HttpCode(201)
+  @Operation('createCostCenter')
+  createCostCenter(@Ctx() ctx: AlmContext, @Body() body: unknown) {
+    const p = ctx.principal!;
+    return this.db.withTx(txOf(ctx), (c) => fin.createCostCenter(c, p.tenantId, p.userId, body));
+  }
+
+  @Patch('cost-centers/:id')
+  @Operation('patchCostCenter')
+  patchCostCenter(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) {
+    return this.db.withTx(txOf(ctx), (c) => fin.patchCostCenter(c, id, ctx.principal!.userId, body));
+  }
+
+  @Get('asset-classes')
+  @Operation('listAssetClasses')
+  listAssetClasses(@Ctx() ctx: AlmContext) {
+    return this.db.withTx(txOf(ctx), (c) => fin.listAssetClasses(c));
+  }
+
+  @Post('asset-classes')
+  @HttpCode(201)
+  @Operation('createAssetClass')
+  createAssetClass(@Ctx() ctx: AlmContext, @Body() body: unknown) {
+    const p = ctx.principal!;
+    return this.db.withTx(txOf(ctx), (c) => fin.createAssetClass(c, p.tenantId, p.userId, body));
+  }
+
+  @Patch('asset-classes/:id')
+  @Operation('patchAssetClass')
+  patchAssetClass(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) {
+    return this.db.withTx(txOf(ctx), (c) => fin.patchAssetClass(c, id, ctx.principal!.userId, body));
   }
 }

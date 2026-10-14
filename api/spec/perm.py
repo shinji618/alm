@@ -140,6 +140,8 @@ OPS = {
     'listMasters': 'master.read', 'createMaster': 'master.write', 'patchMaster': 'master.write',
     'listCodes': 'admin.config', 'putCodeGroup': 'admin.config', 'listSettings': 'admin.config', 'putSetting': 'admin.config',
     'listCompanies': 'admin.config', 'createCompany': 'admin.config', 'patchCompany': 'admin.config',
+    'listCostCenters': 'master.read', 'createCostCenter': 'master.write', 'patchCostCenter': 'master.write',
+    'listAssetClasses': 'master.read', 'createAssetClass': 'master.write', 'patchAssetClass': 'master.write',
     'listAuditLogs': 'audit.read', 'listSecurityEvents': 'audit.read',
 }
 # PDA endpoints: count.scan (TASK). SAP endpoints: sap.api. Filled by group in apply().

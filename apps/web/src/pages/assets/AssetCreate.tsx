@@ -111,7 +111,8 @@ export function AssetCreate() {
             <SelectField label={t('asset.field.assignedUser')} required value={f.assignedUserId} error={fe('assignedUserId')} options={opt(L.users)} onChange={(e) => set('assignedUserId', e.target.value)} />
           ) : <div />}
           <SelectField label={t('asset.field.assetClass')} value={f.assetClassId} error={fe('assetClassId')}
-            options={[{ value: '', label: cls && !f.assetClassId ? `${cls.code} · ${cls.label}` : '—' }, ...opt(L.assetClasses, false)]} onChange={(e) => set('assetClassId', e.target.value)} />
+            options={[{ value: '', label: cls && !f.assetClassId ? `${cls.code} · ${cls.label}` : '—' },
+              ...opt((L.assetClasses ?? []).filter((c) => !sapCompany || c.extra?.isManual !== true), false)]} onChange={(e) => set('assetClassId', e.target.value)} />
           <TextField label={t('asset.field.purchaseCost')} required={f.registerInSap} type="number" min="0" step="0.01" inputMode="decimal" value={f.purchaseCost}
             error={fe('purchaseCost')} onChange={(e) => set('purchaseCost', e.target.value)} />
           <TextField label={t('asset.field.purchaseDate')} type="date" value={f.purchaseDate} error={fe('purchaseDate')} onChange={(e) => set('purchaseDate', e.target.value)} />

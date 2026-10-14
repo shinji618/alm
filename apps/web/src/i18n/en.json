@@ -31,7 +31,8 @@
     "sap": "SAP FI-AA",
     "design": "Design system",
     "admin": "Administration",
-    "companies": "Companies & SAP"
+    "companies": "Companies & SAP",
+    "finMasters": "Cost centers & classes"
   },
   "common": {
     "clear": "Clear",
@@ -439,5 +440,33 @@
     "saved": "Saved",
     "created": "Added company {{code}}",
     "codeHint": "1–4 uppercase letters or digits"
+  },
+  "fin": {
+    "title": "Cost centers & asset classes",
+    "description": "Maintain cost centers and asset classes for companies that do not use SAP. SAP cost centers and SAP asset classes come from SAP and are read-only.",
+    "costCenters": "Cost centers",
+    "assetClasses": "Asset classes",
+    "ccCode": "Cost center",
+    "responsible": "Responsible",
+    "source": "Source",
+    "manual": "Manual",
+    "sap": "SAP",
+    "assets": "Assets",
+    "active": "Active",
+    "allCompanies": "All companies",
+    "noSap": "no SAP",
+    "addCostCenter": "Add cost center",
+    "editCostCenter": "Edit cost center",
+    "needNoSapCompany": "To add one, first create a company with SAP integration off in Administration > Companies & SAP.",
+    "codeHint": "1–10 letters, digits, _ . -",
+    "classCode": "Asset class",
+    "lowValue": "Low value",
+    "addAssetClass": "Add asset class",
+    "editAssetClass": "Edit asset class",
+    "classHint": "Manual classes cannot be used for SAP registration.",
+    "classCodeHint": "1–8 letters, digits, _ . -",
+    "lifeHint": "1–50 years",
+    "searchCc": "Cost center or name",
+    "searchClass": "Class or name"
   }
 }

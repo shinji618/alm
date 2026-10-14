@@ -306,8 +306,9 @@ async function validate(c: PoolClient, p: Principal, v: Input, selfId?: string) 
     const co = (await c.query('SELECT sap_enabled FROM company WHERE id = $1', [a.company_id])).rows[0];
     if (!co?.sap_enabled) throw new AlmError(422, 'ALM-E100', '이 회사는 SAP 연계를 쓰지 않습니다(SAP 신규 등록 불가)');
     if (a.sap_asset_no) throw new AlmError(409, 'ALM-E322', '이미 SAP 자산번호가 있는 자산입니다');
-    const cls = (await c.query('SELECT is_capitalized, is_low_value, is_active FROM asset_class WHERE id = $1', [v.assetClassId])).rows[0];
+    const cls = (await c.query('SELECT is_capitalized, is_low_value, is_active, is_manual FROM asset_class WHERE id = $1', [v.assetClassId])).rows[0];
     if (!cls?.is_active) bad('assetClassId', '활성 자산클래스가 아닙니다');
+    if (cls.is_manual) bad('assetClassId', 'ALM에서 직접 만든 클래스는 SAP에 등록할 수 없습니다(SAP 자산클래스를 고르세요)');
     if (cls.is_capitalized === false || cls.is_low_value) bad('assetClassId', '자본화 자산클래스만 SAP에 등록합니다');
   }
   if (v.targetCostCenterId) {

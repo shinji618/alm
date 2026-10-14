@@ -44,7 +44,10 @@ export const NAV: NavGroup[] = [
   },
   {
     labelKey: 'nav.admin',
-    items: [{ path: '/admin/companies', labelKey: 'nav.companies', screenId: 'ADM-020', wbs: '4.3', perm: 'admin.config' }],
+    items: [
+      { path: '/admin/companies', labelKey: 'nav.companies', screenId: 'ADM-020', wbs: '4.3', perm: 'admin.config' },
+      { path: '/admin/fin-masters', labelKey: 'nav.finMasters', screenId: 'ADM-030', wbs: '4.3', perm: 'master.write' },
+    ],
   },
 ];
 

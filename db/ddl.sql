@@ -318,6 +318,7 @@ CREATE TABLE asset_class (
   is_low_value boolean NOT NULL DEFAULT false,
   is_capitalized boolean NOT NULL DEFAULT true,
   default_useful_life_years integer,
+  is_manual boolean NOT NULL DEFAULT false,
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
@@ -333,6 +334,7 @@ COMMENT ON COLUMN asset_class.name IS 'TXK50';
 COMMENT ON COLUMN asset_class.is_low_value IS '저가자산 여부';
 COMMENT ON COLUMN asset_class.is_capitalized IS '자본화 대상. true면 등록 시 SAP 생성 요청';
 COMMENT ON COLUMN asset_class.default_useful_life_years IS '내용연수 기본값(년)';
+COMMENT ON COLUMN asset_class.is_manual IS 'ALM에서 직접 등록(SAP 연계를 쓰지 않는 회사용). SAP 수신이 비활성화하지 않고, SAP 신규 등록 요청에 쓸 수 없다. 같은 코드가 SAP에서 오면 SAP 것으로 바뀜';
 COMMENT ON COLUMN asset_class.is_active IS '사용 여부';
 COMMENT ON COLUMN asset_class.created_at IS '생성 일시';
 COMMENT ON COLUMN asset_class.created_by IS '생성자';

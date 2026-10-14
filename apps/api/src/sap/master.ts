@@ -127,9 +127,9 @@ async function upsert(c: PoolClient, conn: SapConn, type: MdType, f: Rec): Promi
       const life = f.int('usefulLifeYears', { min: 0, max: 100 }) ?? null;
       const r = await c.query(`INSERT INTO asset_class (id, tenant_id, class_code, name, is_low_value, default_useful_life_years) VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (tenant_id, class_code) DO UPDATE SET name = EXCLUDED.name, is_low_value = EXCLUDED.is_low_value,
-          default_useful_life_years = EXCLUDED.default_useful_life_years, is_active = true, updated_at = now(), version = asset_class.version + 1
-        WHERE (asset_class.name, asset_class.is_low_value, asset_class.default_useful_life_years, asset_class.is_active)
-          IS DISTINCT FROM (EXCLUDED.name, EXCLUDED.is_low_value, EXCLUDED.default_useful_life_years, true)`,
+          default_useful_life_years = EXCLUDED.default_useful_life_years, is_active = true, is_manual = false, updated_at = now(), version = asset_class.version + 1
+        WHERE (asset_class.name, asset_class.is_low_value, asset_class.default_useful_life_years, asset_class.is_active, asset_class.is_manual)
+          IS DISTINCT FROM (EXCLUDED.name, EXCLUDED.is_low_value, EXCLUDED.default_useful_life_years, true, false)`,
         [randomUUID(), conn.tenantId, code, name, low, life]);
       return changed(r.rowCount);
     }
@@ -156,7 +156,8 @@ async function deactivateMissing(c: PoolClient, conn: SapConn, type: MdType, key
       return q(`UPDATE cost_center SET ${off} WHERE is_active AND company_id = $1 AND NOT ((controlling_area || '/' || cost_center_code) = ANY($2))
         RETURNING controlling_area || '/' || cost_center_code AS k`, [conn.companyId, keys]);
     case 'ASSET_CLASS':
-      return q(`UPDATE asset_class SET ${off} WHERE is_active AND NOT (class_code = ANY($1)) RETURNING class_code AS k`, [keys]);
+      // ALM에서 직접 등록한 클래스(SAP 연계를 쓰지 않는 회사용)는 건드리지 않는다
+      return q(`UPDATE asset_class SET ${off} WHERE is_active AND NOT is_manual AND NOT (class_code = ANY($1)) RETURNING class_code AS k`, [keys]);
     case 'LOCATION': {
       // ALM 사이트의 SAP 위치가 SAP에 없으면 알려 준다(바꾸지는 않음)
       return q(`SELECT s.site_code || ' → ' || coalesce(p.plant_code, '?') || '/' || s.sap_location AS k FROM site s LEFT JOIN plant p ON p.id = s.plant_id
