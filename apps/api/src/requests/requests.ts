@@ -441,7 +441,9 @@ export async function inbox(c: PoolClient, p: Principal, q: Record<string, strin
   return {
     items: slice.map((r) => clean({
       approvalId: r.approval_id, kind: 'ASSET_REQUEST', targetId: r.id, targetNo: r.request_no, requestType: r.request_type,
-      summary: summary(r, ccNames), requesterName: r.requester_name, stepNo: r.step_no, approverRole: r.approver_role,
+      summary: summary(r, ccNames), assetTag: r.asset_tag ?? undefined, targetCostCenterCode: ccNames.get(r.target_cost_center_id),
+      isProfitCenterChange: r.is_profit_center_change || undefined, retireType: r.retire_type ?? undefined, buyer: r.buyer ?? undefined,
+      requesterName: r.requester_name, stepNo: r.step_no, approverRole: r.approver_role, proxy: (r.approver_role === 'DEPT_MANAGER' && !r.dept_exists) || undefined,
       waitingSince: iso(r.prev_decided ?? r.submitted_at ?? r.step_created),
       amount: num(r.acquisition_value ?? r.sale_amount),
     })),
@@ -631,6 +633,13 @@ export async function applyRequest(c: PoolClient, r: Record<string, any>, a: Rec
 }
 
 // ---------------- 알림 ----------------
+// 다른 화면(ALM-112 등록·ALM-111 할당)이 제출 상태로 만든 요청: 지금 단계 승인자에게 메일(제출 상태가 아니면 없음)
+export async function submittedMails(c: PoolClient, id: string): Promise<MailRequest[]> {
+  const r = await load(c, id);
+  if (r.status !== 'SUBMITTED') return [];
+  return approverMails(c, r, r.dept_exists ? 'DEPT_MANAGER' : 'ASSET_ACCOUNTANT', 1);
+}
+
 async function approverMails(c: PoolClient, r: Record<string, any>, role: string, stepNo: number): Promise<MailRequest[]> {
   const users = (await c.query(`SELECT DISTINCT u.id FROM user_role ur JOIN app_user u ON u.id = ur.user_id
       LEFT JOIN company co ON co.id = ur.company_id LEFT JOIN site s ON s.id = ur.site_id LEFT JOIN cost_center cc ON cc.id = ur.cost_center_id

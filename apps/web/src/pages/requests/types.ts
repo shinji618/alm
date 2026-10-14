@@ -34,6 +34,7 @@ export interface RequestDetail {
 export interface InboxRow {
   approvalId: string; kind: 'ASSET_REQUEST' | 'PURCHASE_REQUEST'; targetId: string; targetNo: string; requestType: RequestType; summary: string;
   requesterName: string; stepNo: number; approverRole: string; waitingSince: string; amount?: number;
+  assetTag?: string; targetCostCenterCode?: string; isProfitCenterChange?: boolean; retireType?: string; buyer?: string; proxy?: boolean;
 }
 
 export const statusTone: Record<RequestStatus, Tone> = {

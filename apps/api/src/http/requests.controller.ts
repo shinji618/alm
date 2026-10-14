@@ -5,8 +5,8 @@ import type { Response } from 'express';
 import type { PoolClient } from 'pg';
 import { Db } from '../db/pool';
 import type { Config } from '../config';
-import { log } from '../common/log';
-import { Mailer, MailRequest, queueEmail, SendEmailJob } from '../notify/mail';
+import type { Mailer, MailRequest } from '../notify/mail';
+import { withMail } from './mail-tx';
 import * as rq from '../requests/requests';
 import { AlmContext, Ctx, Operation, txOf } from './context';
 import { CONFIG, DB, MAILER } from './tokens';
@@ -15,19 +15,8 @@ import { CONFIG, DB, MAILER } from './tokens';
 export class RequestsController {
   constructor(@Inject(DB) private db: Db, @Inject(MAILER) private mailer: Mailer | null, @Inject(CONFIG) private cfg: Config) {}
 
-  // 업무 + 메일 행을 한 트랜잭션에서, 큐 전송은 커밋 뒤
-  private async withMail<T>(ctx: AlmContext, fn: (c: PoolClient, mails: MailRequest[]) => Promise<T>): Promise<T> {
-    const jobs: SendEmailJob[] = [];
-    const out = await this.db.withTx(txOf(ctx), async (c) => {
-      const mails: MailRequest[] = [];
-      const r = await fn(c, mails);
-      for (const m of mails) { const j = await queueEmail(c, ctx.principal!.tenantId, m, this.cfg.appOrigin); if (j) jobs.push(j); }
-      return r;
-    });
-    for (const j of jobs) {
-      await this.mailer?.enqueue(j).catch((e) => log.error('mail enqueue failed', { notificationId: j.notificationId, err: String(e) }));
-    }
-    return out;
+  private withMail<T>(ctx: AlmContext, fn: (c: PoolClient, mails: MailRequest[]) => Promise<T>): Promise<T> {
+    return withMail(this.db, this.mailer, this.cfg, ctx, fn);
   }
 
   @Get('asset-requests')

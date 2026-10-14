@@ -885,6 +885,12 @@ targetId | uuid | Y | 요청 id
 targetNo | string | Y | AR-/PR- 번호
 requestType | string | Y | 요청 유형
 approverRole | string | Y | 단계 역할
+assetTag | string | N | 자산태그
+targetCostCenterCode | string | N | 대상 코스트센터
+isProfitCenterChange | bool | N | 손익센터 변경
+retireType | string | N | 폐기 유형
+buyer | string | N | 매입처
+proxy | bool | N | 부서 관리자 없음 → 자산회계 대리 결정
 summary | string | Y | 요약 (예: 이관 · AT-000123 → 1000-4310)
 requesterName | string | Y | 요청자
 stepNo | int | Y | 단계

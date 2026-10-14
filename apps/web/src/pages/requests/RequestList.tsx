@@ -61,15 +61,28 @@ function Pager({ page, total, set }: { page: number; total: number; set: (p: Rec
   );
 }
 
+// 승인함 요약(화면 언어로): 자산태그 + 유형별 핵심 값
+function summaryOf(t: (k: string, o?: Record<string, unknown>) => string, x: InboxRow): string {
+  const tag = x.assetTag ?? '';
+  switch (x.requestType) {
+    case 'NEW_ASSET': return t('request.summary.NEW_ASSET', { tag, cc: x.targetCostCenterCode ?? '' });
+    case 'TRANSFER': return t(x.isProfitCenterChange ? 'request.summary.TRANSFER_PC' : 'request.summary.TRANSFER', { tag, cc: x.targetCostCenterCode ?? '' });
+    case 'CHANGE': return t('request.summary.CHANGE', { tag });
+    case 'RETIRE': return t('request.summary.RETIRE', { tag, type: x.retireType ? t(`request.retireType.${x.retireType}`) : '' });
+    case 'SALE': return t('request.summary.SALE', { tag, buyer: x.buyer ?? '' });
+    default: return x.summary;
+  }
+}
+
 function Inbox({ page, set, onOpen }: { page: number; set: (p: Record<string, string>) => void; onOpen: (id: string) => void }) {
   const { t } = useTranslation();
   const r = useAsync((sig) => api.get<Page<InboxRow>>(`/approvals/inbox${qs({ page, pageSize: PAGE_SIZE })}`, sig), [page]);
   const columns = useMemo<Column<InboxRow>[]>(() => [
     { key: 'targetNo', label: t('request.col.no'), render: (x) => <span className="mono">{x.targetNo}</span> },
     { key: 'requestType', label: t('request.col.type'), render: (x) => t(`request.type.${x.requestType}`) },
-    { key: 'summary', label: t('request.col.summary') },
+    { key: 'summary', label: t('request.col.summary'), render: (x) => summaryOf(t, x) },
     { key: 'requesterName', label: t('request.col.requester') },
-    { key: 'stepNo', label: t('request.col.step'), render: (x) => `${x.stepNo} · ${t(`role.${x.approverRole}`)}` },
+    { key: 'stepNo', label: t('request.col.step'), render: (x) => `${x.stepNo} · ${t(`role.${x.approverRole}`)}${x.proxy ? ` (${t('request.list.proxy')})` : ''}` },
     { key: 'amount', label: t('request.col.amount'), align: 'right', render: (x) => <span className="num">{formatUsd(x.amount ?? null)}</span> },
     { key: 'waitingSince', label: t('request.col.waiting'), render: (x) => formatDateTime(x.waitingSince) },
   ], [t]);

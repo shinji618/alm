@@ -13018,6 +13018,24 @@ components:
         approverRole:
           type: string
           description: 단계 역할
+        assetTag:
+          type: string
+          description: 자산태그
+        targetCostCenterCode:
+          type: string
+          description: 대상 코스트센터
+        isProfitCenterChange:
+          type: boolean
+          description: 손익센터 변경
+        retireType:
+          type: string
+          description: 폐기 유형
+        buyer:
+          type: string
+          description: 매입처
+        proxy:
+          type: boolean
+          description: 부서 관리자 없음 → 자산회계 대리 결정
         summary:
           type: string
           description: '요약 (예: 이관 · AT-000123 → 1000-4310)'

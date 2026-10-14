@@ -267,7 +267,8 @@
       "allStatus": "모든 상태",
       "mine": "요청자",
       "everyone": "전체",
-      "mineOnly": "내 요청"
+      "mineOnly": "내 요청",
+      "proxy": "대리"
     },
     "col": {
       "no": "요청번호",
@@ -397,6 +398,14 @@
         "RETIRE": "폐기·분실 처리(ABAVN). 승인·전기 후 Retired.",
         "SALE": "매각 처리(ABAON). 승인·전기 후 Disposed."
       }
+    },
+    "summary": {
+      "NEW_ASSET": "{{tag}} SAP 등록 → {{cc}}",
+      "TRANSFER": "{{tag}} → {{cc}}",
+      "TRANSFER_PC": "{{tag}} → {{cc}} (손익센터 변경)",
+      "CHANGE": "{{tag}} 변경",
+      "RETIRE": "{{tag}} {{type}}",
+      "SALE": "{{tag}} 매각 · {{buyer}}"
     }
   }
 }

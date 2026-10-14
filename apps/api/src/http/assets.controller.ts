@@ -1,16 +1,30 @@
 // 자산(ALM-110~112) API. 권한 키는 가드가 operationId로, 데이터 범위는 assets/·auth/scope가 확인. WBS 4.2
 import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Patch, Post, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
+import type { PoolClient } from 'pg';
 import { Db } from '../db/pool';
 import * as assets from '../assets/assets';
 import { lookups } from '../assets/lookups';
 import { checkIn, checkOut, repair } from '../assets/assign';
 import { AlmContext, Ctx, Operation, txOf } from './context';
-import { DB } from './tokens';
+import { CONFIG, DB, MAILER } from './tokens';
+import type { Config } from '../config';
+import type { Mailer } from '../notify/mail';
+import { submittedMails } from '../requests/requests';
+import { withMail } from './mail-tx';
 
 @Controller()
 export class AssetsController {
-  constructor(@Inject(DB) private db: Db) {}
+  constructor(@Inject(DB) private db: Db, @Inject(MAILER) private mailer: Mailer | null, @Inject(CONFIG) private cfg: Config) {}
+
+  // 등록(SAP 등록 체크)·할당(코스트센터 변경)·수정이 만든 제출 상태 요청은 1단계 승인자에게 메일
+  private withRequestMails<T extends { createdRequest?: Record<string, string>; createdRequests?: Record<string, string>[] }>(ctx: AlmContext, fn: (c: PoolClient) => Promise<T>) {
+    return withMail(this.db, this.mailer, this.cfg, ctx, async (c, mails) => {
+      const r = await fn(c);
+      for (const q of [...(r.createdRequest ? [r.createdRequest] : []), ...(r.createdRequests ?? [])]) if (q.id) mails.push(...await submittedMails(c, q.id));
+      return r;
+    });
+  }
 
   @Get('lookups')
   @Operation('getLookups')
@@ -29,7 +43,7 @@ export class AssetsController {
   @HttpCode(201)
   @Operation('createAsset')
   create(@Ctx() ctx: AlmContext, @Body() body: unknown) {
-    return this.db.withTx(txOf(ctx), (c) => assets.createAsset(c, ctx.principal!, body));
+    return this.withRequestMails(ctx, (c) => assets.createAsset(c, ctx.principal!, body));
   }
 
   @Get('assets/:id')
@@ -44,7 +58,7 @@ export class AssetsController {
   @Operation('patchAsset')
   async patch(@Ctx() ctx: AlmContext, @Param('id') id: string, @Headers('if-match') ifMatch: string | undefined, @Body() body: unknown,
               @Res({ passthrough: true }) res: Response) {
-    const r = await this.db.withTx(txOf(ctx), (c) => assets.patchAsset(c, ctx.principal!, id, ifMatch, body));
+    const r = await this.withRequestMails(ctx, (c) => assets.patchAsset(c, ctx.principal!, id, ifMatch, body));
     res.setHeader('ETag', `"${r.asset.version}"`);
     return r;
   }
@@ -77,7 +91,7 @@ export class AssetsController {
   @HttpCode(200)
   @Operation('checkOutAsset')
   checkOut(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) {
-    return this.db.withTx(txOf(ctx), (c) => checkOut(c, ctx.principal!, id, body));
+    return this.withRequestMails(ctx, (c) => checkOut(c, ctx.principal!, id, body));
   }
 
   @Post('assets/:id\\:check-in')

@@ -267,7 +267,8 @@
       "allStatus": "All statuses",
       "mine": "Requester",
       "everyone": "Everyone",
-      "mineOnly": "My requests"
+      "mineOnly": "My requests",
+      "proxy": "substitute"
     },
     "col": {
       "no": "Request",
@@ -397,6 +398,14 @@
         "RETIRE": "Scrap or loss (ABAVN). Retired after approval and posting.",
         "SALE": "Sale (ABAON). Disposed after approval and posting."
       }
+    },
+    "summary": {
+      "NEW_ASSET": "{{tag}} register in SAP → {{cc}}",
+      "TRANSFER": "{{tag}} → {{cc}}",
+      "TRANSFER_PC": "{{tag}} → {{cc}} (profit center change)",
+      "CHANGE": "{{tag}} change",
+      "RETIRE": "{{tag}} {{type}}",
+      "SALE": "{{tag}} sale · {{buyer}}"
     }
   }
 }

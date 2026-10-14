@@ -110,6 +110,8 @@ test('등록: 권한·검증·범위, 태그 채번, IN_USE 할당, SAP 등록 �
   assert.equal(a.financial.isCapitalized, false); assert.equal(a.financial.assetClass, '3100', '카테고리 기본 클래스');
   assert.deepEqual({ ...r.body.createdRequest, id: undefined }, { id: undefined, requestNo: 'AR-00001', requestType: 'NEW_ASSET', status: 'SUBMITTED' });
   assert.deepEqual(a.openRequests.map((x: { requestNo: string }) => x.requestNo), ['AR-00001']);
+  assert.deepEqual((await q(`SELECT u.email FROM notification n JOIN app_user u ON u.id = n.recipient_id WHERE n.template = 'APPROVAL_REQUESTED'`)).map((x) => x.email),
+    ['dept@ast.test'], 'CC100 부서 관리자에게 승인 요청 메일');
   assert.deepEqual((await q(`SELECT step_no, approver_role, decision FROM approval ORDER BY step_no`)).map((x) => [x.step_no, x.approver_role, x.decision]),
     [[1, 'DEPT_MANAGER', 'PENDING'], [2, 'ASSET_ACCOUNTANT', 'PENDING']]);
   assert.ok(r.body.labelJobId);
