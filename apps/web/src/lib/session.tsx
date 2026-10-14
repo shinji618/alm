@@ -7,6 +7,8 @@ export interface RoleScope { role: string; companyCode?: string; siteCode?: stri
 export interface Me {
   userId: string; displayName: string; email: string; locale: 'en' | 'ko'; tenantCode: string;
   roles: RoleScope[]; permissions: string[]; navCounts: Record<string, number>;
+  /** sap: SAP 연계를 쓰는 회사가 하나라도 있음(없으면 SAP 메뉴·필드를 숨긴다) */
+  features?: { sap?: boolean };
 }
 type State = { status: 'loading' } | { status: 'anonymous' } | { status: 'error'; message: string } | { status: 'ready'; me: Me };
 interface SessionApi { state: State; me?: Me; can: (perm: string) => boolean; reload: () => void; /** 화면을 가리지 않고 /me만 다시(메뉴 배지 수 등) */ refresh: () => void }

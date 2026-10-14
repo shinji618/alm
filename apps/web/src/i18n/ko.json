@@ -29,7 +29,9 @@
     "inventoryCount": "실물 실사",
     "labels": "라벨",
     "sap": "SAP FI-AA",
-    "design": "디자인 시스템"
+    "design": "디자인 시스템",
+    "admin": "관리",
+    "companies": "회사·SAP 연계"
   },
   "common": {
     "clear": "초기화",
@@ -199,7 +201,8 @@
       "valueAsOf": "금액 기준",
       "tco": "TCO 추정",
       "sapSyncedAt": "마지막 SAP 수신",
-      "notInSap": "아직 SAP에 없음"
+      "notInSap": "아직 SAP에 없음",
+      "noSapNote": "이 회사는 SAP 연계를 쓰지 않습니다. 금액은 구매가 기준입니다."
     },
     "assign": {
       "title": "할당",
@@ -381,7 +384,9 @@
       "rejected": "반려했습니다",
       "finalTitle": "{{no}} 최종 승인",
       "finalMessage": "승인하면 SAP 전기 대기열에 올라가고(SAP 자산이 아니면 바로 반영) 되돌릴 수 없습니다.",
-      "proxyNote": "이 코스트센터에는 부서 관리자가 없어 자산회계가 1단계를 대리 승인합니다. 2단계는 다른 자산회계가 승인해야 합니다."
+      "proxyNote": "이 코스트센터에는 부서 관리자가 없어 자산회계가 1단계를 대리 승인합니다. 2단계는 다른 자산회계가 승인해야 합니다.",
+      "noSapPosting": "이 회사는 SAP 연계를 쓰지 않아 승인 후 ALM에만 반영합니다.",
+      "noApproval": "이 회사는 승인 단계가 없어 제출과 함께 반영됩니다."
     },
     "form": {
       "saveDraft": "임시 저장",
@@ -407,5 +412,32 @@
       "RETIRE": "{{tag}} {{type}}",
       "SALE": "{{tag}} 매각 · {{buyer}}"
     }
+  },
+  "company": {
+    "crumb": "관리",
+    "title": "회사·SAP 연계",
+    "description": "회사코드별로 SAP 연계 사용과 자산 요청 승인 단계를 정합니다. SAP 연계를 끄면 SAP 필드·기능을 숨기고 요청은 승인 후 ALM에만 반영합니다.",
+    "register": "회사 등록",
+    "edit": "설정 변경",
+    "code": "회사코드",
+    "name": "이름",
+    "currency": "통화",
+    "sap": "SAP 연계",
+    "steps": "승인 단계",
+    "connections": "SAP 연결",
+    "synced": "마지막 SAP 수신",
+    "on": "사용",
+    "off": "사용 안 함",
+    "stepsLabel": {
+      "2": "2단계 · 부서 관리자 → 자산회계",
+      "1": "1단계 · 부서 관리자",
+      "0": "승인 없음 · 자산 관리자가 바로 처리"
+    },
+    "sapOnlyTwo": "SAP 연계를 쓰는 회사는 2단계만 쓸 수 있습니다.",
+    "offWarn": "끄면 이 회사의 SAP 연결 호출을 받지 않고, 화면에서 SAP 등록·전기·장부가액을 숨깁니다. SAP 전기 대기 건이 있으면 끌 수 없습니다.",
+    "registerHint": "SAP 연계를 쓰지 않는 회사를 직접 등록합니다. SAP 회사는 SAP 마스터 수신(IF-MD-01)으로 들어옵니다.",
+    "saved": "저장했습니다",
+    "created": "회사 {{code}}를 등록했습니다",
+    "codeHint": "대문자·숫자 1~4자"
   }
 }

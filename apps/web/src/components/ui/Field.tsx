@@ -40,14 +40,14 @@ export function TextField({ label, required, error, hint, full, id, className, .
   );
 }
 
-export function SelectField({ label, required, error, hint, full, id, className, options, ...rest }: Native<SelectHTMLAttributes<HTMLSelectElement>> & { options: Array<{ value: string; label: string }> }) {
+export function SelectField({ label, required, error, hint, full, id, className, options, ...rest }: Native<SelectHTMLAttributes<HTMLSelectElement>> & { options: Array<{ value: string; label: string; disabled?: boolean }> }) {
   const auto = useId();
   const fid = id ?? auto;
   return (
     <Shell id={fid} label={label} required={required} error={error} hint={hint} full={full}>
       <select id={fid} required={required} aria-invalid={!!error} className={cx(s.input, error && s.inputInvalid, className)} {...rest}>
         {options.map((o) => (
-          <option key={o.value} value={o.value}>
+          <option key={o.value} value={o.value} disabled={o.disabled}>
             {o.label}
           </option>
         ))}

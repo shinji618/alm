@@ -20,7 +20,8 @@ export function AssetList() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language as Lang;
   const nav = useNavigate();
-  const { can } = useSession();
+  const { can, me } = useSession();
+  const sap = me?.features?.sap !== false;   // SAP 연계를 쓰는 회사가 없으면 SAP 열·필터를 숨긴다
   const [sp, setSp] = useSearchParams();
   const get = (k: string) => sp.get(k) ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? 1) || 1);
@@ -51,10 +52,10 @@ export function AssetList() {
     { key: 'roomCode', label: t('asset.col.room'), sortValue: (r) => r.roomCode ?? '', render: (r) => [r.siteCode, r.roomCode].filter(Boolean).join(' / ') || '—' },
     { key: 'assignedUserName', label: t('asset.col.user'), sortValue: (r) => r.assignedUserName ?? '' },
     { key: 'costCenterCode', label: t('asset.col.costCenter'), sortValue: (r) => r.costCenterCode ?? '', render: (r) => <span className="mono">{r.costCenterCode ?? '—'}</span> },
-    { key: 'sapAssetNo', label: t('asset.col.sapNo'), sortValue: (r) => r.sapAssetNo ?? '', render: (r) => <span className="mono">{r.sapAssetNo?.replace(/^0+/, '') ?? '—'}</span> },
-    ...(amount ? [{ key: 'nbv', label: t('asset.col.nbv'), align: 'right' as const, sortValue: (r: AssetSummary) => r.nbv ?? 0, render: (r: AssetSummary) => <span className="num">{formatUsd(r.nbv)}</span> }] : []),
+    ...(sap ? [{ key: 'sapAssetNo', label: t('asset.col.sapNo'), sortValue: (r: AssetSummary) => r.sapAssetNo ?? '', render: (r: AssetSummary) => <span className="mono">{r.sapAssetNo?.replace(/^0+/, '') ?? '—'}</span> } as Column<AssetSummary>] : []),
+    ...(amount && sap ? [{ key: 'nbv', label: t('asset.col.nbv'), align: 'right' as const, sortValue: (r: AssetSummary) => r.nbv ?? 0, render: (r: AssetSummary) => <span className="num">{formatUsd(r.nbv)}</span> }] : []),
     { key: 'updatedAt', label: t('asset.col.updated'), sortValue: (r) => r.updatedAt, render: (r) => formatDate(r.updatedAt, lang) },
-  ], [t, lang, amount]);
+  ], [t, lang, amount, sap]);
 
   // 서버 정렬: 표 머리글 → sort 파라미터
   const sorting: SortingState = sort.split(',')[0] ? [{ id: sort.replace(/^-/, '').split(',')[0], desc: sort.startsWith('-') }] : [];
@@ -79,7 +80,7 @@ export function AssetList() {
           <FilterSelect label={t('asset.col.site')} allLabel={t('asset.list.allSites')} value={get('siteId')} onChange={(v) => set({ siteId: v })} options={opts(lookups.data?.sites)} />
           <FilterSelect label={t('asset.col.category')} allLabel={t('asset.list.allCategories')} value={get('categoryId')} onChange={(v) => set({ categoryId: v })} options={opts(lookups.data?.categories)} />
           <FilterSelect label={t('asset.list.quick')} allLabel={t('asset.list.quick')} value={get('quick')} onChange={(v) => set({ quick: v })}
-            options={QUICK.map((c) => ({ value: c, label: t(`asset.quick.${c}`) }))} />
+            options={QUICK.filter((c) => sap || c !== 'NON_SAP').map((c) => ({ value: c, label: t(`asset.quick.${c}`) }))} />
         </FilterBar>
         {list.error ? (
           <div className={s.notice} role="alert">{t('common.error', { message: list.error.message })} <Button size="sm" onClick={list.reload}>{t('common.retry')}</Button></div>

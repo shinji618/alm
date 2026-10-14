@@ -231,7 +231,7 @@ model UserRole {
   @@map("user_role")
 }
 
-/// 회사코드 — SAP 회사코드 (IF-MD-01 COMPANY)
+/// 회사코드 — SAP 회사코드 (IF-MD-01 COMPANY). SAP 연계를 쓰지 않는 회사는 관리 화면에서 등록
 model Company {
   id String @id @default(uuid(7)) @db.Uuid
   /// 테넌트
@@ -243,6 +243,10 @@ model Company {
   name String @db.VarChar(25)
   /// WAERS
   currency String @default("USD") @db.VarChar(5)
+  /// SAP 연계 사용. 끄면 SAP 필드·기능을 숨기고 자산 요청은 승인 후 ALM에만 반영
+  sapEnabled Boolean @default(true) @map("sap_enabled")
+  /// 자산 요청 승인 단계 2 부서 관리자→자산회계, 1 부서 관리자, 0 없음(SAP 연계를 끈 회사만)
+  approvalSteps Int @default(2) @map("approval_steps")
   /// 마지막 SAP 수신
   sapSyncedAt DateTime? @map("sap_synced_at") @db.Timestamptz(6)
   /// 수신 목록에 없으면 false

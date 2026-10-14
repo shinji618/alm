@@ -140,7 +140,7 @@ export async function getAsset(c: PoolClient, p: Principal, id: string) {
 
 export async function detail(c: PoolClient, p: Principal, id: string) {
   const r = (await c.query(
-    `SELECT a.*, host(a.ip_address) AS ip, st.stage, co.company_code, ac.class_code, ac.default_useful_life_years,
+    `SELECT a.*, host(a.ip_address) AS ip, st.stage, co.company_code, co.sap_enabled, ac.class_code, ac.default_useful_life_years,
             vl.fiscal_year, vl.period, vl.acquisition_value, vl.accum_depreciation, vl.net_book_value, vl.useful_life_years AS vl_life
        FROM asset a JOIN company co ON co.id = a.company_id
        LEFT JOIN asset_class ac ON ac.id = a.asset_class_id
@@ -168,7 +168,7 @@ export async function detail(c: PoolClient, p: Principal, id: string) {
     macAddress: r.mac_address ?? undefined, osName: r.os_name ?? undefined, warrantyEndDate: day(r.warranty_end_date),
     lastCountDate: day(r.last_count_date), lastSeenAt: iso(r.last_seen_at), notes: r.notes ?? undefined,
     financial: clean({
-      isCapitalized: r.is_capitalized, companyCode: r.company_code, sapAssetNo: r.sap_asset_no ?? undefined, sapSubNo: r.sap_sub_no ?? undefined,
+      isCapitalized: r.is_capitalized, companyCode: r.company_code, sapEnabled: r.sap_enabled, sapAssetNo: r.sap_asset_no ?? undefined, sapSubNo: r.sap_sub_no ?? undefined,
       assetClass: r.class_code ?? undefined, capDate: day(r.sap_cap_date),
       acquisitionValue: amount ? numOrNull(r.acquisition_value) : null, accumDepreciation: amount ? numOrNull(r.accum_depreciation) : null,
       netBookValue: amount ? numOrNull(r.net_book_value) : null, usefulLifeYears: r.vl_life ?? r.default_useful_life_years ?? undefined,
@@ -208,6 +208,9 @@ export async function createAsset(c: PoolClient, p: Principal, body: unknown) {
   k.done();
 
   const ref = await refs(c, { ...v });
+  if (v.registerInSap && !(await c.query('SELECT sap_enabled FROM company WHERE id = $1', [v.companyId])).rows[0]?.sap_enabled) {
+    throw E.badRequest('입력 값을 확인하세요: registerInSap 이 회사는 SAP 연계를 쓰지 않습니다', { errors: [{ field: 'registerInSap', code: 'ALM-E100', message: 'SAP 연계를 쓰지 않는 회사' }] });
+  }
   if (!allowsPlace(p, 'asset.write', ref.companyCode, ref.siteCode)) throw E.forbidden('범위 밖 회사코드·사이트에는 등록할 수 없습니다');
   const classId = v.assetClassId ?? ref.defaultClassId ?? null;
   const cls = classId ? (await c.query('SELECT id, class_code, is_capitalized, is_low_value, is_active FROM asset_class WHERE id = $1', [classId])).rows[0] : undefined;
@@ -339,7 +342,8 @@ export async function patchAsset(c: PoolClient, p: Principal, id: string, ifMatc
   }
   if (!set.length) return { asset: await detail(c, p, id), createdRequests: [] };
 
-  const sapAsset = !!cur.sap_asset_no;
+  // SAP 연계를 끈 회사는 SAP에 보내지 않는다
+  const sapAsset = !!cur.sap_asset_no && !!(await c.query('SELECT sap_enabled FROM company WHERE id = $1', [cur.company_id])).rows[0]?.sap_enabled;
   const serialChanged = set.some(([col]) => col === 'serial_no');
   if (sapAsset && serialChanged && (v.serialNo ?? '').length > 18) {
     throw E.badRequest('입력 값을 확인하세요: serialNo SAP 자산의 시리얼은 18자 이하(SERNR)', { errors: [{ field: 'serialNo', code: 'ALM-E100', message: '18자 이하' }] });

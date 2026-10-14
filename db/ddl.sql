@@ -176,13 +176,15 @@ COMMENT ON COLUMN user_role.version IS '낙관적 잠금';
 COMMENT ON TABLE user_role IS '사용자 역할 — 역할 부여와 범위(회사코드·사이트). 범위가 비면 전체';
 CREATE INDEX ix_user_role_tenant_id_role ON user_role (tenant_id, role);
 
--- 회사코드: SAP 회사코드 (IF-MD-01 COMPANY)
+-- 회사코드: SAP 회사코드 (IF-MD-01 COMPANY). SAP 연계를 쓰지 않는 회사는 관리 화면에서 등록
 CREATE TABLE company (
   id uuid PRIMARY KEY,
   tenant_id uuid NOT NULL,
   company_code varchar(4) NOT NULL,
   name varchar(25) NOT NULL,
   currency varchar(5) NOT NULL DEFAULT 'USD',
+  sap_enabled boolean NOT NULL DEFAULT true,
+  approval_steps integer NOT NULL DEFAULT 2,
   sap_synced_at timestamptz,
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -190,13 +192,16 @@ CREATE TABLE company (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   version integer NOT NULL DEFAULT 1,
-  UNIQUE (tenant_id, company_code)
+  UNIQUE (tenant_id, company_code),
+  CHECK (approval_steps BETWEEN 0 AND 2 AND (sap_enabled = false OR approval_steps = 2))
 );
 COMMENT ON COLUMN company.id IS '기본키';
 COMMENT ON COLUMN company.tenant_id IS '테넌트';
 COMMENT ON COLUMN company.company_code IS 'BUKRS';
 COMMENT ON COLUMN company.name IS 'BUTXT';
 COMMENT ON COLUMN company.currency IS 'WAERS';
+COMMENT ON COLUMN company.sap_enabled IS 'SAP 연계 사용. 끄면 SAP 필드·기능을 숨기고 자산 요청은 승인 후 ALM에만 반영';
+COMMENT ON COLUMN company.approval_steps IS '자산 요청 승인 단계 2 부서 관리자→자산회계, 1 부서 관리자, 0 없음(SAP 연계를 끈 회사만)';
 COMMENT ON COLUMN company.sap_synced_at IS '마지막 SAP 수신';
 COMMENT ON COLUMN company.is_active IS '수신 목록에 없으면 false';
 COMMENT ON COLUMN company.created_at IS '생성 일시';
@@ -204,7 +209,7 @@ COMMENT ON COLUMN company.created_by IS '생성자';
 COMMENT ON COLUMN company.updated_at IS '변경 일시';
 COMMENT ON COLUMN company.updated_by IS '변경자';
 COMMENT ON COLUMN company.version IS '낙관적 잠금';
-COMMENT ON TABLE company IS '회사코드 — SAP 회사코드 (IF-MD-01 COMPANY)';
+COMMENT ON TABLE company IS '회사코드 — SAP 회사코드 (IF-MD-01 COMPANY). SAP 연계를 쓰지 않는 회사는 관리 화면에서 등록';
 
 -- 플랜트: SAP 플랜트 (IF-MD-01 PLANT)
 CREATE TABLE plant (

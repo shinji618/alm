@@ -35,9 +35,12 @@ export function AssetCreate() {
   const category = L.categories?.find((c) => c.id === f.categoryId);
   const classId = f.assetClassId || (category?.extra?.defaultAssetClassId as string | undefined) || '';
   const cls = L.assetClasses?.find((c) => c.id === classId);
-  const capitalized = !!cls && cls.extra?.isCapitalized !== false && cls.extra?.isLowValue !== true;
+  const company = L.companies?.find((c) => c.id === f.companyId);
+  const sapCompany = company?.extra?.sapEnabled !== false;   // SAP 연계를 끈 회사는 SAP 등록 체크를 숨긴다
+  const capitalized = sapCompany && !!cls && cls.extra?.isCapitalized !== false && cls.extra?.isLowValue !== true;
   // 자본화 클래스면 체크 제안(사용자가 직접 바꾼 뒤에는 건드리지 않음)
   useEffect(() => { if (!sapTouched) set('registerInSap', capitalized); }, [capitalized, sapTouched]);
+  useEffect(() => { if (!sapCompany) set('registerInSap', false); }, [sapCompany]);
 
   const opt = (xs: LookupItem[] | undefined, blank = true) => [...(blank ? [{ value: '', label: '—' }] : []), ...(xs ?? []).map((x) => ({ value: x.id, label: `${x.code} · ${x.label}` }))];
   const models = useMemo(() => (L.models ?? []).filter((m) => !f.categoryId || m.parentId === f.categoryId), [L.models, f.categoryId]);
@@ -116,10 +119,14 @@ export function AssetCreate() {
           <TextField label={t('asset.field.hostname')} maxLength={63} value={f.hostname} onChange={(e) => set('hostname', e.target.value)} />
           <div />
           <TextareaField label={t('asset.field.notes')} value={f.notes} onChange={(e) => set('notes', e.target.value)} />
-          <CheckboxField label={t('asset.field.registerInSap')} checked={f.registerInSap} onChange={(e) => { setSapTouched(true); set('registerInSap', e.target.checked); }} />
-          <div className="small muted" style={{ gridColumn: '1 / -1', marginTop: -8 }}>
-            {capitalized && !sapTouched ? `${t('asset.sapHintClass')} ` : ''}{t('asset.sapHint')}
-          </div>
+          {sapCompany && (
+            <>
+              <CheckboxField label={t('asset.field.registerInSap')} checked={f.registerInSap} onChange={(e) => { setSapTouched(true); set('registerInSap', e.target.checked); }} />
+              <div className="small muted" style={{ gridColumn: '1 / -1', marginTop: -8 }}>
+                {capitalized && !sapTouched ? `${t('asset.sapHintClass')} ` : ''}{t('asset.sapHint')}
+              </div>
+            </>
+          )}
           <CheckboxField label={t('asset.field.printLabel')} checked={f.printLabel} onChange={(e) => set('printLabel', e.target.checked)} />
           <div className={s.formActions}>
             <Button onClick={() => nav('/assets')}>{t('common.cancel')}</Button>

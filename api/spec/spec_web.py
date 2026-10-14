@@ -31,6 +31,7 @@ tenantCode | string | Y | 테넌트
 roles | [RoleScope] | Y | 역할과 범위
 permissions | [string] | Y | 화면·기능 권한 키 (예: asset.write, amount.read)
 navCounts | object | Y | 메뉴 배지 수 {requests, counts, sap}
+features | object | Y | {sap: SAP 연계를 쓰는 회사가 하나라도 있음}. false면 화면이 SAP 메뉴·필드를 숨긴다
 ''')
 schema('RoleScope', '역할과 범위', '''
 role | enum(SYS_ADMIN,ASSET_MANAGER,DEPT_MANAGER,ASSET_ACCOUNTANT,COUNTER,EMPLOYEE,AUDITOR) | Y | 역할
@@ -210,6 +211,7 @@ lst('AssetSummary', '자산 목록')
 schema('AssetFinancial', 'Financial & SAP 탭(amount.read 권한 없으면 금액 null)', '''
 isCapitalized | bool | Y | 자본화 자산
 companyCode | string(4) | Y | 회사코드
+sapEnabled | bool | Y | 회사가 SAP 연계를 씀(false면 SAP 필드·장부가액을 숨긴다)
 sapAssetNo | string(12) | N | ANLN1
 sapSubNo | string(4) | N | ANLN2
 assetClass | string(8) | N | 자산클래스
@@ -840,6 +842,8 @@ request | AssetRequestInput | Y | 값(금액은 amount.read·요청자·지금 �
 labels | RequestLabels | Y | 화면 표시용 코드·이름
 amountMasked | bool | Y | 금액을 숨겼음
 isProfitCenterChange | bool | Y | 손익센터 변경(→ABUMN)
+sapEnabled | bool | Y | 자산 회사가 SAP 연계를 씀
+approvalSteps | int | Y | 회사의 승인 단계(2·1·0)
 deptManagerMissing | bool | Y | 책임 코스트센터에 (요청자 말고) 유효한 부서 관리자가 없음 → 1단계를 자산회계가 대리 결정
 asset | RequestAsset | N | 대상 자산
 approvals | [ApprovalStep] | Y | 승인 단계
@@ -1399,6 +1403,41 @@ W('관리','POST','/admin/masters/{type}','createMaster','마스터 등록',SA,'
 W('관리','PATCH','/admin/masters/{type}/{id}','patchMaster','마스터 수정',SA,'MasterRecord','MasterRecord','200, 400, 404, 409','site, room, category, model, vendor, printer','관리',[ '삭제 대신 isActive=false. 사용 중인 룸 비활성은 409 ALM-E318.'],params=[MT,ID()])
 W('관리','GET','/admin/codes','listCodes','공통 코드',SA,None,'CodeGroupList','200','code','관리',[ '-'])
 W('관리','PUT','/admin/codes/{group}','putCodeGroup','코드 그룹 저장',SA,'CodeGroup','CodeGroup','200, 400','code','관리',[ '그룹 전체 교체. 쓰이는 코드는 지우지 않고 isActive=false.'],params=[('group','path','string(30)','Y','그룹')])
+schema('CompanyConfig', '회사코드 설정', '''
+id | uuid | Y | id
+companyCode | string(4) | Y | 회사코드
+name | string(25) | Y | 이름
+currency | string(5) | Y | 통화
+sapEnabled | bool | Y | SAP 연계 사용
+approvalSteps | int | Y | 자산 요청 승인 단계 2 부서 관리자→자산회계, 1 부서 관리자, 0 없음
+isActive | bool | Y | 사용
+sapSyncedAt | datetime | N | 마지막 SAP 수신
+sapConnections | int | Y | 활성 SAP 연결 수
+version | int | Y | 낙관적 잠금
+''')
+schema('CompanyConfigList', '회사코드 설정 목록', '''
+items | [CompanyConfig] | Y | 행
+''')
+schema('CompanyInput', '회사코드 등록(SAP 연계를 쓰지 않는 회사)', '''
+companyCode | string(4) | Y | 대문자·숫자 1~4자
+name | string(25) | Y | 이름
+currency | string(5) | N | 기본 USD
+sapEnabled | bool | N | 기본 false
+approvalSteps | int | N | 기본 2
+''')
+schema('CompanyPatch', '회사코드 설정 변경', '''
+name | string(25) | N | 이름
+sapEnabled | bool | N | SAP 연계 사용
+approvalSteps | int | N | 승인 단계(SAP 연계를 쓰면 2만)
+''')
+W('관리','GET','/admin/companies','listCompanies','회사·SAP 연계 설정',SA,None,'CompanyConfigList','200','company, sap_connection','관리',[ '회사코드별 SAP 연계 사용·승인 단계. SAP 회사는 IF-MD-01로 들어온다.'])
+W('관리','POST','/admin/companies','createCompany','회사코드 등록',SA,'CompanyInput','CompanyConfig','201, 400, 409','company, audit_log','관리',
+  [ 'SAP 연계를 쓰지 않는 회사를 직접 등록한다(SAP 회사는 IF-MD-01). 같은 코드가 있으면 409 ALM-E321.', 'SAP 연계를 쓰는 회사는 승인 단계 2만(400).'],ok='201')
+W('관리','PATCH','/admin/companies/{id}','patchCompany','회사 설정 변경',SA,'CompanyPatch','CompanyConfig','200, 400, 404, 409','company, sap_posting, audit_log','관리',
+  [ 'SAP 연계를 끄면: SAP 연결 호출을 받지 않고, 화면은 SAP 필드·기능(SAP 등록 체크, SAP 신규 등록 요청, 전기 정보, 장부가액)을 숨기며, 자산 요청은 승인 후 ALM에만 반영한다.',
+    '끄기 전에 그 회사의 SAP 전기 대기·처리 중·실패 건이 있으면 409 ALM-E322(SAP 연계 화면에서 처리·취소 뒤).',
+    '승인 단계 2(부서 관리자 → 자산회계) · 1(부서 관리자, 없으면 자산 관리자 대리) · 0(승인 없음, 범위 안의 자산 관리자만 제출, 바로 반영). 1·0은 SAP 연계를 끈 회사만(400). SAP을 켜면 2로 맞춘다.',
+    '진행 중인 요청은 이미 만든 승인 단계를 그대로 따른다.'],params=[ID()])
 W('관리','GET','/admin/settings','listSettings',  '설정',SA,None,'SettingList','200','setting','관리',[ '-'])
 W('관리','PUT','/admin/settings/{key}','putSetting','설정 저장',SA,'SettingRow','SettingRow','200, 400','setting, audit_log','관리',[ '키별 값 형식 검사(SettingRow.value 설명). 모르는 키는 400 ALM-E100.'],params=[('key','path','string(60)','Y','키')])
 W('관리','GET','/admin/audit-logs','listAuditLogs','감사 로그 조회','SYS_ADMIN, ASSET_ACCOUNTANT',None,'AuditRowList','200','audit_log','관리',[ '10년 보관. 13개월 지난 기간은 보관 저장소에서 비동기 조회(내보내기로 안내).'],

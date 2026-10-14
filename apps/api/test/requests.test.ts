@@ -58,11 +58,12 @@ before(async () => {
   await migrate(owner, loadMigrations(join(__dirname, '..', '..', 'migrations')));
   await owner.query(`ALTER ROLE alm_app_login PASSWORD 'test'`);
   app = new Db(new Pool({ host, port, user: 'alm_app_login', password: 'test', database: dbName, max: 4 }));
-  const users = ['mgr', 'emp', 'dept1', 'dept3', 'acct', 'both'];
+  const users = ['mgr', 'emp', 'dept1', 'dept3', 'acct', 'both', 'mgr2', 'adm'];
   tenantId = (await seed(owner, { tenant: { code: 'REQ', name: 'Request test', idpType: 'OIDC' }, domains: ['req.test'],
     users: [{ email: 'mgr@req.test', displayName: 'Manager', roles: ['ASSET_MANAGER'] }, { email: 'emp@req.test', displayName: 'Emp', roles: [] },
       { email: 'dept1@req.test', displayName: 'Dept 100', roles: [] }, { email: 'dept3@req.test', displayName: 'Dept 300', roles: [] },
-      { email: 'acct@req.test', displayName: 'Acct', roles: ['ASSET_ACCOUNTANT'] }, { email: 'both@req.test', displayName: 'Both', roles: ['ASSET_ACCOUNTANT'] }] })).tenantId;
+      { email: 'acct@req.test', displayName: 'Acct', roles: ['ASSET_ACCOUNTANT'] }, { email: 'both@req.test', displayName: 'Both', roles: ['ASSET_ACCOUNTANT'] },
+      { email: 'mgr2@req.test', displayName: 'Manager 2', roles: ['ASSET_MANAGER'] }, { email: 'adm@req.test', displayName: 'Admin', roles: ['SYS_ADMIN'] }] })).tenantId;
   for (const u of users) ids[u] = (await q(`UPDATE app_user SET idp_subject = $1 WHERE email = $2 RETURNING id`, [u, `${u}@req.test`]))[0].id;
   const ins = async (sql: string, p: unknown[] = []) => (await q(sql, [tenantId, ...p]))[0].id as string;
   ids.co = await ins(`INSERT INTO company (id, tenant_id, company_code, name) VALUES (gen_random_uuid(), $1, '1000', 'BSG') RETURNING id`);
@@ -273,4 +274,47 @@ test('부서 관리자가 없는 코스트센터: 자산회계가 1단계를 대
   const a2 = await call('both', 'POST', `/approvals/${s2}:approve`, {});
   assert.equal(a2.body.requestStatus, 'POSTED');
   assert.equal((await q('SELECT status FROM asset WHERE id = $1', [a.id]))[0].status, 'RETIRED');
+});
+
+test('회사 설정: SAP 연계를 끈 회사(승인 1단계·0단계), SAP 신규 등록 불가, 설정 검증', { skip }, async () => {
+  assert.equal((await call('mgr', 'GET', '/admin/companies')).status, 403);
+  const co = await call('adm', 'POST', '/admin/companies', { companyCode: '2000', name: 'No SAP Inc', approvalSteps: 1 });
+  assert.equal(co.status, 201);
+  assert.deepEqual([co.body.sapEnabled, co.body.approvalSteps, co.body.sapConnections], [false, 1, 0]);
+  assert.equal((await call('adm', 'POST', '/admin/companies', { companyCode: '2000', name: 'dup' })).status, 409);
+  const bad = await call('adm', 'PATCH', `/admin/companies/${co.body.id}`, { sapEnabled: true, approvalSteps: 1 });
+  assert.equal(bad.status, 400); assert.equal(bad.body.errors[0].field, 'approvalSteps', 'SAP 연계 회사는 2단계만');
+  assert.equal((await call('adm', 'PATCH', `/admin/companies/${ids.co}`, { approvalSteps: 0 })).status, 400);
+  const lk = await call('mgr', 'GET', '/lookups?types=companies');
+  assert.deepEqual(lk.body.companies.map((x: { code: string; extra: { sapEnabled: boolean } }) => [x.code, x.extra.sapEnabled]), [['1000', true], ['2000', false]]);
+  assert.equal((await call('mgr', 'GET', '/me')).body.features.sap, true);
+
+  const [cc] = await q(`INSERT INTO cost_center (id, tenant_id, controlling_area, cost_center_code, name, company_id) VALUES (gen_random_uuid(), $1, 'A000', 'N100', 'NoSAP IT', $2) RETURNING id`, [tenantId, co.body.id]);
+  const mk = async (tag: string) => (await q(`INSERT INTO asset (id, tenant_id, asset_tag, description, category_id, status, source, company_id, site_id, room_id, cost_center_id, sap_asset_no, sap_sub_no)
+    VALUES (gen_random_uuid(), $1, $2::varchar, 'NoSAP laptop', $3, 'IN_STOCK', 'MANUAL', $4, $5, $6, $7, '00000900' || right($2::varchar, 4), '0000') RETURNING id`,
+  [tenantId, tag, ids.cat, co.body.id, ids.site, ids.room1, cc.id]))[0].id as string;
+  const n1 = await mk('NS-0001'), n2 = await mk('NS-0002');
+  const det = await call('mgr', 'GET', `/assets/${n1}`);
+  assert.equal(det.body.financial.sapEnabled, false);
+  const na = await call('mgr', 'POST', '/asset-requests', { requestType: 'NEW_ASSET', assetId: n1, reason: 'x', assetClassId: ids.cls, targetCostCenterId: cc.id, acquisitionValue: 10 });
+  assert.equal(na.status, 422, 'SAP 연계를 끈 회사는 SAP 신규 등록 불가');
+
+  // 승인 1단계, 부서 관리자 없음 → 다른 자산 관리자가 대리. SAP 자산번호가 있어도 전기 없이 바로 반영
+  const r = await call('mgr', 'POST', '/asset-requests', { requestType: 'RETIRE', assetId: n1, reason: '노후', retireType: 'SCRAP', effectiveDate: '2026-10-31', submit: true });
+  assert.equal(r.status, 201);
+  assert.deepEqual([r.body.sapEnabled, r.body.approvalSteps, r.body.approvals.length, r.body.deptManagerMissing], [false, 1, 1, true]);
+  assert.equal((await call('acct', 'GET', '/approvals/inbox')).body.items.some((x: { targetId: string }) => x.targetId === r.body.id), false, '1단계 회사의 대리는 자산회계가 아님');
+  const s1 = await step(r.body.id, 1);
+  assert.equal((await call('mgr', 'POST', `/approvals/${s1}:approve`, {})).status, 403, '요청자 본인');
+  const a1 = await call('mgr2', 'POST', `/approvals/${s1}:approve`, {});
+  assert.equal(a1.status, 200); assert.equal(a1.body.requestStatus, 'POSTED');
+  assert.match(a1.body.comment, /자산 관리자 결정/);
+  assert.equal((await q('SELECT count(*)::int AS n FROM sap_posting WHERE asset_request_id = $1', [r.body.id]))[0].n, 0);
+  assert.equal((await q('SELECT status FROM asset WHERE id = $1', [n1]))[0].status, 'RETIRED');
+
+  // 승인 없음: 자산 관리자가 제출하면 바로 반영
+  assert.equal((await call('adm', 'PATCH', `/admin/companies/${co.body.id}`, { approvalSteps: 0 })).body.approvalSteps, 0);
+  const sale = await call('mgr', 'POST', '/asset-requests', { requestType: 'SALE', assetId: n2, reason: '매각', saleAmount: 50, buyer: 'Buyer', submit: true });
+  assert.equal(sale.status, 201); assert.equal(sale.body.status, 'POSTED'); assert.equal(sale.body.approvals.length, 0);
+  assert.equal((await q('SELECT status FROM asset WHERE id = $1', [n2]))[0].status, 'DISPOSED');
 });

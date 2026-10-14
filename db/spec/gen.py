@@ -186,6 +186,8 @@ def build_ddl():
             defs.append("  CHECK (idp_provider_name ~ '^T-[A-Z0-9-]+$')")
         if t['name'] == 'approval':
             defs.append('  CHECK (num_nonnulls(asset_request_id, purchase_request_id) = 1)')
+        if t['name'] == 'company':
+            defs.append('  CHECK (approval_steps BETWEEN 0 AND 2 AND (sap_enabled = false OR approval_steps = 2))')
         if t.get('partition'):
             defs.append(f'  PRIMARY KEY (id, {t["partition"]})')
         o.append(',\n'.join(defs))
@@ -251,6 +253,7 @@ def doc_table(t):
     if multi: extra.append('UNIQUE ' + ' · '.join('(' + ', '.join(u) + ')' for u in multi))
     if t['indexes']: extra.append('INDEX ' + ' · '.join('(' + ', '.join(i) + ')' for i in t['indexes']))
     if t['name'] == 'approval': extra.append('CHECK asset_request_id·purchase_request_id 중 정확히 하나')
+    if t['name'] == 'company': extra.append('CHECK approval_steps 0~2, SAP 연계 사용 회사는 2단계만')
     if t['name'] == 'tenant': extra.append("CHECK idp_provider_name은 T-로 시작하는 대문자·숫자·하이픈(밑줄 금지)")
     if t['name'] == 'user_role': extra.append('UNIQUE는 NULLS NOT DISTINCT(범위가 빈 같은 역할 중복 방지)')
     if t['name'] in APPEND_ONLY: extra.append('앱 계정은 추가만(수정·삭제 불가)')

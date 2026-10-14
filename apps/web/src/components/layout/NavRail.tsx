@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import s from './layout.module.css';
 import { NAV } from './nav';
+import { useSession } from '@/lib/session';
 
 export interface NavCounts {
   [path: string]: { count: number; alert?: boolean } | undefined;
@@ -10,6 +11,10 @@ export interface NavCounts {
 /** ① Nav rail. counts는 서버 요약 API에서 받아 넘긴다 */
 export function NavRail({ open, counts = {}, onNavigate }: { open: boolean; counts?: NavCounts; onNavigate?: () => void }) {
   const { t } = useTranslation();
+  const { can, me } = useSession();
+  // 권한 키·꺼진 기능(SAP 연계를 쓰는 회사 없음)으로 메뉴를 거른다. 세션이 없으면(Storybook) 권한 메뉴만 숨김
+  const groups = NAV.map((g) => ({ ...g, items: g.items.filter((it) => (!it.perm || can(it.perm)) && (!it.feature || me?.features?.[it.feature] !== false)) }))
+    .filter((g) => g.items.length);
   return (
     <aside className={`${s.rail} ${open ? s.railOpen : ''}`} aria-label="Main navigation">
       <div className={s.brand}>
@@ -20,7 +25,7 @@ export function NavRail({ open, counts = {}, onNavigate }: { open: boolean; coun
         </div>
       </div>
       <nav>
-        {NAV.map((g) => (
+        {groups.map((g) => (
           <div key={g.labelKey}>
             <div className={s.group}>{t(g.labelKey)}</div>
             {g.items.map((it) => {

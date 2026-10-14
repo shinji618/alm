@@ -11,9 +11,10 @@ import { AssetDetail } from '@/pages/assets/AssetDetail';
 import { AssetCreate } from '@/pages/assets/AssetCreate';
 import { RequestList } from '@/pages/requests/RequestList';
 import { RequestDetail } from '@/pages/requests/RequestDetail';
+import { CompanySettings } from '@/pages/admin/CompanySettings';
 
 // 만든 화면(그 외 메뉴는 아직 자리 화면)
-const BUILT = new Set(['/assets', '/requests', '/design']);
+const BUILT = new Set(['/assets', '/requests', '/admin/companies', '/design']);
 
 function Routed() {
   const { t } = useTranslation();
@@ -38,6 +39,7 @@ function Routed() {
         <Route path="/assets/:id" element={<AssetDetail />} />
         <Route path="/requests" element={<RequestList />} />
         <Route path="/requests/:id" element={<RequestDetail />} />
+        <Route path="/admin/companies" element={<CompanySettings />} />
         {NAV_ITEMS.filter((i) => !BUILT.has(i.path)).map((i) => (
           <Route key={i.path} path={i.path} element={<Placeholder />} />
         ))}

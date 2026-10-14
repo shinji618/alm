@@ -61,7 +61,7 @@ export function AssetDetail() {
             <AssetTag tag={d.assetTag} />
             <StatusPill tone={statusCodeTone[d.status]}>{t(`asset.status.${d.status}`)}</StatusPill>
             <span><span className={s.stageDot} style={{ background: stageCodeColorVar[d.stage] }} />{t(`asset.stage.${d.stage}`)}</span>
-            {d.financial.sapAssetNo && <span className="mono small">SAP {d.financial.companyCode}/{d.financial.sapAssetNo.replace(/^0+/, '')}-{d.financial.sapSubNo}</span>}
+            {d.financial.sapEnabled !== false && d.financial.sapAssetNo && <span className="mono small">SAP {d.financial.companyCode}/{d.financial.sapAssetNo.replace(/^0+/, '')}-{d.financial.sapSubNo}</span>}
           </span>
         )}
         actions={d && (
@@ -136,6 +136,20 @@ function General({ d, L, lang, name }: { d: Detail; L: Lookups; lang: Lang; name
 function Financial({ d, lang }: { d: Detail; lang: Lang }) {
   const { t } = useTranslation();
   const f = d.financial;
+  if (f.sapEnabled === false) {
+    // SAP 연계를 끈 회사: SAP 값(자산번호·장부가액 등)은 숨기고 구매가 기준
+    return (
+      <>
+        <div className={s.notice}>{t('asset.fin.noSapNote')}</div>
+        <KeyValue items={[
+          { label: t('asset.fin.companyCode'), value: f.companyCode },
+          { label: t('asset.fin.assetClass'), value: f.assetClass },
+          { label: t('asset.fin.usefulLife'), value: f.usefulLifeYears },
+          { label: t('asset.fin.tco'), value: <span className="num">{formatUsd(f.tcoEstimate, 2)}</span> },
+        ]} />
+      </>
+    );
+  }
   return (
     <KeyValue items={[
       { label: t('asset.fin.companyCode'), value: f.companyCode },

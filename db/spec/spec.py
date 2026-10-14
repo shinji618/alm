@@ -95,10 +95,12 @@ cost_center_id | ->cost_center | | 코스트센터 범위(DEPT_MANAGER)
 valid_from | date | | 유효 시작일(비면 즉시)
 valid_until | date | | 유효 종료일(임시 실사 담당·감사인). 지나면 권한 없음
 ''', uniques=[('user_id','role','company_id','site_id','cost_center_id')], indexes=[('tenant_id','role')], screens='공통')
-t('org','company','회사코드','SAP 회사코드 (IF-MD-01 COMPANY)', '''
+t('org','company','회사코드','SAP 회사코드 (IF-MD-01 COMPANY). SAP 연계를 쓰지 않는 회사는 관리 화면에서 등록', '''
 company_code | vc(4) | NN | BUKRS
 name | vc(25) | NN | BUTXT
 currency | vc(5) | NN ='USD' | WAERS
+sap_enabled | bool | NN =true | SAP 연계 사용. 끄면 SAP 필드·기능을 숨기고 자산 요청은 승인 후 ALM에만 반영
+approval_steps | int | NN =2 | 자산 요청 승인 단계 2 부서 관리자→자산회계, 1 부서 관리자, 0 없음(SAP 연계를 끈 회사만)
 sap_synced_at | ts | | 마지막 SAP 수신
 is_active | bool | NN =true | 수신 목록에 없으면 false
 ''', uniques=[('tenant_id','company_code')], screens='ALM-310')

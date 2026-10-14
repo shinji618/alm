@@ -13,7 +13,8 @@ export async function sapConnection(db: Db, clientId: string): Promise<SapConn |
     'SELECT * FROM auth_sap_client($1)', [clientId]))[0];
   if (!r) return undefined;
   const extra = await db.withTx({ tenantId: r.tenant_id, actorType: 'SAP' }, async (c) => (await c.query(
-    `SELECT t.code AS tenant_code, co.company_code FROM tenant t, company co WHERE t.id = $1 AND co.id = $2`, [r.tenant_id, r.company_id])).rows[0]);
+    `SELECT t.code AS tenant_code, co.company_code, co.sap_enabled FROM tenant t, company co WHERE t.id = $1 AND co.id = $2`, [r.tenant_id, r.company_id])).rows[0]);
+  if (!extra?.sap_enabled) return undefined;   // SAP 연계를 끈 회사: 연결이 있어도 쓰지 않는다
   return { tenantId: r.tenant_id, tenantCode: extra?.tenant_code ?? '', connectionId: r.connection_id, companyId: r.company_id,
     companyCode: extra?.company_code ?? '', systemId: r.system_id, clientId,
     allowedCidrs: Array.isArray(r.allowed_cidrs) ? r.allowed_cidrs.filter((x): x is string => typeof x === 'string') : [] };

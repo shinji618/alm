@@ -29,7 +29,9 @@
     "inventoryCount": "Physical inventory",
     "labels": "Labels & tags",
     "sap": "SAP FI-AA",
-    "design": "Design system"
+    "design": "Design system",
+    "admin": "Administration",
+    "companies": "Companies & SAP"
   },
   "common": {
     "clear": "Clear",
@@ -199,7 +201,8 @@
       "valueAsOf": "Values as of",
       "tco": "TCO estimate",
       "sapSyncedAt": "Last SAP sync",
-      "notInSap": "Not in SAP yet"
+      "notInSap": "Not in SAP yet",
+      "noSapNote": "This company does not use SAP. Amounts are based on the purchase cost."
     },
     "assign": {
       "title": "Check out",
@@ -381,7 +384,9 @@
       "rejected": "Rejected",
       "finalTitle": "Final approval of {{no}}",
       "finalMessage": "Once approved it is queued for SAP posting (or applied right away for non-SAP assets) and cannot be undone.",
-      "proxyNote": "This cost center has no department manager, so an asset accountant decides step 1 instead. Step 2 must be approved by a different asset accountant."
+      "proxyNote": "This cost center has no department manager, so an asset accountant decides step 1 instead. Step 2 must be approved by a different asset accountant.",
+      "noSapPosting": "This company does not use SAP, so the request is applied in ALM after approval.",
+      "noApproval": "This company has no approval steps; the request is applied on submit."
     },
     "form": {
       "saveDraft": "Save draft",
@@ -407,5 +412,32 @@
       "RETIRE": "{{tag}} {{type}}",
       "SALE": "{{tag}} sale · {{buyer}}"
     }
+  },
+  "company": {
+    "crumb": "Administration",
+    "title": "Companies & SAP integration",
+    "description": "Set SAP integration and asset request approval steps per company code. With SAP off, SAP fields and features are hidden and requests are applied in ALM after approval.",
+    "register": "Add company",
+    "edit": "Edit settings",
+    "code": "Company code",
+    "name": "Name",
+    "currency": "Currency",
+    "sap": "SAP integration",
+    "steps": "Approval steps",
+    "connections": "SAP connections",
+    "synced": "Last SAP sync",
+    "on": "On",
+    "off": "Off",
+    "stepsLabel": {
+      "2": "2 steps · department manager → asset accountant",
+      "1": "1 step · department manager",
+      "0": "No approval · asset manager applies directly"
+    },
+    "sapOnlyTwo": "Companies with SAP integration use 2 steps only.",
+    "offWarn": "Turning it off rejects SAP connection calls for this company and hides SAP registration, postings and book values. It cannot be turned off while SAP postings are pending.",
+    "registerHint": "Add a company that does not use SAP. SAP companies arrive through SAP master data (IF-MD-01).",
+    "saved": "Saved",
+    "created": "Added company {{code}}",
+    "codeHint": "1–4 uppercase letters or digits"
   }
 }

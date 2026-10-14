@@ -1,4 +1,4 @@
-// 관리(openapi 관리 영역): 사용자·역할·직무 충돌·공통 코드·설정. 권한은 가드가 operationId로 확인(admin.user·admin.config)
+// 관리(openapi 관리 영역): 사용자·역할·직무 충돌·공통 코드·설정·회사(SAP 연계·승인 단계). 권한은 가드가 operationId로 확인(admin.user·admin.config)
 import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Put, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { Db } from '../db/pool';
@@ -6,6 +6,7 @@ import { PrincipalCache } from '../auth/principal';
 import { log } from '../common/log';
 import * as users from '../admin/users';
 import * as cfg from '../admin/config';
+import * as companies from '../admin/companies';
 import { AlmContext, Ctx, Operation, txOf } from './context';
 import { DB, PRINCIPALS } from './tokens';
 
@@ -76,5 +77,25 @@ export class AdminController {
   putSetting(@Ctx() ctx: AlmContext, @Param('key') key: string, @Body() body: unknown) {
     const p = ctx.principal!;
     return this.db.withTx(txOf(ctx), (c) => cfg.putSetting(c, p.tenantId, key, p.userId, body));
+  }
+
+  @Get('companies')
+  @Operation('listCompanies')
+  listCompanies(@Ctx() ctx: AlmContext) {
+    return this.db.withTx(txOf(ctx), (c) => companies.listCompanies(c));
+  }
+
+  @Post('companies')
+  @HttpCode(201)
+  @Operation('createCompany')
+  createCompany(@Ctx() ctx: AlmContext, @Body() body: unknown) {
+    const p = ctx.principal!;
+    return this.db.withTx(txOf(ctx), (c) => companies.createCompany(c, p.tenantId, p.userId, body));
+  }
+
+  @Patch('companies/:id')
+  @Operation('patchCompany')
+  patchCompany(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) {
+    return this.db.withTx(txOf(ctx), (c) => companies.patchCompany(c, id, ctx.principal!.userId, body));
   }
 }

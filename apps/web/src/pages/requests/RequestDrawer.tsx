@@ -14,8 +14,9 @@ const opts = (xs: LookupItem[] | undefined) => [{ value: '', label: '—' }, ...
 export function RequestDrawer({ d, L, onClose, onDone }: { d: AssetDetail; L: Lookups; onClose: () => void; onDone: (id: string) => void }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const sap = !!d.financial.sapAssetNo;
-  const types: RequestType[] = sap ? ['TRANSFER', 'CHANGE', 'RETIRE', 'SALE'] : ['NEW_ASSET', 'TRANSFER', 'CHANGE', 'RETIRE', 'SALE'];
+  const sapCompany = d.financial.sapEnabled !== false;
+  const sap = sapCompany && !!d.financial.sapAssetNo;   // SAP에 보낼 자산인가
+  const types: RequestType[] = sap || !sapCompany ? ['TRANSFER', 'CHANGE', 'RETIRE', 'SALE'] : ['NEW_ASSET', 'TRANSFER', 'CHANGE', 'RETIRE', 'SALE'];
   const [f, setF] = useState({ type: types[0], reason: '', assetClassId: '', targetCostCenterId: '', acquisitionValue: d.financial.tcoEstimate ? String(d.financial.tcoEstimate) : '',
     effectiveDate: today(), targetRoomId: '', description: d.description, serialNo: d.serialNo ?? '', retireType: 'SCRAP', saleAmount: '', buyer: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});

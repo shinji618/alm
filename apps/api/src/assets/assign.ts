@@ -62,7 +62,8 @@ export async function checkOut(c: PoolClient, p: Principal, id: string, body: un
   const createdRequests: Record<string, string>[] = [];
   const ccChanged = !!ccId && ccId !== a.cost_center_id;
   let newCc = a.cost_center_id;
-  if (ccChanged && a.sap_asset_no) {
+  const sapOn = !!a.sap_asset_no && !!(await c.query('SELECT sap_enabled FROM company WHERE id = $1', [a.company_id])).rows[0]?.sap_enabled;
+  if (ccChanged && sapOn) {
     const open = (await c.query(`SELECT request_no FROM asset_request WHERE asset_id = $1 AND status NOT IN ('POSTED', 'REJECTED', 'CANCELLED') LIMIT 1`, [a.id])).rows[0];
     if (open) throw new AlmError(409, 'ALM-E315', `이 자산에 진행 중인 요청(${open.request_no})이 있어 코스트센터를 바꿀 수 없습니다`);
     createdRequests.push(await transferRequest(c, p, a, ccId!, r.id));

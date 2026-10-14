@@ -426,9 +426,18 @@
    "asset.write"
   ],
   "fixAssetRequest": "sap.finance",
-  "listApprovalInbox": "approval.decide",
-  "approve": "approval.decide",
-  "reject": "approval.decide",
+  "listApprovalInbox": [
+   "approval.decide",
+   "asset.write"
+  ],
+  "approve": [
+   "approval.decide",
+   "asset.write"
+  ],
+  "reject": [
+   "approval.decide",
+   "asset.write"
+  ],
   "listCampaigns": "count.read",
   "getCampaign": "count.read",
   "listCampaignTasks": "count.read",
@@ -484,6 +493,9 @@
   "putCodeGroup": "admin.config",
   "listSettings": "admin.config",
   "putSetting": "admin.config",
+  "listCompanies": "admin.config",
+  "createCompany": "admin.config",
+  "patchCompany": "admin.config",
   "listAuditLogs": "audit.read",
   "listSecurityEvents": "audit.read",
   "pdaGetMe": "count.scan",

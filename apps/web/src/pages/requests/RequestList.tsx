@@ -20,7 +20,7 @@ export function RequestList() {
   const nav = useNavigate();
   const { can } = useSession();
   const [sp, setSp] = useSearchParams();
-  const approver = can('approval.decide');
+  const approver = can('approval.decide') || can('asset.write');   // 자산 관리자: 1단계 회사의 대리 승인
   const tab: Tab = (sp.get('tab') as Tab) ?? (approver ? 'inbox' : 'all');
   const get = (k: string) => sp.get(k) ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? 1) || 1);

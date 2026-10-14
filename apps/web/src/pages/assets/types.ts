@@ -13,7 +13,7 @@ export interface AssetDetail {
   status: AssetStatusCode; stage: StageCode; source: string; siteId?: string; roomId?: string; costCenterId?: string; assignedUserId?: string;
   assignedAt?: string; dueBackDate?: string; hostname?: string; ipAddress?: string; macAddress?: string; osName?: string; warrantyEndDate?: string;
   lastCountDate?: string; lastSeenAt?: string; notes?: string;
-  financial: { isCapitalized: boolean; companyCode: string; sapAssetNo?: string; sapSubNo?: string; assetClass?: string; capDate?: string;
+  financial: { isCapitalized: boolean; companyCode: string; sapEnabled?: boolean; sapAssetNo?: string; sapSubNo?: string; assetClass?: string; capDate?: string;
     acquisitionValue?: number | null; accumDepreciation?: number | null; netBookValue?: number | null; usefulLifeYears?: number; valueAsOf?: string;
     tcoEstimate?: number | null; sapSyncedAt?: string };
   purchase?: { poNo: string; poItem: string; vendorName?: string; description: string; quantity: number; grQuantity: number; unitPrice?: number | null;

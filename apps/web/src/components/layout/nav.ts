@@ -4,6 +4,10 @@ export interface NavItem {
   labelKey: string;
   screenId: string;
   wbs: string;
+  /** 이 권한 키가 있어야 보인다 */
+  perm?: string;
+  /** 꺼진 기능이면 숨긴다(/me features) */
+  feature?: 'sap';
 }
 export interface NavGroup {
   labelKey: string;
@@ -34,9 +38,13 @@ export const NAV: NavGroup[] = [
   {
     labelKey: 'nav.integration',
     items: [
-      { path: '/sap', labelKey: 'nav.sap', screenId: 'ALM-310', wbs: '4.6' },
+      { path: '/sap', labelKey: 'nav.sap', screenId: 'ALM-310', wbs: '4.6', feature: 'sap' },
       { path: '/design', labelKey: 'nav.design', screenId: 'DS', wbs: '3.5' },
     ],
+  },
+  {
+    labelKey: 'nav.admin',
+    items: [{ path: '/admin/companies', labelKey: 'nav.companies', screenId: 'ADM-020', wbs: '4.3', perm: 'admin.config' }],
   },
 ];
 

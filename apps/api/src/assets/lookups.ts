@@ -36,8 +36,8 @@ export async function lookups(c: PoolClient, p: Principal, q: Record<string, str
   const items = (rows: Record<string, any>[], f: (r: Record<string, any>) => Item) => rows.map(f).map((x) => Object.fromEntries(Object.entries(x).filter(([, v]) => v != null)));
 
   if (has('companies')) {
-    out.companies = items((await c.query(`SELECT id, company_code, name, currency FROM company WHERE is_active AND ($1::text[] IS NULL OR company_code = ANY($1))
-      ORDER BY company_code`, [lim.companies])).rows, (r) => ({ id: r.id, code: r.company_code, label: r.name, extra: { currency: r.currency } }));
+    out.companies = items((await c.query(`SELECT id, company_code, name, currency, sap_enabled, approval_steps FROM company WHERE is_active AND ($1::text[] IS NULL OR company_code = ANY($1))
+      ORDER BY company_code`, [lim.companies])).rows, (r) => ({ id: r.id, code: r.company_code, label: r.name, extra: { currency: r.currency, sapEnabled: r.sap_enabled, approvalSteps: r.approval_steps } }));
   }
   if (has('sites')) {
     out.sites = items((await c.query(`SELECT s.id, s.site_code, s.name, p.plant_code, co.company_code FROM site s LEFT JOIN plant p ON p.id = s.plant_id

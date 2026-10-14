@@ -4655,10 +4655,15 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
-      x-permission: approval.decide
+      x-permission:
+      - approval.decide
+      - asset.write
       x-scope:
-        DEPT_MANAGER: CC
-        ASSET_ACCOUNTANT: ALL
+        approval.decide:
+          DEPT_MANAGER: CC
+          ASSET_ACCOUNTANT: ALL
+        asset.write:
+          ASSET_MANAGER: ALL
       security:
       - webAuth:
         - web
@@ -4709,11 +4714,16 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
-      x-permission: approval.decide
+      x-permission:
+      - approval.decide
+      - asset.write
       x-scope:
-        DEPT_MANAGER: CC
-        ASSET_ACCOUNTANT: ALL
-      x-condition: 승인 단계의 역할·범위, 요청자 본인 아님, 같은 요청의 앞 단계 승인자 아님
+        approval.decide:
+          DEPT_MANAGER: CC
+          ASSET_ACCOUNTANT: ALL
+        asset.write:
+          ASSET_MANAGER: ALL
+      x-condition: 승인 단계의 역할·범위(부서 관리자가 없으면 자산회계, 1단계 회사는 자산 관리자 대리), 요청자 본인 아님, 같은 요청의 앞 단계 승인자 아님
       security:
       - webAuth:
         - web
@@ -4760,10 +4770,15 @@ paths:
           $ref: '#/components/responses/E429'
         '500':
           $ref: '#/components/responses/E500'
-      x-permission: approval.decide
+      x-permission:
+      - approval.decide
+      - asset.write
       x-scope:
-        DEPT_MANAGER: CC
-        ASSET_ACCOUNTANT: ALL
+        approval.decide:
+          DEPT_MANAGER: CC
+          ASSET_ACCOUNTANT: ALL
+        asset.write:
+          ASSET_MANAGER: ALL
       x-condition: 승인 단계의 역할·범위
       security:
       - webAuth:
@@ -7246,6 +7261,129 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CodeGroup'
+  /admin/companies:
+    get:
+      operationId: listCompanies
+      summary: 회사·SAP 연계 설정
+      tags:
+      - WEB
+      description: '관리 · 테이블: company, sap_connection
+
+
+        - 회사코드별 SAP 연계 사용·승인 단계. SAP 회사는 IF-MD-01로 들어온다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyConfigList'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: admin.config
+      x-scope:
+        SYS_ADMIN: '-'
+      security:
+      - webAuth:
+        - web
+    post:
+      operationId: createCompany
+      summary: 회사코드 등록
+      tags:
+      - WEB
+      description: '관리 · 테이블: company, audit_log
+
+
+        - SAP 연계를 쓰지 않는 회사를 직접 등록한다(SAP 회사는 IF-MD-01). 같은 코드가 있으면 409 ALM-E321.
+
+        - SAP 연계를 쓰는 회사는 승인 단계 2만(400).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '201':
+          description: 생성
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyConfig'
+        '400':
+          $ref: '#/components/responses/E400'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: admin.config
+      x-scope:
+        SYS_ADMIN: '-'
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompanyInput'
+  /admin/companies/{id}:
+    patch:
+      operationId: patchCompany
+      summary: 회사 설정 변경
+      tags:
+      - WEB
+      description: '관리 · 테이블: company, sap_posting, audit_log
+
+
+        - SAP 연계를 끄면: SAP 연결 호출을 받지 않고, 화면은 SAP 필드·기능(SAP 등록 체크, SAP 신규 등록 요청, 전기 정보, 장부가액)을 숨기며, 자산 요청은 승인 후 ALM에만 반영한다.
+
+        - 끄기 전에 그 회사의 SAP 전기 대기·처리 중·실패 건이 있으면 409 ALM-E322(SAP 연계 화면에서 처리·취소 뒤).
+
+        - 승인 단계 2(부서 관리자 → 자산회계) · 1(부서 관리자, 없으면 자산 관리자 대리) · 0(승인 없음, 범위 안의 자산 관리자만 제출, 바로 반영). 1·0은 SAP 연계를 끈 회사만(400). SAP을 켜면 2로 맞춘다.
+
+        - 진행 중인 요청은 이미 만든 승인 단계를 그대로 따른다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyConfig'
+        '400':
+          $ref: '#/components/responses/E400'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: admin.config
+      x-scope:
+        SYS_ADMIN: '-'
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompanyPatch'
   /admin/settings:
     get:
       operationId: listSettings
@@ -9760,6 +9898,10 @@ components:
           type: object
           additionalProperties: true
           description: 메뉴 배지 수 {requests, counts, sap}
+        features:
+          type: object
+          additionalProperties: true
+          description: '{sap: SAP 연계를 쓰는 회사가 하나라도 있음}. false면 화면이 SAP 메뉴·필드를 숨긴다'
       required:
       - userId
       - displayName
@@ -9769,6 +9911,7 @@ components:
       - roles
       - permissions
       - navCounts
+      - features
     RoleScope:
       type: object
       description: 역할과 범위
@@ -10461,6 +10604,9 @@ components:
           type: string
           maxLength: 4
           description: 회사코드
+        sapEnabled:
+          type: boolean
+          description: 회사가 SAP 연계를 씀(false면 SAP 필드·장부가액을 숨긴다)
         sapAssetNo:
           type: string
           maxLength: 12
@@ -10502,6 +10648,7 @@ components:
       required:
       - isCapitalized
       - companyCode
+      - sapEnabled
     AssetDetail:
       type: object
       description: 자산 상세(General 탭 + 요약)
@@ -12838,6 +12985,12 @@ components:
         isProfitCenterChange:
           type: boolean
           description: 손익센터 변경(→ABUMN)
+        sapEnabled:
+          type: boolean
+          description: 자산 회사가 SAP 연계를 씀
+        approvalSteps:
+          type: integer
+          description: 회사의 승인 단계(2·1·0)
         deptManagerMissing:
           type: boolean
           description: 책임 코스트센터에 (요청자 말고) 유효한 부서 관리자가 없음 → 1단계를 자산회계가 대리 결정
@@ -12877,6 +13030,8 @@ components:
       - labels
       - amountMasked
       - isProfitCenterChange
+      - sapEnabled
+      - approvalSteps
       - deptManagerMissing
       - approvals
       - attachments
@@ -14836,6 +14991,105 @@ components:
       - page
       - pageSize
       - total
+    CompanyConfig:
+      type: object
+      description: 회사코드 설정
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: id
+        companyCode:
+          type: string
+          maxLength: 4
+          description: 회사코드
+        name:
+          type: string
+          maxLength: 25
+          description: 이름
+        currency:
+          type: string
+          maxLength: 5
+          description: 통화
+        sapEnabled:
+          type: boolean
+          description: SAP 연계 사용
+        approvalSteps:
+          type: integer
+          description: 자산 요청 승인 단계 2 부서 관리자→자산회계, 1 부서 관리자, 0 없음
+        isActive:
+          type: boolean
+          description: 사용
+        sapSyncedAt:
+          type: string
+          format: date-time
+          description: 마지막 SAP 수신
+        sapConnections:
+          type: integer
+          description: 활성 SAP 연결 수
+        version:
+          type: integer
+          description: 낙관적 잠금
+      required:
+      - id
+      - companyCode
+      - name
+      - currency
+      - sapEnabled
+      - approvalSteps
+      - isActive
+      - sapConnections
+      - version
+    CompanyConfigList:
+      type: object
+      description: 회사코드 설정 목록
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompanyConfig'
+          description: 행
+      required:
+      - items
+    CompanyInput:
+      type: object
+      description: 회사코드 등록(SAP 연계를 쓰지 않는 회사)
+      properties:
+        companyCode:
+          type: string
+          maxLength: 4
+          description: 대문자·숫자 1~4자
+        name:
+          type: string
+          maxLength: 25
+          description: 이름
+        currency:
+          type: string
+          maxLength: 5
+          description: 기본 USD
+        sapEnabled:
+          type: boolean
+          description: 기본 false
+        approvalSteps:
+          type: integer
+          description: 기본 2
+      required:
+      - companyCode
+      - name
+    CompanyPatch:
+      type: object
+      description: 회사코드 설정 변경
+      properties:
+        name:
+          type: string
+          maxLength: 25
+          description: 이름
+        sapEnabled:
+          type: boolean
+          description: SAP 연계 사용
+        approvalSteps:
+          type: integer
+          description: 승인 단계(SAP 연계를 쓰면 2만)
     AccessToken:
       type: object
       description: 웹 액세스 토큰

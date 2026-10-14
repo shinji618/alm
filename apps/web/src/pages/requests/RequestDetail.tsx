@@ -69,7 +69,7 @@ export function RequestDetail() {
       {!d ? <Panel><span className="muted">{t('common.loading')}</span></Panel> : (
         <>
           <Panel>
-            <Steps label={t('request.detail.flow')} current={flowIndex(d)} steps={[t('request.flow.submit'), t('request.flow.mgr'), t('request.flow.acct'), t('request.flow.sap')]} />
+            <Steps label={t('request.detail.flow')} current={flowIndex(d)} steps={flowSteps(d).map((k) => t(`request.flow.${k}`))} />
             {d.status === 'REJECTED' && <div className={s.notice} role="status">{t('request.detail.rejectedNote')}</div>}
             {d.status === 'POST_ERROR' && <div className={s.notice} role="alert">{t('request.detail.postErrorNote')}</div>}
           </Panel>
@@ -80,7 +80,8 @@ export function RequestDetail() {
           <Panel>
             <h3 style={{ marginTop: 0 }}>{t('request.detail.approvals')}</h3>
             {d.deptManagerMissing && ['DRAFT', 'SUBMITTED'].includes(d.status) && <div className={s.notice}>{t('request.detail.proxyNote')}</div>}
-            {d.approvals.length ? <Approvals steps={d.approvals} /> : <span className="muted">{t('request.detail.noApprovals')}</span>}
+            {d.approvals.length ? <Approvals steps={d.approvals} />
+              : <span className="muted">{t(d.approvalSteps === 0 ? 'request.detail.noApproval' : 'request.detail.noApprovals')}</span>}
           </Panel>
           <Panel>
             <h3 style={{ marginTop: 0 }}>{t('request.detail.posting')}</h3>
@@ -96,14 +97,19 @@ export function RequestDetail() {
   );
 }
 
-// 진행 표시: 0 제출 전, 1 부서 관리자, 2 자산회계, 3 SAP 전기, 4 완료
+// 진행 표시: 회사 설정(승인 단계 2·1·0, SAP 연계)에 맞춰 단계를 만든다
+function flowSteps(d: Detail): string[] {
+  const n = d.approvalSteps ?? 2;
+  return ['submit', ...(n >= 1 ? ['mgr'] : []), ...(n >= 2 ? ['acct'] : []), ...(d.sapEnabled !== false ? ['sap'] : [])];
+}
 function flowIndex(d: Detail): number {
+  const n = d.approvalSteps ?? 2;
   switch (d.status) {
     case 'DRAFT': return 0;
     case 'SUBMITTED': return 1;
     case 'MGR_APPROVED': return 2;
-    case 'ACCT_APPROVED': case 'POST_ERROR': return 3;
-    case 'POSTED': return 4;
+    case 'ACCT_APPROVED': case 'POST_ERROR': return 1 + n;
+    case 'POSTED': return flowSteps(d).length;
     default: return Math.max(0, d.currentStep);
   }
 }
@@ -163,6 +169,7 @@ function Approvals({ steps }: { steps: ApprovalStep[] }) {
 function Posting({ d }: { d: Detail }) {
   const { t } = useTranslation();
   const p = d.posting;
+  if (!p && d.sapEnabled === false) return <span className="muted">{t('request.detail.noSapPosting')}</span>;
   if (!p) {
     const local = d.request.requestType !== 'NEW_ASSET' && !d.asset?.sapAssetNo;
     return <span className="muted">{local ? t('request.detail.localOnly') : t('request.detail.noPosting')}</span>;

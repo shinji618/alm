@@ -118,7 +118,7 @@ OPS = {
     'listAssetRequests': 'request.read', 'getAssetRequest': 'request.read',
     'createAssetRequest': 'request.create', 'patchAssetRequest': 'request.create', 'submitAssetRequest': 'request.create',
     'cancelAssetRequest': ['request.create', 'asset.write'], 'fixAssetRequest': 'sap.finance',
-    'listApprovalInbox': 'approval.decide', 'approve': 'approval.decide', 'reject': 'approval.decide',
+    'listApprovalInbox': ['approval.decide', 'asset.write'], 'approve': ['approval.decide', 'asset.write'], 'reject': ['approval.decide', 'asset.write'],   # asset.write: 1단계 회사의 자산 관리자 대리
     # count
     'listCampaigns': 'count.read', 'getCampaign': 'count.read', 'listCampaignTasks': 'count.read', 'listCountItems': 'count.read',
     'listUnregistered': 'count.read',
@@ -139,6 +139,7 @@ OPS = {
     'listUsers': 'admin.user', 'createUser': 'admin.user', 'patchUser': 'admin.user', 'putUserRoles': 'admin.user', 'listSodConflicts': 'admin.user',
     'listMasters': 'master.read', 'createMaster': 'master.write', 'patchMaster': 'master.write',
     'listCodes': 'admin.config', 'putCodeGroup': 'admin.config', 'listSettings': 'admin.config', 'putSetting': 'admin.config',
+    'listCompanies': 'admin.config', 'createCompany': 'admin.config', 'patchCompany': 'admin.config',
     'listAuditLogs': 'audit.read', 'listSecurityEvents': 'audit.read',
 }
 # PDA endpoints: count.scan (TASK). SAP endpoints: sap.api. Filled by group in apply().
@@ -156,7 +157,7 @@ COND = {
     'patchAssetRequest': '요청자 본인, DRAFT', 'submitAssetRequest': '요청자 본인',
     'cancelAssetRequest': '요청자 본인 또는 asset.write',
     'getPurchaseRequest': '범위 + 요청자·승인자', 'getAssetRequest': '범위 + 요청자·승인자',
-    'approve': '승인 단계의 역할·범위, 요청자 본인 아님, 같은 요청의 앞 단계 승인자 아님', 'reject': '승인 단계의 역할·범위',
+    'approve': '승인 단계의 역할·범위(부서 관리자가 없으면 자산회계, 1단계 회사는 자산 관리자 대리), 요청자 본인 아님, 같은 요청의 앞 단계 승인자 아님', 'reject': '승인 단계의 역할·범위',
     'putUserRoles': '자기 자신 제외', 'patchUser': '이메일은 IdP 미연결 사용자만',
 }
 
