@@ -74,7 +74,8 @@ check_db() {
   local st
   st=$(aws rds describe-db-instances --db-instance-identifier "alm-${ENV}" --query 'DBInstances[0].DBInstanceStatus' --output text 2>/dev/null || echo unknown)
   case "$st" in
-    available|unknown|None) ;;
+    available) ;;
+    unknown|None) echo "::warning::DB alm-${ENV} 상태를 읽지 못했습니다(배포 역할 rds:DescribeDBInstances 필요 — deploy-global.sh로 Alm-${Env}-Ci 갱신). 그대로 진행합니다" ;;
     stopped|stopping)
       echo "::error::DB alm-${ENV}가 ${st} 상태입니다(DEV 야간 정지 20:05~06:40 ET). 07:00 ET 이후 Re-run 하거나, DB를 켠 뒤(aws rds start-db-instance --db-instance-identifier alm-${ENV}) Re-run 하세요" >&2
       exit 1 ;;

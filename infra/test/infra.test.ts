@@ -172,6 +172,11 @@ describe('Ci (10 11장)', () => {
       AssumeRolePolicyDocument: Match.objectLike({ Statement: [Match.objectLike({ Condition: Match.objectLike({
         StringLike: { 'token.actions.githubusercontent.com:sub': ['repo:shinji618@335630296/alm@1409332069:environment:prd', 'repo:shinji618/alm:environment:prd'] } }) })] }) }));
   });
+  it('배포 역할: 배포 전 DB 상태를 읽을 수 있다(야간 정지 안내)', () => {
+    const t = tpl('dev', 'ci');
+    t.hasResourceProperties('AWS::IAM::Policy', Match.objectLike({ PolicyDocument: Match.objectLike({ Statement: Match.arrayWith([
+      Match.objectLike({ Sid: 'CheckDb', Action: 'rds:DescribeDBInstances' })]) }) }));
+  });
 });
 
 describe('Observability (10 9장)', () => {

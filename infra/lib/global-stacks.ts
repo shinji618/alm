@@ -117,6 +117,9 @@ export class CiStack extends Stack {
     role.addToPolicy(new iam.PolicyStatement({ sid: 'PassTaskRoles', actions: ['iam:PassRole'],
       resources: [`arn:aws:iam::${this.account}:role/Alm-${Env}-App-*`],
       conditions: { StringEquals: { 'iam:PassedToService': 'ecs-tasks.amazonaws.com' } } }));
+    // 배포 전 DB 상태 확인(scripts/deploy.sh check_db): DEV 야간 정지 중이면 migrate 접속 시간 초과 대신 바로 안내하고 멈춘다
+    role.addToPolicy(new iam.PolicyStatement({ sid: 'CheckDb', actions: ['rds:DescribeDBInstances'],
+      resources: [`arn:aws:rds:${this.region}:${this.account}:db:alm-${cfg.name}`] }));
     role.addToPolicy(new iam.PolicyStatement({ sid: 'MigrateLogs', actions: ['logs:GetLogEvents', 'logs:FilterLogEvents'],
       resources: [`arn:aws:logs:${this.region}:${this.account}:log-group:/alm/${cfg.name}/migrate:*`] }));
     role.addToPolicy(new iam.PolicyStatement({ sid: 'WebSync', actions: ['s3:ListBucket', 's3:PutObject', 's3:DeleteObject', 's3:GetObject'],
