@@ -35,7 +35,8 @@ export interface EnvConfig {
   worker: { cpu: number; memoryMiB: number; desired: number; max: number };
   logRetentionDays: number;
   execCommand: boolean;
-  nightlyStop: boolean;      // A-10: 평일 07~20시만 운영
+  nightlyStop: boolean;      // A-10: 평일 runHours 동안만 운영
+  runHours?: { start: number; stop: number }; // 야간 정지 환경의 운영 시각(ET, 기본 7~20). stop 24 = 자정
   alarmEmail: string;
   monthlyBudgetUsd: number;
   sapEgressCidrs: string[];  // WAF SAP 허용 목록(S-09)
@@ -82,6 +83,7 @@ export const ENVS: Record<EnvName, EnvConfig> = {
     api: { cpu: 512, memoryMiB: 1024, desired: 1, max: 2 },
     worker: { cpu: 256, memoryMiB: 512, desired: 1, max: 2 },
     logRetentionDays: 30, execCommand: true, nightlyStop: true,
+    runHours: { start: 7, stop: 24 },        // 개발 작업 시간 07:00~24:00 ET (2026-10-14 요청)
     alarmEmail: 'shinji@bsgglobal.com', monthlyBudgetUsd: 200,
   },
   qa: {
