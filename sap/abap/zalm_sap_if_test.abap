@@ -18,7 +18,8 @@
 *&          → COMMIT → POST /sap/postings/{id}/result (POSTED 자산번호 / FAILED BAPI 메시지)
 *&          같은 INVNR(자산태그) 자산이 이미 있으면 새로 만들지 않고 그 번호로 POSTED 회신(재실행 안전)
 *&          P_LOC: STORT(위치=룸 코드)도 넘긴다. T499S에 없는 위치면 BAPI 오류이므로 기본 해제
-*&          P_TRUN: BAPI 시험 실행(TESTRUN) - SAP에 만들지 않고 메시지만 출력, ALM 회신 안 함(잠금은 15분 뒤 풀림)
+*&          P_TRUN: BAPI 시험 실행(TESTRUN) - SAP에 만들지 않고 메시지만 출력, 성공·실패 모두 ALM 회신 안 함(잠금은 15분 뒤 풀림)
+*&          클래스 화면 레이아웃에서 입력 불가 필드(AY/219)면 시리얼·룸·위치를 빼고 한 번 더 시도(회신에 W 메시지)
 *&   clientId·비밀은 화면 입력(SM59 사용자 필드 12자 제한, 13 런북 7-2)
 *&---------------------------------------------------------------------*
 REPORT zalm_sap_if_test.
@@ -598,7 +599,9 @@ START-OF-SELECTION.
           lv_anln1  TYPE bapi1022_1-assetmaino,
           lv_anln2  TYPE bapi1022_1-assetsubno,
           ls_ret    TYPE bapiret2,
-          lv_invnr  TYPE anla-invnr.
+          lv_invnr  TYPE anla-invnr,
+          lv_try    TYPE i,
+          lv_dropped TYPE abap_bool.
 
     go_api->exec( EXPORTING iv_method = 'POST' iv_path = '/sap/postings:claim' iv_key = |{ gv_batch }-PST|
                             iv_body = |\{"batchId":"{ gv_batch }-PST","maxItems":10,"types":["ASSET_CREATE"]\}|
@@ -610,7 +613,7 @@ START-OF-SELECTION.
     WRITE / |전기 대상 { lines( ls_claim-items ) }건|.
 
     LOOP AT ls_claim-items INTO DATA(ls_env) WHERE type = 'ASSET_CREATE'.
-      CLEAR: ls_res, ls_key, ls_gen, ls_genx, ls_time, ls_timex, ls_pinf, ls_pinfx, lv_anln1, lv_anln2, ls_ret.
+      CLEAR: ls_res, lv_anln1, lv_anln2, ls_ret, lv_dropped.
       ls_res-posting_id = ls_env-posting_id.
       DATA(ls_pl) = ls_env-payload.
       WRITE / |{ ls_env-posting_id } { ls_env-company_code } { ls_pl-inventory_no } { ls_pl-asset_class } { ls_pl-cost_center } "{ ls_pl-description }"|.
@@ -623,63 +626,87 @@ START-OF-SELECTION.
       IF sy-subrc = 0.
         WRITE / |  이미 있음 → { lv_anln1 }-{ lv_anln2 }|.
       ELSE.
-        ls_key-companycode = ls_env-company_code.
-        ls_gen-assetclass = |{ ls_pl-asset_class ALPHA = IN WIDTH = 8 }|.
-        ls_gen-descript   = ls_pl-description.
-        ls_gen-serial_no  = ls_pl-serial_no.
-        ls_gen-invent_no  = ls_pl-inventory_no.
-        ls_genx-assetclass = ls_genx-descript = ls_genx-invent_no = abap_true.
-        ls_genx-serial_no = xsdbool( ls_pl-serial_no IS NOT INITIAL ).
-        ls_time-costcenter = |{ ls_pl-cost_center ALPHA = IN WIDTH = 10 }|.
-        ls_timex-costcenter = abap_true.
-        IF p_loc = abap_true AND ls_pl-location IS NOT INITIAL.
-          ls_time-location = ls_pl-location.
-          ls_timex-location = abap_true.
-        ENDIF.
-        IF ls_pl-room IS NOT INITIAL.
-          ls_time-room = ls_pl-room.
-          ls_timex-room = abap_true.
-        ENDIF.
-        IF ls_pl-cap_date IS NOT INITIAL.
-          ls_pinf-cap_date = replace( val = ls_pl-cap_date sub = '-' with = '' occ = 0 ).
-          ls_pinfx-cap_date = abap_true.
-        ENDIF.
+        " 1차는 모든 필드. 자산 클래스 화면 레이아웃에서 입력 불가 필드(AY/219)면
+        " 선택 필드(시리얼·룸·위치)를 빼고 한 번 더 시도하고, 회신에 W 메시지로 남긴다
+        DO 2 TIMES.
+          lv_try = sy-index.
+          CLEAR: ls_key, ls_gen, ls_genx, ls_time, ls_timex, ls_pinf, ls_pinfx, lv_anln1, lv_anln2, ls_ret.
+          ls_key-companycode = ls_env-company_code.
+          ls_gen-assetclass = |{ ls_pl-asset_class ALPHA = IN WIDTH = 8 }|.
+          ls_gen-descript   = ls_pl-description.
+          ls_gen-invent_no  = ls_pl-inventory_no.
+          ls_genx-assetclass = ls_genx-descript = ls_genx-invent_no = abap_true.
+          ls_time-costcenter = |{ ls_pl-cost_center ALPHA = IN WIDTH = 10 }|.
+          ls_timex-costcenter = abap_true.
+          IF lv_try = 1.
+            IF ls_pl-serial_no IS NOT INITIAL.
+              ls_gen-serial_no = ls_pl-serial_no.
+              ls_genx-serial_no = abap_true.
+            ENDIF.
+            IF p_loc = abap_true AND ls_pl-location IS NOT INITIAL.
+              ls_time-location = ls_pl-location.
+              ls_timex-location = abap_true.
+            ENDIF.
+            IF ls_pl-room IS NOT INITIAL.
+              ls_time-room = ls_pl-room.
+              ls_timex-room = abap_true.
+            ENDIF.
+          ENDIF.
+          IF ls_pl-cap_date IS NOT INITIAL.
+            ls_pinf-cap_date = replace( val = ls_pl-cap_date sub = '-' with = '' occ = 0 ).
+            ls_pinfx-cap_date = abap_true.
+          ENDIF.
 
-        CALL FUNCTION 'BAPI_FIXEDASSET_CREATE1'
-          EXPORTING
-            key                = ls_key
-            testrun            = p_trun
-            generaldata        = ls_gen
-            generaldatax       = ls_genx
-            postinginformation = ls_pinf
-            postinginformationx = ls_pinfx
-            timedependentdata  = ls_time
-            timedependentdatax = ls_timex
-          IMPORTING
-            asset              = lv_anln1
-            subnumber          = lv_anln2
-            return             = ls_ret.
-        WRITE / |  BAPI { ls_ret-type } { ls_ret-id }/{ ls_ret-number } { ls_ret-message }|.
+          CALL FUNCTION 'BAPI_FIXEDASSET_CREATE1'
+            EXPORTING
+              key                 = ls_key
+              testrun             = p_trun
+              generaldata         = ls_gen
+              generaldatax        = ls_genx
+              postinginformation  = ls_pinf
+              postinginformationx = ls_pinfx
+              timedependentdata   = ls_time
+              timedependentdatax  = ls_timex
+            IMPORTING
+              asset               = lv_anln1
+              subnumber           = lv_anln2
+              return              = ls_ret.
+          WRITE / |  BAPI({ lv_try }) { ls_ret-type } { ls_ret-id }/{ ls_ret-number } { ls_ret-message }|.
+
+          IF ls_ret-type CA 'EA'.
+            CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+            IF lv_try = 1 AND ls_ret-id = 'AY' AND ls_ret-number = '219'
+               AND ( ls_genx-serial_no = abap_true OR ls_timex-room = abap_true OR ls_timex-location = abap_true ).
+              lv_dropped = abap_true.
+              WRITE / '  입력 불가 필드 - 시리얼·룸·위치를 빼고 다시 시도'.
+              CONTINUE.
+            ENDIF.
+          ENDIF.
+          EXIT.
+        ENDDO.
 
         IF ls_ret-type CA 'EA'.
-          CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
           ls_res-status = 'FAILED'.
           APPEND VALUE #( type = ls_ret-type id = ls_ret-id number = ls_ret-number text = ls_ret-message ) TO ls_res-messages.
         ELSEIF p_trun = abap_true.
           CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
-          WRITE / '  시험 실행 - ALM에 회신하지 않음'.
-          CONTINUE.
         ELSE.
           CALL FUNCTION 'BAPI_TRANSACTION_COMMIT' EXPORTING wait = abap_true.
           WRITE / |  생성 → { lv_anln1 }-{ lv_anln2 }|.
         ENDIF.
+        IF lv_dropped = abap_true AND ls_res-status IS INITIAL.
+          APPEND VALUE #( type = 'W' id = 'AY' number = '219'
+                          text = 'Serial no./room/location not ready for input in the asset class screen layout - not transferred to SAP' )
+            TO ls_res-messages.
+        ENDIF.
       ENDIF.
 
+      " 시험 실행은 결과(성공·실패 모두)를 ALM에 회신하지 않는다. 잠금은 15분 뒤 풀려 다시 대상이 된다
+      IF p_trun = abap_true.
+        WRITE / '  시험 실행 - ALM에 회신하지 않음(잠금 15분 뒤 해제)'.
+        CONTINUE.
+      ENDIF.
       IF ls_res-status IS INITIAL.
-        IF p_trun = abap_true.
-          WRITE / '  시험 실행 - ALM에 회신하지 않음'.
-          CONTINUE.
-        ENDIF.
         ls_res-status = 'POSTED'.
         ls_res-asset = VALUE #( asset_no = lv_anln1 sub_no = lv_anln2 inventory_no = ls_pl-inventory_no ).
       ENDIF.
