@@ -1,5 +1,6 @@
-// PDA 공통(openapi PDA-01 pdaGetMe·pdaRegisterDevice, 09 6.5). 업무 API(실사)는 5.x에서 추가
-import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put } from '@nestjs/common';
+// PDA API(openapi PDA-01~08, 09 6.5). 공통(me·기기 등록·사진)과 실사 업무(작업·작업목록·스캔·미등록, WBS 4.8 — counts/pda.ts)
+import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Put, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { Db } from '../db/pool';
 import { securityEvent } from '../auth/login';
@@ -9,6 +10,7 @@ import { AlmContext, Ctx, Operation, txOf } from './context';
 import { DB, FILES } from './tokens';
 import { FileStore, presignPda } from '../files/files';
 import { needStore } from './files.controller';
+import * as pda from '../counts/pda';
 
 const meta = (ctx: AlmContext) => ({ clientId: ctx.claims?.client_id, ip: ctx.ip, userAgent: ctx.userAgent, correlationId: ctx.correlationId });
 
@@ -80,5 +82,59 @@ export class PdaController {
   presignPhoto(@Ctx() ctx: AlmContext, @Body() body: unknown) {
     const store = needStore(this.files);
     return this.db.withTx(txOf(ctx), (c) => presignPda(c, store, ctx.principal!, body));
+  }
+
+  // ---------------- 실사(4.8) ----------------
+  @Get('tasks')
+  @Operation('pdaListTasks')
+  tasks(@Ctx() ctx: AlmContext, @Query() q: Record<string, string>) {
+    return this.db.withTx(txOf(ctx), (c) => pda.pdaListTasks(c, ctx.principal!, q));
+  }
+
+  @Patch('tasks/:taskId')
+  @Operation('pdaUpdateTask')
+  updateTask(@Ctx() ctx: AlmContext, @Param('taskId') id: string, @Body() body: unknown) {
+    return this.db.withTx(txOf(ctx), (c) => pda.pdaUpdateTask(c, ctx.principal!, id, body));
+  }
+
+  @Get('campaigns/:campaignId/worklist')
+  @Operation('pdaGetWorklist')
+  worklist(@Ctx() ctx: AlmContext, @Param('campaignId') id: string, @Query() q: Record<string, string>) {
+    return this.db.withTx(txOf(ctx), (c) => pda.pdaGetWorklist(c, ctx.principal!, id, q));
+  }
+
+  @Get('campaigns/:campaignId/tag-index')
+  @Operation('pdaGetTagIndex')
+  tagIndex(@Ctx() ctx: AlmContext, @Param('campaignId') id: string, @Query() q: Record<string, string>) {
+    return this.db.withTx(txOf(ctx), (c) => pda.pdaGetTagIndex(c, ctx.principal!, id, q));
+  }
+
+  @Get('rooms')
+  @Operation('pdaListRooms')
+  rooms(@Ctx() ctx: AlmContext, @Query() q: Record<string, string>) {
+    return this.db.withTx(txOf(ctx), (c) => pda.pdaListRooms(c, ctx.principal!, q));
+  }
+
+  @Get('codes')
+  @Operation('pdaGetCodes')
+  codes(@Ctx() ctx: AlmContext) {
+    return this.db.withTx(txOf(ctx), (c) => pda.pdaGetCodes(c, ctx.principal!));
+  }
+
+  // 하나라도 REJECTED면 207
+  @Post('scans\\:batch')
+  @Operation('pdaPostScans')
+  async scans(@Ctx() ctx: AlmContext, @Body() body: unknown, @Res({ passthrough: true }) res: Response) {
+    const r = await this.db.withTx(txOf(ctx), (c) => pda.pdaPostScans(c, ctx.principal!, ctx.device?.id, body));
+    res.status(r.results.some((x) => x.status === 'REJECTED') ? 207 : 200);
+    return r;
+  }
+
+  @Post('unregistered\\:batch')
+  @Operation('pdaPostUnregistered')
+  async unregistered(@Ctx() ctx: AlmContext, @Body() body: unknown, @Res({ passthrough: true }) res: Response) {
+    const r = await this.db.withTx(txOf(ctx), (c) => pda.pdaPostUnregistered(c, ctx.principal!, body));
+    res.status(r.results.some((x) => x.status === 'REJECTED') ? 207 : 200);
+    return r;
   }
 }

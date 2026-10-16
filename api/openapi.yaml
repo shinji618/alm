@@ -5149,6 +5149,44 @@ paths:
       security:
       - webAuth:
         - web
+  /count-campaigns/{id}:cancel:
+    post:
+      operationId: cancelCampaign
+      summary: 캠페인 취소
+      tags:
+      - WEB
+      description: 'ALM-240 · 테이블: count_campaign
+
+
+        - SCOPING·COUNTING에서만. 진행 중이던 스캔 기록은 남긴다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignDetail'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: count.manage
+      x-scope:
+        ASSET_MANAGER: ALL
+      security:
+      - webAuth:
+        - web
   /count-campaigns/{id}/tasks:
     get:
       operationId: listCampaignTasks

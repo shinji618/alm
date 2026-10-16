@@ -1061,6 +1061,7 @@ W('실사','PATCH','/count-campaigns/{id}','patchCampaign','캠페인 수정',AM
 W('실사','POST','/count-campaigns/{id}:preview-scope','previewScope','범위 미리보기',AM,None,'ScopePreview','200, 409','asset, room','ALM-240',[ '저장하지 않고 룸별 대상 수만 계산.'],params=CI)
 W('실사','POST','/count-campaigns/{id}:start','startCampaign','범위 확정·실사 시작',AM,None,'CampaignDetail','200, 409, 422','count_campaign, count_task, count_item','ALM-240',
   ['범위의 자산마다 count_item, 룸마다 count_task를 한 트랜잭션으로 만들고 COUNTING으로.', '담당이 없는 룸이 있으면 422 ALM-E316(먼저 배정).', 'RETIRED·DISPOSED 자산은 제외.'],params=CI,idem='Idempotency-Key')
+W('실사','POST','/count-campaigns/{id}:cancel','cancelCampaign','캠페인 취소',AM,None,'CampaignDetail','200, 409','count_campaign','ALM-240',[ 'SCOPING·COUNTING에서만. 진행 중이던 스캔 기록은 남긴다.'],params=CI)
 W('실사','GET','/count-campaigns/{id}/tasks','listCampaignTasks','룸 작업 목록',AM,None,'CampaignProgress','200, 404','count_task','ALM-240',[ 'SCOPING 단계에서는 미리보기의 룸 목록으로 배정한다.'],params=CI)
 W('실사','PATCH','/count-tasks/{id}','assignCountTask','룸 담당 배정',AM,'TaskAssign','RoomProgress','200, 400, 404','count_task','ALM-240',[ 'COUNTER 역할이 아니면 400.'],params=CI)
 W('실사','GET','/count-campaigns/{id}/items','listCountItems','실사 대상·차이',AM,None,'CountItemRowList','200, 404','count_item, asset, room','ALM-240',[ 'variance=true면 MISPLACED·NOT_FOUND·파손만.'],

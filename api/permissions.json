@@ -454,6 +454,7 @@
   "resolveVariances": "count.manage",
   "resolveUnregistered": "count.manage",
   "closeCampaign": "count.manage",
+  "cancelCampaign": "count.manage",
   "postCountResults": "count.post",
   "listLabelTemplates": "label.read",
   "listPrinters": "label.read",

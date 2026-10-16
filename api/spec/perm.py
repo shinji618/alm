@@ -124,7 +124,7 @@ OPS = {
     'listUnregistered': 'count.read',
     'createCampaign': 'count.manage', 'patchCampaign': 'count.manage', 'previewScope': 'count.manage', 'startCampaign': 'count.manage',
     'assignCountTask': 'count.manage', 'closeCounting': 'count.manage', 'resolveVariances': 'count.manage',
-    'resolveUnregistered': 'count.manage', 'closeCampaign': 'count.manage', 'postCountResults': 'count.post',
+    'resolveUnregistered': 'count.manage', 'closeCampaign': 'count.manage', 'cancelCampaign': 'count.manage', 'postCountResults': 'count.post',
     # label
     'listLabelTemplates': 'label.read', 'listPrinters': 'label.read', 'listLabelJobs': 'label.read', 'previewZpl': 'label.read',
     'createLabelTemplate': 'label.config', 'patchLabelTemplate': 'label.config', 'createPrinter': 'label.config', 'patchPrinter': 'label.config',
