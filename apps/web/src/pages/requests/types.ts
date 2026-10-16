@@ -16,7 +16,7 @@ export interface RequestInput {
   retireType?: 'SCRAP' | 'SALE' | 'LOSS'; saleAmount?: number; buyer?: string; submit?: boolean;
 }
 export interface ApprovalStep {
-  id: string; stepNo: number; approverRole: string; approverName?: string; decision: 'PENDING' | 'APPROVED' | 'REJECTED' | 'SKIPPED';
+  id: string; stepNo: number; approverRole: string; approverName?: string; costCenter?: string; proxy?: boolean; decision: 'PENDING' | 'APPROVED' | 'REJECTED' | 'SKIPPED';
   comment?: string; decidedAt?: string; requestStatus?: RequestStatus;
 }
 export interface BapiMessage { type: string; id: string; number: string; text: string }
@@ -35,6 +35,7 @@ export interface InboxRow {
   approvalId: string; kind: 'ASSET_REQUEST' | 'PURCHASE_REQUEST'; targetId: string; targetNo: string; requestType: RequestType; summary: string;
   requesterName: string; stepNo: number; approverRole: string; waitingSince: string; amount?: number;
   assetTag?: string; targetCostCenterCode?: string; isProfitCenterChange?: boolean; retireType?: string; buyer?: string; proxy?: boolean;
+  stepCostCenterCode?: string;
 }
 
 export const statusTone: Record<RequestStatus, Tone> = {

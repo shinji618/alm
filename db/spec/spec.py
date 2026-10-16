@@ -78,6 +78,7 @@ is_active | bool | NN =true | 사용 여부
 t('org','app_user','사용자','SSO 로그인 사용자', '''
 email | vc(254) | NN | 이메일(로그인 ID)
 display_name | vc(100) | NN | 이름
+phone | vc(30) | | 전화번호(부서 관리자 연락처 등, 관리 화면에서 입력)
 idp_subject | vc(200) | | IdP 사용자 식별자. Cognito username의 `<IdP>_` 뒤 값(SAML NameID = Entra oid, OIDC sub)
 employee_no | vc(20) | | 사번
 department | vc(100) | | 부서명
@@ -470,8 +471,9 @@ completed_at | ts | | 전기 완료·반려 일시
 t('request','approval','승인','자산 요청·구매요청의 단계별 승인. 둘 중 하나만 채움', '''
 asset_request_id | ->asset_request | | 자산 요청
 purchase_request_id | ->purchase_request | | 구매요청
-step_no | int | NN | 단계 1 부서 관리자, 2 자산회계(최종)
+step_no | int | NN | 단계(1부터). 부서 관리자 단계(이관은 보내는·받는 부서) 다음 자산회계(최종)
 approver_role | E:RoleCode | NN | 승인 역할
+cost_center_id | ->cost_center | | 부서 관리자 단계의 코스트센터(이 코스트센터의 부서 관리자가 승인). 비면 요청의 책임 코스트센터
 approver_id | ->app_user | | 승인자(결정 시 기록)
 decision | E:ApprovalDecision | NN =PENDING | 결정
 comment | vc(500) | | 의견

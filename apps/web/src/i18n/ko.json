@@ -32,7 +32,8 @@
     "design": "디자인 시스템",
     "admin": "관리",
     "companies": "회사·SAP 연계",
-    "finMasters": "코스트센터·자산클래스"
+    "finMasters": "코스트센터·자산클래스",
+    "deptManagers": "부서 관리자"
   },
   "common": {
     "clear": "초기화",
@@ -387,7 +388,8 @@
       "finalMessage": "승인하면 SAP 전기 대기열에 올라가고(SAP 자산이 아니면 바로 반영) 되돌릴 수 없습니다.",
       "proxyNote": "이 코스트센터에는 부서 관리자가 없어 자산회계가 1단계를 대리 승인합니다. 2단계는 다른 자산회계가 승인해야 합니다.",
       "noSapPosting": "이 회사는 SAP 연계를 쓰지 않아 승인 후 ALM에만 반영합니다.",
-      "noApproval": "이 회사는 승인 단계가 없어 제출과 함께 반영됩니다."
+      "noApproval": "이 회사는 승인 단계가 없어 제출과 함께 반영됩니다.",
+      "proxyStep": "대리 결정"
     },
     "form": {
       "saveDraft": "임시 저장",
@@ -625,5 +627,36 @@
     "connectionHint": "연결 등록·비밀 교체는 운영 런북(13)의 CloudShell 명령으로 합니다.",
     "inactiveConn": "사용 안 함",
     "mappings": "필드 매핑"
+  },
+  "dm": {
+    "title": "부서 관리자",
+    "description": "코스트센터별 부서 관리자(1단계 승인자)와 연락처를 관리합니다. 이관 요청은 보내는 부서 → 받는 부서 → 자산회계 순으로 승인합니다.",
+    "search": "코스트센터·이름·관리자 검색",
+    "missingOnly": "관리자 없는 코스트센터만",
+    "profitCenter": "손익센터",
+    "managers": "부서 관리자",
+    "none": "없음",
+    "sapResponsible": "SAP 책임자",
+    "sapNote": "SAP 책임자(KS02 Person Responsible)는 참고용입니다. 승인자는 이 화면에서 지정한 부서 관리자입니다.",
+    "noneNote": "부서 관리자가 없습니다. 이 코스트센터의 요청은 자산회계가 1단계를 대리 승인합니다(이관은 다른 쪽 부서 관리자가 있으면 그쪽만).",
+    "active": "유효",
+    "inactive": "무효(기간·비활성)",
+    "notLinked": "로그인 전",
+    "validity": "유효기간 {{from}} ~ {{until}}",
+    "edit": "수정",
+    "remove": "해제",
+    "add": "부서 관리자 지정",
+    "removeTitle": "{{name}} 지정을 해제할까요?",
+    "removeMessage": "{{cc}} 부서 관리자 지정만 해제합니다. 사용자 계정은 남습니다.",
+    "removed": "해제했습니다",
+    "email": "이메일(로그인 ID)",
+    "emailHint": "이메일 형식을 확인하세요",
+    "emailNewHint": "없는 사용자면 새로 만듭니다(이름 필수). SSO 첫 로그인 때 연결됩니다.",
+    "name": "이름",
+    "phone": "전화번호",
+    "phoneHint": "숫자·+ ( ) - . 공백만, 3~30자",
+    "validFrom": "유효 시작일",
+    "validUntil": "유효 종료일",
+    "dateOrder": "시작일 이후여야 합니다"
   }
 }

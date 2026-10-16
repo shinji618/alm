@@ -137,6 +137,8 @@ model AppUser {
   email String @db.VarChar(254)
   /// 이름
   displayName String @map("display_name") @db.VarChar(100)
+  /// 전화번호(부서 관리자 연락처 등, 관리 화면에서 입력)
+  phone String? @db.VarChar(30)
   /// IdP 사용자 식별자. Cognito username의 `<IdP>_` 뒤 값(SAML NameID = Entra oid, OIDC sub)
   idpSubject String? @map("idp_subject") @db.VarChar(200)
   /// 사번
@@ -380,6 +382,7 @@ model CostCenter {
   purchaseRequests PurchaseRequest[] @relation("purchase_request_cost_center_id")
   poItems PoItem[] @relation("po_item_cost_center_id")
   assetRequests AssetRequest[] @relation("asset_request_target_cost_center_id")
+  approvals Approval[] @relation("approval_cost_center_id")
   @@unique([tenantId, controllingArea, costCenterCode])
   @@map("cost_center")
 }
@@ -1642,10 +1645,13 @@ model Approval {
   /// 구매요청
   purchaseRequestId String? @map("purchase_request_id") @db.Uuid
   purchaseRequest PurchaseRequest? @relation("approval_purchase_request_id", fields: [purchaseRequestId], references: [id])
-  /// 단계 1 부서 관리자, 2 자산회계(최종)
+  /// 단계(1부터). 부서 관리자 단계(이관은 보내는·받는 부서) 다음 자산회계(최종)
   stepNo Int @map("step_no")
   /// 승인 역할
   approverRole RoleCode @map("approver_role")
+  /// 부서 관리자 단계의 코스트센터(이 코스트센터의 부서 관리자가 승인). 비면 요청의 책임 코스트센터
+  costCenterId String? @map("cost_center_id") @db.Uuid
+  costCenter CostCenter? @relation("approval_cost_center_id", fields: [costCenterId], references: [id])
   /// 승인자(결정 시 기록)
   approverId String? @map("approver_id") @db.Uuid
   approver AppUser? @relation("approval_approver_id", fields: [approverId], references: [id])

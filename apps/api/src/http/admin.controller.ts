@@ -1,5 +1,5 @@
 // 관리(openapi 관리 영역): 사용자·역할·직무 충돌·공통 코드·설정·회사(SAP 연계·승인 단계). 권한은 가드가 operationId로 확인(admin.user·admin.config)
-import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Put, Query, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Put, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { Db } from '../db/pool';
 import { PrincipalCache } from '../auth/principal';
@@ -8,6 +8,7 @@ import * as users from '../admin/users';
 import * as cfg from '../admin/config';
 import * as companies from '../admin/companies';
 import * as fin from '../admin/finmasters';
+import * as dm from '../admin/deptmanagers';
 import { AlmContext, Ctx, Operation, txOf } from './context';
 import { DB, PRINCIPALS } from './tokens';
 
@@ -138,5 +139,40 @@ export class AdminController {
   @Operation('patchAssetClass')
   patchAssetClass(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) {
     return this.db.withTx(txOf(ctx), (c) => fin.patchAssetClass(c, id, ctx.principal!.userId, body));
+  }
+
+  // 코스트센터별 부서 관리자(ADM-040)
+  @Get('dept-managers')
+  @Operation('listDeptManagers')
+  listDeptManagers(@Ctx() ctx: AlmContext, @Query() q: Record<string, string>) {
+    return this.db.withTx(txOf(ctx), (c) => dm.listDeptManagers(c, q));
+  }
+
+  @Post('dept-managers')
+  @HttpCode(201)
+  @Operation('addDeptManager')
+  async addDeptManager(@Ctx() ctx: AlmContext, @Body() body: unknown, @Res({ passthrough: true }) res: Response) {
+    const p = ctx.principal!;
+    const r = await this.db.withTx(txOf(ctx), (c) => dm.addDeptManager(c, p.tenantId, p.userId, body));
+    this.cache.clearUser(r.userId);
+    if (r.sod.length) res.setHeader('X-SoD-Warning', r.sod.map((h) => h.rule).join(', '));
+    return r.manager;
+  }
+
+  @Patch('dept-managers/:id')
+  @Operation('patchDeptManager')
+  async patchDeptManager(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown, @Res({ passthrough: true }) res: Response) {
+    const r = await this.db.withTx(txOf(ctx), (c) => dm.patchDeptManager(c, id, ctx.principal!.userId, body));
+    this.cache.clearUser(r.userId);
+    if (r.sod.length) res.setHeader('X-SoD-Warning', r.sod.map((h) => h.rule).join(', '));
+    return r.manager;
+  }
+
+  @Delete('dept-managers/:id')
+  @HttpCode(204)
+  @Operation('removeDeptManager')
+  async removeDeptManager(@Ctx() ctx: AlmContext, @Param('id') id: string) {
+    const userId = await this.db.withTx(txOf(ctx), (c) => dm.removeDeptManager(c, id, ctx.principal!.userId));
+    this.cache.clearUser(userId);
   }
 }

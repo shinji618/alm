@@ -65,7 +65,9 @@ export const api = {
   get: async <T>(path: string, signal?: AbortSignal) => (await request<T>(path, { signal })).data,
   post: async <T>(path: string, body: unknown = {}, ifMatch?: number | string) =>
     (await request<T>(path, { method: 'POST', body, headers: ifMatch === undefined ? undefined : { 'if-match': `"${ifMatch}"` } })).data,
-  patch: async <T>(path: string, body: unknown, ifMatch: number | string) => (await request<T>(path, { method: 'PATCH', body, headers: { 'if-match': `"${ifMatch}"` } })).data,
+  patch: async <T>(path: string, body: unknown, ifMatch?: number | string) =>
+    (await request<T>(path, { method: 'PATCH', body, headers: ifMatch === undefined ? undefined : { 'if-match': `"${ifMatch}"` } })).data,
+  del: async (path: string) => { await request<unknown>(path, { method: 'DELETE' }); },
 };
 
 // 쿼리 문자열(빈 값 제외)

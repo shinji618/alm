@@ -3,9 +3,11 @@
 //   유형  : NEW_ASSET(AS01) · CHANGE(AS02) · TRANSFER(AS02 시간종속, 손익센터·세그먼트가 바뀌면 ABUMN) · RETIRE(ABAVN) · SALE(ABAON)
 //   상태  : DRAFT → SUBMITTED(1 부서 관리자 대기) → MGR_APPROVED(2 자산회계 대기) → ACCT_APPROVED(전기 대기) → POSTED | POST_ERROR
 //           반려 REJECTED, 취소 CANCELLED. 같은 자산에 진행 중인 요청은 하나만(409 ALM-E315)
-//   승인자: 1단계 = 책임 코스트센터(신규·이관·코스트센터 변경은 대상, 그 외는 자산의 현재 값)의 부서 관리자 역할 행.
-//           그 코스트센터에 (요청자 말고) 유효한 부서 관리자가 없으면 자산회계가 대리 승인한다(2026-10-13 결정, 의견 앞에 [대리] 표시)
-//           2단계 = 자산회계(역할 행에 회사코드·사이트·코스트센터가 있으면 그 범위)
+//   승인자: 부서 관리자 단계 = 책임 코스트센터(신규·코스트센터 변경은 대상, 그 외는 자산의 현재 값)의 부서 관리자 역할 행.
+//           이관(TRANSFER)은 보내는 부서(현재) → 받는 부서(대상) 두 단계(2026-10-15 결정). 부서 관리자가 없는 쪽은 건너뛰고,
+//           두 쪽 관리자가 같으면 한 단계. 앞 단계를 승인한 사람이 다음 부서 단계에도 자격이 있으면 함께 승인한다.
+//           어느 쪽에도 (요청자 말고) 유효한 부서 관리자가 없으면 자산회계가 대리 승인한다(2026-10-13 결정, 의견 앞에 [대리] 표시)
+//           마지막 단계 = 자산회계(역할 행에 회사코드·사이트·코스트센터가 있으면 그 범위)
 //           요청자 본인 승인 불가, 1단계 승인자는 2단계를 승인할 수 없다(403 ALM-E403, 직무 분리)
 //   최종 승인: SAP 자산(또는 NEW_ASSET)은 sap_posting(READY)을 만들고 ACCT_APPROVED → SAP 결과가 오면 postings.applyPosted가 자산에 반영.
 //              SAP 자산번호가 없는 자산(ALM 전용)은 SAP에 보낼 것이 없으므로 바로 반영하고 POSTED
@@ -26,7 +28,7 @@ import { nextNumbers } from '../assets/tags';
 export const TYPES = ['NEW_ASSET', 'CHANGE', 'TRANSFER', 'RETIRE', 'SALE'] as const;
 export const REQ_STATUSES = ['DRAFT', 'SUBMITTED', 'MGR_APPROVED', 'ACCT_APPROVED', 'POSTED', 'POST_ERROR', 'REJECTED', 'CANCELLED'] as const;
 const OPEN = ['DRAFT', 'SUBMITTED', 'MGR_APPROVED', 'ACCT_APPROVED', 'POST_ERROR'];
-const STEPS = [[1, 'DEPT_MANAGER'], [2, 'ASSET_ACCOUNTANT']] as const;
+const STEP_ROLES = ['DEPT_MANAGER', 'ASSET_ACCOUNTANT'] as const;
 const CHANGE_FIELDS = ['description', 'serialNo'] as const;
 type ReqType = (typeof TYPES)[number];
 
@@ -65,14 +67,27 @@ const responsibleCc = (r: Record<string, any>) => r.target_cost_center_id ?? r.a
 // 부서 관리자가 없을 때 1단계를 대리하는 역할: 2단계 회사는 자산회계, 1단계만 쓰는 회사는 자산 관리자
 const proxyRole = (r: Record<string, any>) => (Number(r.approval_steps ?? 2) >= 2 ? 'ASSET_ACCOUNTANT' : 'ASSET_MANAGER');
 
-function eligible(p: Principal, role: string, r: Record<string, any>): boolean {
-  if (role === 'DEPT_MANAGER' && !r.dept_exists) role = proxyRole(r);   // 부서 관리자 없음 → 대리
+// 유효한(요청자 말고) 부서 관리자가 있는가. cc·요청자는 SQL 식
+const deptExistsSql = (cc: string, requester: string) => `EXISTS (SELECT 1 FROM user_role ur JOIN app_user du ON du.id = ur.user_id
+             WHERE ur.role = 'DEPT_MANAGER' AND ur.cost_center_id = ${cc}
+               AND du.is_active AND du.id <> ${requester}
+               AND (ur.valid_from IS NULL OR ur.valid_from <= current_date) AND (ur.valid_until IS NULL OR ur.valid_until >= current_date))`;
+
+// 단계의 코스트센터와 부서 관리자 유무. 단계에 코스트센터가 없으면(0005 이전 요청) 요청의 책임 코스트센터
+const stepCc = (s: Record<string, any> | undefined, r: Record<string, any>) => (s?.step_cc_id
+  ? { code: s.step_cc_code as string, exists: !!s.step_dept_exists } : { code: r.responsible_cc_code as string, exists: !!r.dept_exists });
+
+// s: 승인 단계 행(approver_role, step_cc_id·step_cc_code·step_dept_exists)
+function eligible(p: Principal, s: Record<string, any>, r: Record<string, any>): boolean {
+  const cc = stepCc(s, r);
+  let role = s.approver_role as string;
+  if (role === 'DEPT_MANAGER' && !cc.exists) role = proxyRole(r);   // 부서 관리자 없음 → 대리
   if (!p.effectiveRoles.includes(role)) return false;
   if (role !== 'ASSET_MANAGER' && !can(p, 'approval.decide')) return false;
   const rows = p.roles.filter((x) => x.role === role);
-  if (role === 'DEPT_MANAGER') return rows.some((x) => !!x.costCenterCode && x.costCenterCode === r.responsible_cc_code);
+  if (role === 'DEPT_MANAGER') return rows.some((x) => !!x.costCenterCode && x.costCenterCode === cc.code);
   return rows.some((x) => (!x.companyCode || x.companyCode === r.company_code) && (!x.siteCode || x.siteCode === r.site_code)
-    && (!x.costCenterCode || x.costCenterCode === r.responsible_cc_code));
+    && (!x.costCenterCode || x.costCenterCode === cc.code));
 }
 
 // 요청 1건 + 판단에 필요한 코드들
@@ -80,10 +95,7 @@ const BASE = `SELECT r.*, a.asset_tag, a.description AS asset_description, a.sta
     a.cost_center_id AS asset_cost_center_id, a.room_id AS asset_room_id, a.serial_no AS asset_serial_no, a.version AS asset_version,
     co.company_code, co.sap_enabled, co.approval_steps, s.site_code, coalesce(tcc.cost_center_code, acc.cost_center_code) AS responsible_cc_code,
     u.display_name AS requester_name, u.email AS requester_email,
-    EXISTS (SELECT 1 FROM user_role ur JOIN app_user du ON du.id = ur.user_id
-             WHERE ur.role = 'DEPT_MANAGER' AND ur.cost_center_id = coalesce(r.target_cost_center_id, a.cost_center_id)
-               AND du.is_active AND du.id <> r.requester_id
-               AND (ur.valid_from IS NULL OR ur.valid_from <= current_date) AND (ur.valid_until IS NULL OR ur.valid_until >= current_date)) AS dept_exists
+    ${deptExistsSql('coalesce(r.target_cost_center_id, a.cost_center_id)', 'r.requester_id')} AS dept_exists
   FROM asset_request r
   LEFT JOIN asset a ON a.id = r.asset_id
   LEFT JOIN company co ON co.id = a.company_id
@@ -100,9 +112,45 @@ async function load(c: PoolClient, id: string, lock = false): Promise<Record<str
   return r;
 }
 
+const STEP_COLS = `ap.cost_center_id AS step_cc_id, scc.cost_center_code AS step_cc_code, scc.name AS step_cc_name,
+      ${deptExistsSql('ap.cost_center_id', 'r.requester_id')} AS step_dept_exists`;
+
 async function steps(c: PoolClient, id: string) {
-  return (await c.query(`SELECT ap.*, u.display_name AS approver_name FROM approval ap LEFT JOIN app_user u ON u.id = ap.approver_id
+  return (await c.query(`SELECT ap.*, u.display_name AS approver_name, ${STEP_COLS}
+     FROM approval ap JOIN asset_request r ON r.id = ap.asset_request_id
+     LEFT JOIN app_user u ON u.id = ap.approver_id LEFT JOIN cost_center scc ON scc.id = ap.cost_center_id
      WHERE ap.asset_request_id = $1 ORDER BY ap.step_no`, [id])).rows;
+}
+
+// 승인 단계 계획(제출·재승인): 부서 관리자 단계(코스트센터별) + 자산회계(2단계 회사)
+async function deptManagerIds(c: PoolClient, ccId: string, requesterId: string): Promise<string> {
+  return (await c.query(`SELECT string_agg(DISTINCT ur.user_id::text, ',' ORDER BY ur.user_id::text) AS ids FROM user_role ur JOIN app_user du ON du.id = ur.user_id
+     WHERE ur.role = 'DEPT_MANAGER' AND ur.cost_center_id = $1 AND du.is_active AND du.id <> $2
+       AND (ur.valid_from IS NULL OR ur.valid_from <= current_date) AND (ur.valid_until IS NULL OR ur.valid_until >= current_date)`,
+  [ccId, requesterId])).rows[0]?.ids ?? '';
+}
+
+async function planSteps(c: PoolClient, r: Record<string, any>): Promise<{ role: string; ccId: string | null }[]> {
+  const from = r.asset_cost_center_id ?? null, to = r.target_cost_center_id ?? null;
+  const ccs: string[] = r.request_type === 'TRANSFER' && from && to && from !== to ? [from, to] : [responsibleCc(r)];
+  const dept: { role: string; ccId: string | null }[] = [];
+  let prev = '';
+  for (const cc of ccs) {
+    const ids = await deptManagerIds(c, cc, r.requester_id);
+    if (!ids || ids === prev) continue;          // 부서 관리자가 없는 쪽은 건너뛰고, 같은 관리자면 한 번
+    prev = ids;
+    dept.push({ role: 'DEPT_MANAGER', ccId: cc });
+  }
+  if (!dept.length) dept.push({ role: 'DEPT_MANAGER', ccId: responsibleCc(r) });   // 아무도 없으면 대리 승인
+  return Number(r.approval_steps ?? 2) >= 2 ? [...dept, { role: 'ASSET_ACCOUNTANT', ccId: null }] : dept;
+}
+
+async function createSteps(c: PoolClient, p: Principal, r: Record<string, any>) {
+  await c.query('DELETE FROM approval WHERE asset_request_id = $1', [r.id]);
+  for (const [i, s] of (await planSteps(c, r)).entries()) {
+    await c.query(`INSERT INTO approval (id, tenant_id, asset_request_id, step_no, approver_role, cost_center_id, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [randomUUID(), p.tenantId, r.id, i + 1, s.role, s.ccId, p.userId]);
+  }
 }
 
 // 볼 수 있는가: 범위 안, 요청자, 또는 어느 단계든 승인 자격(결정한 사람 포함)
@@ -111,7 +159,7 @@ async function visible(c: PoolClient, p: Principal, r: Record<string, any>): Pro
   const ps = new Params([r.id]);
   const inScope = (await c.query(`SELECT 1 FROM asset_request r LEFT JOIN asset a ON a.id = r.asset_id WHERE r.id = $1 AND ${requestScope(p, ps)}`, ps.values)).rowCount;
   if (inScope) return true;
-  return (await steps(c, r.id)).some((s) => s.approver_id === p.userId || eligible(p, s.approver_role, r));
+  return (await steps(c, r.id)).some((s) => s.approver_id === p.userId || eligible(p, s, r));
 }
 
 // ---------------- 목록 ----------------
@@ -161,7 +209,7 @@ export async function getRequest(c: PoolClient, p: Principal, id: string) {
 async function detail(c: PoolClient, p: Principal, r: Record<string, any>) {
   const st = await steps(c, r.id);
   const cur = st.find((s) => s.step_no === r.current_step && s.decision === 'PENDING' && ['SUBMITTED', 'MGR_APPROVED'].includes(r.status));
-  const canDecide = !!cur && eligible(p, cur.approver_role, r) && r.requester_id !== p.userId
+  const canDecide = !!cur && eligible(p, cur, r) && r.requester_id !== p.userId
     && !st.some((s) => s.step_no < cur.step_no && s.approver_id === p.userId);
   const amount = can(p, 'amount.read') || r.requester_id === p.userId || canDecide;
   const posting = (await c.query(`SELECT id, posting_id, posting_type, status, attempt_count, sap_document_no, sap_fiscal_year, sap_asset_no, result_at, messages
@@ -188,11 +236,14 @@ async function detail(c: PoolClient, p: Principal, r: Record<string, any>) {
       currentCostCenter: codes.from_cc ?? undefined, poItem: codes.po ?? undefined }),
     amountMasked: !amount && (r.acquisition_value !== null || r.sale_amount !== null),
     isProfitCenterChange: r.is_profit_center_change,
-    deptManagerMissing: !r.dept_exists && Number(r.approval_steps ?? 2) > 0,
+    deptManagerMissing: Number(r.approval_steps ?? 2) > 0
+      && (st.length ? st.some((s) => s.approver_role === 'DEPT_MANAGER' && !stepCc(s, r).exists) : !r.dept_exists),
     sapEnabled: !!r.sap_enabled, approvalSteps: Number(r.approval_steps ?? 2),
     asset: r.asset_id ? clean({ id: r.asset_id, assetTag: r.asset_tag, description: r.asset_description, status: r.asset_status,
       sapAssetNo: r.sap_asset_no ? `${r.sap_asset_no}-${r.sap_sub_no ?? '0000'}` : undefined, companyCode: r.company_code }) : undefined,
     approvals: st.map((s) => clean({ id: s.id, stepNo: s.step_no, approverRole: s.approver_role, approverName: s.approver_name ?? undefined,
+      costCenter: s.step_cc_code ? `${s.step_cc_code} · ${s.step_cc_name}` : undefined,
+      proxy: (s.approver_role === 'DEPT_MANAGER' && !stepCc(s, r).exists) || undefined,
       decision: s.decision, comment: s.comment ?? undefined, decidedAt: iso(s.decided_at) })),
     posting: posting ? clean({ id: posting.id, postingId: posting.posting_id, postingType: posting.posting_type, status: posting.status,
       attemptCount: posting.attempt_count, sapDocumentNo: posting.sap_document_no ?? undefined, sapFiscalYear: posting.sap_fiscal_year ?? undefined,
@@ -399,19 +450,16 @@ async function doSubmit(c: PoolClient, p: Principal, r: Record<string, any>, mai
     retireType: r.retire_type ?? undefined, saleAmount: num(r.sale_amount), buyer: r.buyer ?? undefined }), r.id);
   await c.query(`UPDATE asset_request SET status = 'SUBMITTED', submitted_at = now(), current_step = 1, updated_at = now(), updated_by = $2, version = version + 1
     WHERE id = $1`, [r.id, p.userId]);
-  await c.query('DELETE FROM approval WHERE asset_request_id = $1', [r.id]);
   const n = Number(r.approval_steps ?? 2);
   if (n === 0) {
+    await c.query('DELETE FROM approval WHERE asset_request_id = $1', [r.id]);
     // 승인 없음(SAP 연계를 끈 회사): 범위 안의 자산 관리자만 제출할 수 있고 바로 반영
     if (!(await assetWritable(c, p, r.asset_id))) throw E.forbidden('이 회사는 승인 단계가 없어 자산 관리자만 요청을 처리할 수 있습니다');
     await finalize(c, p, r);
     return;
   }
-  for (const [step, role] of STEPS.slice(0, n)) {
-    await c.query(`INSERT INTO approval (id, tenant_id, asset_request_id, step_no, approver_role, created_by) VALUES ($1, $2, $3, $4, $5, $6)`,
-      [randomUUID(), p.tenantId, r.id, step, role, p.userId]);
-  }
-  mails.push(...await approverMails(c, r, r.dept_exists ? 'DEPT_MANAGER' : proxyRole(r), 1));
+  await createSteps(c, p, r);
+  mails.push(...await stepMails(c, r, 1));
 }
 
 export async function cancelRequest(c: PoolClient, p: Principal, id: string) {
@@ -437,16 +485,17 @@ async function inboxRows(c: PoolClient, p: Principal) {
   if (!can(p, 'approval.decide') && !p.effectiveRoles.includes('ASSET_MANAGER')) return [];
   // 자산회계는 부서 관리자가 없는 요청의 1단계도 본다(대리)
   // 자산회계·자산 관리자는 부서 관리자가 없는 요청의 1단계도 본다(대리)
-  const roles = p.effectiveRoles.some((x) => x === 'ASSET_ACCOUNTANT' || x === 'ASSET_MANAGER') ? STEPS.map(([, r]) => r)
-    : STEPS.map(([, r]) => r).filter((r) => p.effectiveRoles.includes(r));
+  const roles = p.effectiveRoles.some((x) => x === 'ASSET_ACCOUNTANT' || x === 'ASSET_MANAGER') ? [...STEP_ROLES]
+    : STEP_ROLES.filter((r) => p.effectiveRoles.includes(r));
   if (!roles.length) return [];
   const rows = (await c.query(`${BASE.replace('SELECT r.*', `SELECT r.*, ap.id AS approval_id, ap.step_no, ap.approver_role, ap.created_at AS step_created,
-      (SELECT max(decided_at) FROM approval x WHERE x.asset_request_id = r.id AND x.step_no < ap.step_no) AS prev_decided`)}
+      ${STEP_COLS}, (SELECT max(decided_at) FROM approval x WHERE x.asset_request_id = r.id AND x.step_no < ap.step_no) AS prev_decided`)}
     JOIN approval ap ON ap.asset_request_id = r.id AND ap.step_no = r.current_step AND ap.decision = 'PENDING'
+    LEFT JOIN cost_center scc ON scc.id = ap.cost_center_id
     WHERE r.status IN ('SUBMITTED', 'MGR_APPROVED') AND ap.approver_role::text = ANY($1) AND r.requester_id <> $2
       AND NOT EXISTS (SELECT 1 FROM approval x WHERE x.asset_request_id = r.id AND x.step_no < ap.step_no AND x.approver_id = $2)
     ORDER BY r.submitted_at, r.request_no`, [roles, p.userId])).rows;
-  return rows.filter((r) => eligible(p, r.approver_role, r));
+  return rows.filter((r) => eligible(p, r, r));
 }
 
 export async function inboxCount(c: PoolClient, p: Principal): Promise<number> {
@@ -465,7 +514,8 @@ export async function inbox(c: PoolClient, p: Principal, q: Record<string, strin
       approvalId: r.approval_id, kind: 'ASSET_REQUEST', targetId: r.id, targetNo: r.request_no, requestType: r.request_type,
       summary: summary(r, ccNames), assetTag: r.asset_tag ?? undefined, targetCostCenterCode: ccNames.get(r.target_cost_center_id),
       isProfitCenterChange: r.is_profit_center_change || undefined, retireType: r.retire_type ?? undefined, buyer: r.buyer ?? undefined,
-      requesterName: r.requester_name, stepNo: r.step_no, approverRole: r.approver_role, proxy: (r.approver_role === 'DEPT_MANAGER' && !r.dept_exists) || undefined,
+      requesterName: r.requester_name, stepNo: r.step_no, approverRole: r.approver_role, proxy: (r.approver_role === 'DEPT_MANAGER' && !stepCc(r, r).exists) || undefined,
+      stepCostCenterCode: r.step_cc_code ?? undefined,
       waitingSince: iso(r.prev_decided ?? r.submitted_at ?? r.step_created),
       amount: num(r.acquisition_value ?? r.sale_amount),
     })),
@@ -490,8 +540,9 @@ async function decidable(c: PoolClient, p: Principal, approvalId: string) {
   const ap = (await c.query('SELECT * FROM approval WHERE id = $1', [approvalId])).rows[0];
   if (!ap?.asset_request_id) throw E.notFound('승인 단계를 찾을 수 없습니다');
   const r = await load(c, ap.asset_request_id, true);
-  const step = (await c.query('SELECT * FROM approval WHERE id = $1 FOR UPDATE', [approvalId])).rows[0];
-  if (!(await visible(c, p, r)) && !eligible(p, step.approver_role, r)) throw E.notFound('승인 단계를 찾을 수 없습니다');
+  await c.query('SELECT 1 FROM approval WHERE id = $1 FOR UPDATE', [approvalId]);
+  const step = (await steps(c, r.id)).find((s) => s.id === approvalId)!;
+  if (!(await visible(c, p, r)) && !eligible(p, step, r)) throw E.notFound('승인 단계를 찾을 수 없습니다');
   if (step.decision !== 'PENDING' || !['SUBMITTED', 'MGR_APPROVED'].includes(r.status)) throw new AlmError(409, 'ALM-E322', '이미 결정된 단계입니다');
   if (step.step_no !== r.current_step) throw new AlmError(409, 'ALM-E322', '앞 단계 승인이 끝나지 않았습니다');
   if (r.requester_id === p.userId) throw E.sod('본인 요청은 승인·반려할 수 없습니다(직무 분리)');
@@ -499,7 +550,7 @@ async function decidable(c: PoolClient, p: Principal, approvalId: string) {
   if (step.created_by === p.userId) throw E.sod('이 요청을 보정한 사람은 다시 만든 승인 단계를 결정할 수 없습니다(직무 분리)');
   const prev = (await c.query('SELECT 1 FROM approval WHERE asset_request_id = $1 AND step_no < $2 AND approver_id = $3', [r.id, step.step_no, p.userId])).rowCount;
   if (prev) throw E.sod('앞 단계를 승인한 사람은 다음 단계를 결정할 수 없습니다(직무 분리)');
-  if (!eligible(p, step.approver_role, r)) throw E.forbidden(`이 단계(${step.approver_role})의 승인 권한이 없습니다`);
+  if (!eligible(p, step, r)) throw E.forbidden(`이 단계(${step.approver_role})의 승인 권한이 없습니다`);
   return { r, step };
 }
 
@@ -512,22 +563,33 @@ function decision(body: unknown, required: boolean): string | undefined {
 
 const PROXY: Record<string, string> = { ASSET_ACCOUNTANT: '[대리] 부서 관리자 없음 → 자산회계 결정', ASSET_MANAGER: '[대리] 부서 관리자 없음 → 자산 관리자 결정' };
 const withProxy = (r: Record<string, any>, step: Record<string, any>, comment?: string) =>
-  (step.approver_role === 'DEPT_MANAGER' && !r.dept_exists ? `${PROXY[proxyRole(r)]}${comment ? ` · ${comment}` : ''}`.slice(0, 500) : comment);
+  (step.approver_role === 'DEPT_MANAGER' && !stepCc(step, r).exists ? `${PROXY[proxyRole(r)]}${comment ? ` · ${comment}` : ''}`.slice(0, 500) : comment);
 
 export async function approve(c: PoolClient, p: Principal, approvalId: string, body: unknown, mails: MailRequest[]) {
   const { r, step } = await decidable(c, p, approvalId);
   const comment = withProxy(r, step, decision(body, false));
   await c.query(`UPDATE approval SET decision = 'APPROVED', approver_id = $2, comment = $3, decided_at = now(), updated_at = now(), updated_by = $2,
       version = version + 1 WHERE id = $1`, [step.id, p.userId, comment ?? null]);
-  const nextRow = (await c.query('SELECT step_no, approver_role FROM approval WHERE asset_request_id = $1 AND step_no = $2', [r.id, step.step_no + 1])).rows[0];
-  const next = nextRow ? [nextRow.step_no as number, nextRow.approver_role as string] as const : undefined;
-  if (next) {
-    await c.query(`UPDATE asset_request SET status = 'MGR_APPROVED', current_step = $2, updated_at = now(), updated_by = $3, version = version + 1 WHERE id = $1`,
-      [r.id, next[0], p.userId]);
-    mails.push(...await approverMails(c, r, next[1], next[0]));
-  } else {
-    await finalize(c, p, r);
-    mails.push(decidedMail(r, p, 'APPROVED', comment));
+  // 다음 단계. 다음도 부서 관리자 단계이고 이 사람이 그 자격도 있으면(두 부서를 같은 사람이 관리) 함께 승인
+  const all = await steps(c, r.id);
+  let no = step.step_no as number;
+  for (;;) {
+    const next = all.find((s) => s.step_no === no + 1);
+    if (!next) {
+      await finalize(c, p, r);
+      mails.push(decidedMail(r, p, 'APPROVED', comment));
+      break;
+    }
+    if (next.approver_role === 'DEPT_MANAGER' && stepCc(next, r).exists && eligible(p, next, r)) {
+      await c.query(`UPDATE approval SET decision = 'APPROVED', approver_id = $2, comment = $3, decided_at = now(), updated_at = now(), updated_by = $2,
+          version = version + 1 WHERE id = $1`, [next.id, p.userId, `[동일 승인자] ${step.step_no}단계 승인으로 함께 승인`]);
+      no = next.step_no;
+      continue;
+    }
+    await c.query(`UPDATE asset_request SET status = $2, current_step = $3, updated_at = now(), updated_by = $4, version = version + 1 WHERE id = $1`,
+      [r.id, next.approver_role === 'DEPT_MANAGER' ? 'SUBMITTED' : 'MGR_APPROVED', next.step_no, p.userId]);
+    mails.push(...await stepMails(c, r, next.step_no));
+    break;
   }
   return stepOut(c, step.id);
 }
@@ -655,12 +717,8 @@ export async function fixRequest(c: PoolClient, p: Principal, id: string, ifMatc
     // 재승인: 전기는 취소해 두고 최종 승인 때 같은 번호로 다시 READY
     if (posting) await c.query(`UPDATE sap_posting SET status = 'CANCELLED', lease_until = NULL, updated_at = now(), updated_by = $2, version = version + 1 WHERE id = $1`, [posting.id, p.userId]);
     await c.query(`UPDATE asset_request SET status = 'SUBMITTED', current_step = 1, updated_at = now(), version = version + 1 WHERE id = $1`, [id]);
-    await c.query('DELETE FROM approval WHERE asset_request_id = $1', [id]);
-    for (const [step, role] of STEPS.slice(0, Math.max(1, Number(nr.approval_steps ?? 2)))) {
-      await c.query(`INSERT INTO approval (id, tenant_id, asset_request_id, step_no, approver_role, created_by) VALUES ($1, $2, $3, $4, $5, $6)`,
-        [randomUUID(), p.tenantId, id, step, role, p.userId]);
-    }
-    mails.push(...await approverMails(c, nr, nr.dept_exists ? 'DEPT_MANAGER' : proxyRole(nr), 1));
+    await createSteps(c, p, { ...nr, approval_steps: Math.max(1, Number(nr.approval_steps ?? 2)) });
+    mails.push(...await stepMails(c, nr, 1));
   } else {
     const built = await rebuildPosting(c, id);
     if (!built || !posting) throw new AlmError(409, 'ALM-E322', 'SAP 전기 대상이 아닙니다');
@@ -761,7 +819,16 @@ export async function applyRequest(c: PoolClient, r: Record<string, any>, a: Rec
 export async function submittedMails(c: PoolClient, id: string): Promise<MailRequest[]> {
   const r = await load(c, id);
   if (r.status !== 'SUBMITTED') return [];
-  return approverMails(c, r, r.dept_exists ? 'DEPT_MANAGER' : proxyRole(r), 1);
+  return stepMails(c, r, r.current_step ?? 1);
+}
+
+// 그 단계의 승인자(부서 관리자가 없으면 대리 역할)에게
+async function stepMails(c: PoolClient, r: Record<string, any>, stepNo: number): Promise<MailRequest[]> {
+  const s = (await steps(c, r.id)).find((x) => x.step_no === stepNo);
+  if (!s) return [];
+  const cc = stepCc(s, r);
+  const role = s.approver_role === 'DEPT_MANAGER' && !cc.exists ? proxyRole(r) : s.approver_role;
+  return approverMails(c, { ...r, responsible_cc_code: cc.code }, role, stepNo);
 }
 
 async function approverMails(c: PoolClient, r: Record<string, any>, role: string, stepNo: number): Promise<MailRequest[]> {

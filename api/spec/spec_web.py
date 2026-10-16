@@ -752,6 +752,8 @@ id | uuid | Y | approval.id
 stepNo | int | Y | 단계
 approverRole | string | Y | 승인 역할
 approverName | string | N | 승인자
+costCenter | string | N | 부서 관리자 단계의 코스트센터(코드 · 이름). 이관은 보내는 부서 → 받는 부서
+proxy | bool | N | 이 부서 단계에 부서 관리자가 없어 대리(자산회계·자산 관리자) 결정
 decision | enum(PENDING,APPROVED,REJECTED,SKIPPED) | Y | 결정
 comment | string | N | 의견
 decidedAt | datetime | N | 결정 일시
@@ -896,6 +898,7 @@ isProfitCenterChange | bool | N | 손익센터 변경
 retireType | string | N | 폐기 유형
 buyer | string | N | 매입처
 proxy | bool | N | 부서 관리자 없음 → 자산회계 대리 결정
+stepCostCenterCode | string | N | 부서 관리자 단계의 코스트센터
 summary | string | Y | 요약 (예: 이관 · AT-000123 → 1000-4310)
 requesterName | string | Y | 요청자
 stepNo | int | Y | 단계
@@ -1531,6 +1534,53 @@ isLowValue | bool | N | 기본 false
 isCapitalized | bool | N | 기본 true
 isActive | bool | N | 수정 시만
 ''')
+schema('DeptManager', '부서 관리자 지정', '''
+id | uuid | Y | user_role.id (지정 id)
+userId | uuid | Y | 사용자
+displayName | string | Y | 이름
+email | string | Y | 이메일(로그인 ID)
+phone | string | N | 전화번호
+validFrom | date | N | 유효 시작일
+validUntil | date | N | 유효 종료일
+active | bool | Y | 지금 유효(사용자 활성·유효기간 안)
+linked | bool | Y | SSO로 로그인한 적 있음(IdP 연결)
+''')
+schema('DeptManagerCostCenter', '코스트센터별 부서 관리자', '''
+costCenterId | uuid | Y | 코스트센터
+costCenterCode | string(10) | Y | 코스트센터
+name | string | Y | 이름
+companyCode | string(4) | Y | 회사코드
+profitCenterCode | string | N | 손익센터
+sapResponsible | string | N | SAP 책임자(CSKS-VERAK, 참고용 자유 텍스트)
+isActive | bool | Y | 코스트센터 사용
+managers | [DeptManager] | Y | 부서 관리자(여러 명 가능)
+''')
+schema('DeptManagerCostCenterList', '부서 관리자 목록', '''
+items | [DeptManagerCostCenter] | Y | 코스트센터
+''')
+schema('DeptManagerInput', '부서 관리자 지정', '''
+costCenterId | uuid | Y | 코스트센터
+email | string(254) | Y | 이메일. 없는 사용자면 새로 만든다(SSO 첫 로그인 때 연결)
+displayName | string(100) | N | 이름(새 사용자는 필수). 있는 사용자면 이름을 바꾼다
+phone | string(30) | N | 전화번호(숫자·+()-. 공백)
+validFrom | date | N | 유효 시작일
+validUntil | date | N | 유효 종료일
+''')
+schema('DeptManagerPatch', '부서 관리자 수정(보낸 필드만)', '''
+displayName | string(100) | N | 이름
+phone | string(30) | N | 전화번호(null이면 지움)
+validFrom | date | N | 유효 시작일(null이면 즉시)
+validUntil | date | N | 유효 종료일(null이면 무기한)
+''')
+W('관리','GET','/admin/dept-managers','listDeptManagers','코스트센터별 부서 관리자',SA,None,'DeptManagerCostCenterList','200, 400','cost_center, user_role, app_user','ADM-040',
+  [ '활성 코스트센터(비활성이어도 지정이 남아 있으면 포함)와 부서 관리자. q는 코스트센터 코드·이름, 관리자 이름·이메일.', 'SAP 책임자(VERAK)는 참고용이며 승인자는 이 화면의 지정(user_role DEPT_MANAGER)으로 정한다.'],
+  params=[('companyId','query','uuid','N','회사'),('q','query','string','N','검색')])
+W('관리','POST','/admin/dept-managers','addDeptManager','부서 관리자 지정',SA,'DeptManagerInput','DeptManager','201, 400, 403, 404, 409','user_role, app_user, audit_log','ADM-040',
+  [ '이메일로 사용자를 찾고 없으면 만든다(이름 필수). 전화·이름을 함께 저장.', '같은 사람·코스트센터가 이미 있으면 409 ALM-E321. 비활성 코스트센터 400.', '자기 자신에게는 줄 수 없다(403 ALM-E403, H-03). 직무 충돌은 막지 않고 X-SoD-Warning.'],ok='201')
+W('관리','PATCH','/admin/dept-managers/{id}','patchDeptManager','부서 관리자 수정',SA,'DeptManagerPatch','DeptManager','200, 400, 403, 404','user_role, app_user, audit_log','ADM-040',
+  [ '유효기간(user_role)과 이름·전화(app_user)를 바꾼다. 자기 자신은 403.'],params=[ID()])
+W('관리','DELETE','/admin/dept-managers/{id}','removeDeptManager','부서 관리자 해제',SA,None,None,'204, 403, 404','user_role, audit_log','ADM-040',
+  [ '지정(user_role)을 지운다(사용자는 남김). 진행 중인 요청의 그 단계는 다른 부서 관리자 또는 대리(자산회계)가 결정.'],params=[ID()],ok='204')
 MA = 'SYS_ADMIN, ASSET_MANAGER'
 W('관리','GET','/admin/cost-centers','listCostCenters','코스트센터 관리 목록',MA+', ASSET_ACCOUNTANT, AUDITOR',None,'CostCenterRowList','200, 400','cost_center, company','관리',
   [ 'SAP 회사의 코스트센터는 읽기 전용(editable=false).'],params=[('companyId','query','uuid','N','회사')])

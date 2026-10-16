@@ -7426,6 +7426,181 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CompanyPatch'
+  /admin/dept-managers:
+    get:
+      operationId: listDeptManagers
+      summary: 코스트센터별 부서 관리자
+      tags:
+      - WEB
+      description: 'ADM-040 · 테이블: cost_center, user_role, app_user
+
+
+        - 활성 코스트센터(비활성이어도 지정이 남아 있으면 포함)와 부서 관리자. q는 코스트센터 코드·이름, 관리자 이름·이메일.
+
+        - SAP 책임자(VERAK)는 참고용이며 승인자는 이 화면의 지정(user_role DEPT_MANAGER)으로 정한다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: companyId
+        in: query
+        required: false
+        description: 회사
+        schema:
+          type: string
+          format: uuid
+      - name: q
+        in: query
+        required: false
+        description: 검색
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeptManagerCostCenterList'
+        '400':
+          $ref: '#/components/responses/E400'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: admin.user
+      x-scope:
+        SYS_ADMIN: '-'
+      security:
+      - webAuth:
+        - web
+    post:
+      operationId: addDeptManager
+      summary: 부서 관리자 지정
+      tags:
+      - WEB
+      description: 'ADM-040 · 테이블: user_role, app_user, audit_log
+
+
+        - 이메일로 사용자를 찾고 없으면 만든다(이름 필수). 전화·이름을 함께 저장.
+
+        - 같은 사람·코스트센터가 이미 있으면 409 ALM-E321. 비활성 코스트센터 400.
+
+        - 자기 자신에게는 줄 수 없다(403 ALM-E403, H-03). 직무 충돌은 막지 않고 X-SoD-Warning.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '201':
+          description: 생성
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeptManager'
+        '400':
+          $ref: '#/components/responses/E400'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: admin.user
+      x-scope:
+        SYS_ADMIN: '-'
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeptManagerInput'
+  /admin/dept-managers/{id}:
+    patch:
+      operationId: patchDeptManager
+      summary: 부서 관리자 수정
+      tags:
+      - WEB
+      description: 'ADM-040 · 테이블: user_role, app_user, audit_log
+
+
+        - 유효기간(user_role)과 이름·전화(app_user)를 바꾼다. 자기 자신은 403.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeptManager'
+        '400':
+          $ref: '#/components/responses/E400'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: admin.user
+      x-scope:
+        SYS_ADMIN: '-'
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeptManagerPatch'
+    delete:
+      operationId: removeDeptManager
+      summary: 부서 관리자 해제
+      tags:
+      - WEB
+      description: 'ADM-040 · 테이블: user_role, audit_log
+
+
+        - 지정(user_role)을 지운다(사용자는 남김). 진행 중인 요청의 그 단계는 다른 부서 관리자 또는 대리(자산회계)가 결정.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: 성공(본문 없음)
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: admin.user
+      x-scope:
+        SYS_ADMIN: '-'
+      security:
+      - webAuth:
+        - web
   /admin/cost-centers:
     get:
       operationId: listCostCenters
@@ -12926,6 +13101,12 @@ components:
         approverName:
           type: string
           description: 승인자
+        costCenter:
+          type: string
+          description: 부서 관리자 단계의 코스트센터(코드 · 이름). 이관은 보내는 부서 → 받는 부서
+        proxy:
+          type: boolean
+          description: 이 부서 단계에 부서 관리자가 없어 대리(자산회계·자산 관리자) 결정
         decision:
           type: string
           enum:
@@ -13497,6 +13678,9 @@ components:
         proxy:
           type: boolean
           description: 부서 관리자 없음 → 자산회계 대리 결정
+        stepCostCenterCode:
+          type: string
+          description: 부서 관리자 단계의 코스트센터
         summary:
           type: string
           description: '요약 (예: 이관 · AT-000123 → 1000-4310)'
@@ -15722,6 +15906,150 @@ components:
         isActive:
           type: boolean
           description: 수정 시만
+    DeptManager:
+      type: object
+      description: 부서 관리자 지정
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: user_role.id (지정 id)
+        userId:
+          type: string
+          format: uuid
+          description: 사용자
+        displayName:
+          type: string
+          description: 이름
+        email:
+          type: string
+          description: 이메일(로그인 ID)
+        phone:
+          type: string
+          description: 전화번호
+        validFrom:
+          type: string
+          format: date
+          description: 유효 시작일
+        validUntil:
+          type: string
+          format: date
+          description: 유효 종료일
+        active:
+          type: boolean
+          description: 지금 유효(사용자 활성·유효기간 안)
+        linked:
+          type: boolean
+          description: SSO로 로그인한 적 있음(IdP 연결)
+      required:
+      - id
+      - userId
+      - displayName
+      - email
+      - active
+      - linked
+    DeptManagerCostCenter:
+      type: object
+      description: 코스트센터별 부서 관리자
+      properties:
+        costCenterId:
+          type: string
+          format: uuid
+          description: 코스트센터
+        costCenterCode:
+          type: string
+          maxLength: 10
+          description: 코스트센터
+        name:
+          type: string
+          description: 이름
+        companyCode:
+          type: string
+          maxLength: 4
+          description: 회사코드
+        profitCenterCode:
+          type: string
+          description: 손익센터
+        sapResponsible:
+          type: string
+          description: SAP 책임자(CSKS-VERAK, 참고용 자유 텍스트)
+        isActive:
+          type: boolean
+          description: 코스트센터 사용
+        managers:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeptManager'
+          description: 부서 관리자(여러 명 가능)
+      required:
+      - costCenterId
+      - costCenterCode
+      - name
+      - companyCode
+      - isActive
+      - managers
+    DeptManagerCostCenterList:
+      type: object
+      description: 부서 관리자 목록
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeptManagerCostCenter'
+          description: 코스트센터
+      required:
+      - items
+    DeptManagerInput:
+      type: object
+      description: 부서 관리자 지정
+      properties:
+        costCenterId:
+          type: string
+          format: uuid
+          description: 코스트센터
+        email:
+          type: string
+          maxLength: 254
+          description: 이메일. 없는 사용자면 새로 만든다(SSO 첫 로그인 때 연결)
+        displayName:
+          type: string
+          maxLength: 100
+          description: 이름(새 사용자는 필수). 있는 사용자면 이름을 바꾼다
+        phone:
+          type: string
+          maxLength: 30
+          description: 전화번호(숫자·+()-. 공백)
+        validFrom:
+          type: string
+          format: date
+          description: 유효 시작일
+        validUntil:
+          type: string
+          format: date
+          description: 유효 종료일
+      required:
+      - costCenterId
+      - email
+    DeptManagerPatch:
+      type: object
+      description: 부서 관리자 수정(보낸 필드만)
+      properties:
+        displayName:
+          type: string
+          maxLength: 100
+          description: 이름
+        phone:
+          type: string
+          maxLength: 30
+          description: 전화번호(null이면 지움)
+        validFrom:
+          type: string
+          format: date
+          description: 유효 시작일(null이면 즉시)
+        validUntil:
+          type: string
+          format: date
+          description: 유효 종료일(null이면 무기한)
     AccessToken:
       type: object
       description: 웹 액세스 토큰

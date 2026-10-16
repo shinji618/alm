@@ -141,6 +141,7 @@ OPS = {
     'listCodes': 'admin.config', 'putCodeGroup': 'admin.config', 'listSettings': 'admin.config', 'putSetting': 'admin.config',
     'listCompanies': 'admin.config', 'createCompany': 'admin.config', 'patchCompany': 'admin.config',
     'listCostCenters': 'master.read', 'createCostCenter': 'master.write', 'patchCostCenter': 'master.write',
+    'listDeptManagers': 'admin.user', 'addDeptManager': 'admin.user', 'patchDeptManager': 'admin.user', 'removeDeptManager': 'admin.user',
     'listAssetClasses': 'master.read', 'createAssetClass': 'master.write', 'patchAssetClass': 'master.write',
     'listAuditLogs': 'audit.read', 'listSecurityEvents': 'audit.read',
 }

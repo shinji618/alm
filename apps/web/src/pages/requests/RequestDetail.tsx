@@ -71,7 +71,7 @@ export function RequestDetail() {
       {!d ? <Panel><span className="muted">{t('common.loading')}</span></Panel> : (
         <>
           <Panel>
-            <Steps label={t('request.detail.flow')} current={flowIndex(d)} steps={flowSteps(d).map((k) => t(`request.flow.${k}`))} />
+            <Steps label={t('request.detail.flow')} current={flowIndex(d)} steps={flowLabels(d, t)} />
             {d.status === 'REJECTED' && <div className={s.notice} role="status">{t('request.detail.rejectedNote')}</div>}
             {d.status === 'POST_ERROR' && <div className={s.notice} role="alert">{t('request.detail.postErrorNote')}</div>}
           </Panel>
@@ -100,18 +100,24 @@ export function RequestDetail() {
   );
 }
 
-// 진행 표시: 회사 설정(승인 단계 2·1·0, SAP 연계)에 맞춰 단계를 만든다
-function flowSteps(d: Detail): string[] {
+// 진행 표시: 만든 승인 단계(이관은 보내는·받는 부서)가 있으면 그대로, 없으면(초안) 회사 설정(승인 단계 2·1·0, SAP 연계)으로
+function flowSteps(d: Detail): { key: string; cc?: string }[] {
   const n = d.approvalSteps ?? 2;
-  return ['submit', ...(n >= 1 ? ['mgr'] : []), ...(n >= 2 ? ['acct'] : []), ...(d.sapEnabled !== false ? ['sap'] : [])];
+  const approvals = d.approvals.length ? d.approvals.map((x) => ({ key: x.approverRole === 'DEPT_MANAGER' ? 'mgr' : 'acct', cc: x.costCenter }))
+    : [...(n >= 1 ? [{ key: 'mgr' }] : []), ...(n >= 2 ? [{ key: 'acct' }] : [])];
+  return [{ key: 'submit' }, ...approvals, ...(d.sapEnabled !== false ? [{ key: 'sap' }] : [])];
+}
+function flowLabels(d: Detail, t: (k: string) => string): string[] {
+  const steps = flowSteps(d);
+  const multi = steps.filter((x) => x.key === 'mgr').length > 1;   // 이관: 부서 단계마다 코스트센터를 붙인다
+  return steps.map((x) => `${t(`request.flow.${x.key}`)}${multi && x.cc ? ` (${x.cc.split(' · ')[0]})` : ''}`);
 }
 function flowIndex(d: Detail): number {
-  const n = d.approvalSteps ?? 2;
+  const approvals = flowSteps(d).length - 1 - (d.sapEnabled !== false ? 1 : 0);
   switch (d.status) {
     case 'DRAFT': return 0;
-    case 'SUBMITTED': return 1;
-    case 'MGR_APPROVED': return 2;
-    case 'ACCT_APPROVED': case 'POST_ERROR': return 1 + n;
+    case 'SUBMITTED': case 'MGR_APPROVED': return Math.max(1, d.currentStep);
+    case 'ACCT_APPROVED': case 'POST_ERROR': return 1 + approvals;
     case 'POSTED': return flowSteps(d).length;
     default: return Math.max(0, d.currentStep);
   }
@@ -158,7 +164,8 @@ function Approvals({ steps }: { steps: ApprovalStep[] }) {
   return (
     <Timeline label={t('request.detail.approvals')} events={steps.map((x) => ({
       id: x.id,
-      meta: <>{t('request.detail.step', { no: x.stepNo })} · {t(`role.${x.approverRole}`)}{x.decidedAt && <> · {formatDateTime(x.decidedAt)}</>}</>,
+      meta: <>{t('request.detail.step', { no: x.stepNo })} · {t(`role.${x.approverRole}`)}{x.costCenter && <> · {x.costCenter}</>}
+        {x.proxy && <> · {t('request.detail.proxyStep')}</>}{x.decidedAt && <> · {formatDateTime(x.decidedAt)}</>}</>,
       body: (
         <div>
           <strong>{t(`request.decision.${x.decision}`)}</strong>{x.approverName && <span> · {x.approverName}</span>}

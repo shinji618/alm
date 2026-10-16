@@ -108,6 +108,7 @@ CREATE TABLE app_user (
   tenant_id uuid NOT NULL,
   email varchar(254) NOT NULL,
   display_name varchar(100) NOT NULL,
+  phone varchar(30),
   idp_subject varchar(200),
   employee_no varchar(20),
   department varchar(100),
@@ -127,6 +128,7 @@ COMMENT ON COLUMN app_user.id IS '기본키';
 COMMENT ON COLUMN app_user.tenant_id IS '테넌트';
 COMMENT ON COLUMN app_user.email IS '이메일(로그인 ID)';
 COMMENT ON COLUMN app_user.display_name IS '이름';
+COMMENT ON COLUMN app_user.phone IS '전화번호(부서 관리자 연락처 등, 관리 화면에서 입력)';
 COMMENT ON COLUMN app_user.idp_subject IS 'IdP 사용자 식별자. Cognito username의 `<IdP>_` 뒤 값(SAML NameID = Entra oid, OIDC sub)';
 COMMENT ON COLUMN app_user.employee_no IS '사번';
 COMMENT ON COLUMN app_user.department IS '부서명';
@@ -1424,6 +1426,7 @@ CREATE TABLE approval (
   purchase_request_id uuid,
   step_no integer NOT NULL,
   approver_role role_code NOT NULL,
+  cost_center_id uuid,
   approver_id uuid,
   decision approval_decision NOT NULL DEFAULT 'PENDING',
   comment varchar(500),
@@ -1441,8 +1444,9 @@ COMMENT ON COLUMN approval.id IS '기본키';
 COMMENT ON COLUMN approval.tenant_id IS '테넌트';
 COMMENT ON COLUMN approval.asset_request_id IS '자산 요청';
 COMMENT ON COLUMN approval.purchase_request_id IS '구매요청';
-COMMENT ON COLUMN approval.step_no IS '단계 1 부서 관리자, 2 자산회계(최종)';
+COMMENT ON COLUMN approval.step_no IS '단계(1부터). 부서 관리자 단계(이관은 보내는·받는 부서) 다음 자산회계(최종)';
 COMMENT ON COLUMN approval.approver_role IS '승인 역할';
+COMMENT ON COLUMN approval.cost_center_id IS '부서 관리자 단계의 코스트센터(이 코스트센터의 부서 관리자가 승인). 비면 요청의 책임 코스트센터';
 COMMENT ON COLUMN approval.approver_id IS '승인자(결정 시 기록)';
 COMMENT ON COLUMN approval.decision IS '결정';
 COMMENT ON COLUMN approval.comment IS '의견';
@@ -2558,6 +2562,7 @@ ALTER TABLE asset_request ADD CONSTRAINT fk_asset_request_recon_diff_id FOREIGN 
 ALTER TABLE approval ADD CONSTRAINT fk_approval_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE approval ADD CONSTRAINT fk_approval_asset_request_id FOREIGN KEY (asset_request_id) REFERENCES asset_request(id);
 ALTER TABLE approval ADD CONSTRAINT fk_approval_purchase_request_id FOREIGN KEY (purchase_request_id) REFERENCES purchase_request(id);
+ALTER TABLE approval ADD CONSTRAINT fk_approval_cost_center_id FOREIGN KEY (cost_center_id) REFERENCES cost_center(id);
 ALTER TABLE approval ADD CONSTRAINT fk_approval_approver_id FOREIGN KEY (approver_id) REFERENCES app_user(id);
 ALTER TABLE count_campaign ADD CONSTRAINT fk_count_campaign_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE count_campaign ADD CONSTRAINT fk_count_campaign_company_id FOREIGN KEY (company_id) REFERENCES company(id);

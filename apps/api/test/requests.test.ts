@@ -137,36 +137,41 @@ test('작성: 유형별 필수·검증, 범위, DRAFT, 진행 중 요청 409', {
   assert.equal((await call('emp', 'GET', `/asset-requests/${ids.r1}`)).status, 404, '직원 범위 밖');
 });
 
-test('승인: 책임 코스트센터 부서 관리자 → 자산회계, 직무 분리, 최종 승인 시 ABUMN 전기 건, SAP 결과로 자산 반영', { skip }, async () => {
+test('승인: 이관은 보내는 부서(CC100) → 받는 부서(CC300) → 자산회계, 직무 분리, 최종 승인 시 ABUMN 전기 건, SAP 결과로 자산 반영', { skip }, async () => {
   const s = await call('mgr', 'POST', `/asset-requests/${ids.r1}:submit`);
   assert.equal(s.status, 200); assert.equal(s.body.status, 'SUBMITTED');
-  assert.deepEqual(s.body.approvals.map((x: { stepNo: number; approverRole: string; decision: string }) => [x.stepNo, x.approverRole, x.decision]),
-    [[1, 'DEPT_MANAGER', 'PENDING'], [2, 'ASSET_ACCOUNTANT', 'PENDING']]);
+  assert.deepEqual(s.body.approvals.map((x: { stepNo: number; approverRole: string; costCenter?: string; decision: string }) => [x.stepNo, x.approverRole, x.costCenter, x.decision]),
+    [[1, 'DEPT_MANAGER', 'CC100 · CC100', 'PENDING'], [2, 'DEPT_MANAGER', 'CC300 · CC300', 'PENDING'], [3, 'ASSET_ACCOUNTANT', undefined, 'PENDING']]);
   assert.equal((await call('mgr', 'POST', `/asset-requests/${ids.r1}:submit`)).status, 409);
-  const mails = await q(`SELECT u.email FROM notification n JOIN app_user u ON u.id = n.recipient_id WHERE n.template = 'APPROVAL_REQUESTED' ORDER BY 1`);
-  assert.deepEqual(mails.map((m) => m.email), ['both@req.test', 'dept3@req.test'], '대상 코스트센터(CC300) 부서 관리자에게');
+  const mails = async () => (await q(`SELECT u.email FROM notification n JOIN app_user u ON u.id = n.recipient_id WHERE n.template = 'APPROVAL_REQUESTED' ORDER BY 1`)).map((m) => m.email);
+  assert.deepEqual(await mails(), ['dept1@req.test'], '먼저 보내는 부서(CC100) 부서 관리자에게');
 
-  assert.equal((await call('dept1', 'GET', '/approvals/inbox')).body.total, 0, 'CC100 관리자는 대상 아님');
-  assert.equal((await call('acct', 'GET', '/approvals/inbox')).body.total, 0, '2단계는 아직');
-  const ib = await call('dept3', 'GET', '/approvals/inbox');
+  assert.equal((await call('dept3', 'GET', '/approvals/inbox')).body.total, 0, '받는 부서는 아직');
+  assert.equal((await call('acct', 'GET', '/approvals/inbox')).body.total, 0, '자산회계는 아직');
+  const ib = await call('dept1', 'GET', '/approvals/inbox');
   assert.equal(ib.body.total, 1);
   assert.equal(ib.body.items[0].summary, 'S1000000 → CC300 (손익센터 변경)');
-  assert.equal((await call('dept3', 'GET', '/me')).body.navCounts.requests, 1);
-  const s1 = await step(ids.r1, 1), s2 = await step(ids.r1, 2);
-  assert.equal((await call('dept1', 'POST', `/approvals/${s1}:approve`, {})).status, 403, '다른 코스트센터');
-  assert.equal((await call('acct', 'POST', `/approvals/${s2}:approve`, {})).status, 409, '앞 단계가 남음');
-  const d = await call('dept3', 'GET', `/asset-requests/${ids.r1}`);
+  assert.equal(ib.body.items[0].stepCostCenterCode, 'CC100');
+  assert.equal((await call('dept1', 'GET', '/me')).body.navCounts.requests, 1);
+  const s1 = await step(ids.r1, 1), s2 = await step(ids.r1, 2), s3 = await step(ids.r1, 3);
+  assert.equal((await call('dept3', 'POST', `/approvals/${s1}:approve`, {})).status, 403, '다른 코스트센터');
+  assert.equal((await call('dept3', 'POST', `/approvals/${s2}:approve`, {})).status, 409, '앞 단계가 남음');
+  const d = await call('dept1', 'GET', `/asset-requests/${ids.r1}`);
   assert.equal(d.status, 200, '승인자는 범위 밖이어도 본다'); assert.equal(d.body.actions.approve, s1);
 
-  const a1 = await call('both', 'POST', `/approvals/${s1}:approve`, { comment: 'OK' });
+  const a0 = await call('dept1', 'POST', `/approvals/${s1}:approve`, { comment: '보냄' });
+  assert.equal(a0.status, 200); assert.equal(a0.body.requestStatus, 'SUBMITTED', '받는 부서 승인 대기');
+  assert.deepEqual(await mails(), ['both@req.test', 'dept1@req.test', 'dept3@req.test'], '받는 부서(CC300) 부서 관리자에게');
+  assert.equal((await call('dept3', 'GET', '/approvals/inbox')).body.total, 1);
+  const a1 = await call('both', 'POST', `/approvals/${s2}:approve`, { comment: 'OK' });
   assert.equal(a1.status, 200); assert.equal(a1.body.requestStatus, 'MGR_APPROVED'); assert.equal(a1.body.approverName, 'Both');
-  const sod = await call('both', 'POST', `/approvals/${s2}:approve`, {});
-  assert.equal(sod.status, 403); assert.equal(sod.body.code, 'ALM-E403', '1단계 승인자는 2단계 불가');
+  const sod = await call('both', 'POST', `/approvals/${s3}:approve`, {});
+  assert.equal(sod.status, 403); assert.equal(sod.body.code, 'ALM-E403', '부서 단계 승인자는 자산회계 단계 불가');
   assert.equal((await call('both', 'GET', '/approvals/inbox')).body.total, 0);
   assert.equal((await call('acct', 'GET', '/approvals/inbox')).body.total, 1);
-  const a2 = await call('acct', 'POST', `/approvals/${s2}:approve`, {});
+  const a2 = await call('acct', 'POST', `/approvals/${s3}:approve`, {});
   assert.equal(a2.status, 200); assert.equal(a2.body.requestStatus, 'ACCT_APPROVED');
-  assert.equal((await call('acct', 'POST', `/approvals/${s2}:approve`, {})).status, 409, '이미 결정');
+  assert.equal((await call('acct', 'POST', `/approvals/${s3}:approve`, {})).status, 409, '이미 결정');
   const [pst] = await q(`SELECT posting_type, status, payload, value_date::text AS vd, approved_by FROM sap_posting WHERE posting_id = 'AR-00001'`);
   assert.equal(pst.posting_type, 'ASSET_TRANSFER'); assert.equal(pst.status, 'READY'); assert.equal(pst.vd, '2026-11-02'); assert.equal(pst.approved_by, ids.acct);
   assert.deepEqual(pst.payload, { newCostCenter: 'CC300', newProfitCenter: 'P2', percent: 100, createNewSubNo: false });
@@ -348,4 +353,54 @@ test('코스트센터·자산클래스 직접 관리: SAP 끈 회사만, 중복�
     VALUES (gen_random_uuid(), $1, 'AT-000300', 'SAP co laptop', $2, 'IN_STOCK', 'MANUAL', $3, $4, $5, $6) RETURNING id`, [tenantId, ids.cat, ids.co, ids.site, ids.room1, ids.cc100]);
   const na = await call('mgr', 'POST', '/asset-requests', { requestType: 'NEW_ASSET', assetId: a.id, reason: 'x', assetClassId: cls.body.id, targetCostCenterId: ids.cc100, acquisitionValue: 10 });
   assert.equal(na.status, 400); assert.equal(na.body.errors[0].field, 'assetClassId');
+});
+
+test('부서 관리자 관리(ADM-040)와 이관 승인 단계: 없는 쪽 건너뜀, 같은 관리자면 한 단계, 겹치는 관리자는 함께 승인', { skip }, async () => {
+  // 관리 화면 API
+  assert.equal((await call('mgr', 'GET', '/admin/dept-managers')).status, 403, 'SYS_ADMIN만');
+  const list = await call('adm', 'GET', '/admin/dept-managers?q=CC100');
+  assert.equal(list.status, 200);
+  assert.deepEqual(list.body.items.map((x: { costCenterCode: string; managers: { email: string }[] }) => [x.costCenterCode, x.managers.map((m) => m.email)]),
+    [['CC100', ['dept1@req.test']]]);
+  const noName = await call('adm', 'POST', '/admin/dept-managers', { costCenterId: ids.cc200, email: 'new@req.test' });
+  assert.equal(noName.status, 400, '새 사용자는 이름 필수');
+  const add = await call('adm', 'POST', '/admin/dept-managers', { costCenterId: ids.cc200, email: 'New@Req.test', displayName: 'New Mgr', phone: '+1 404-555-0100' });
+  assert.equal(add.status, 201);
+  assert.deepEqual([add.body.email, add.body.displayName, add.body.phone, add.body.active, add.body.linked], ['new@req.test', 'New Mgr', '+1 404-555-0100', true, false]);
+  assert.equal((await call('adm', 'POST', '/admin/dept-managers', { costCenterId: ids.cc200, email: 'new@req.test' })).status, 409);
+  assert.equal((await call('adm', 'POST', '/admin/dept-managers', { costCenterId: ids.cc200, email: 'adm@req.test' })).status, 403, '자기 자신');
+  assert.equal((await call('adm', 'POST', '/admin/dept-managers', { costCenterId: ids.cc200, email: 'x@req.test', displayName: 'X', phone: 'call me' })).status, 400);
+  const p = await call('adm', 'PATCH', `/admin/dept-managers/${add.body.id}`, { phone: '404-555-0199', validUntil: '2020-01-01' });
+  assert.equal(p.status, 200); assert.deepEqual([p.body.phone, p.body.validUntil, p.body.active], ['404-555-0199', '2020-01-01', false]);
+  assert.equal((await call('adm', 'DELETE', `/admin/dept-managers/${add.body.id}`)).status, 204);
+  assert.equal((await q(`SELECT count(*)::int AS n FROM app_user WHERE email = 'new@req.test'`))[0].n, 1, '사용자는 남김');
+
+  const mk = async (tag: string) => (await q(`INSERT INTO asset (id, tenant_id, asset_tag, description, category_id, status, source, company_id, site_id, room_id, cost_center_id)
+    VALUES (gen_random_uuid(), $1, $2::varchar, 'T laptop', $3, 'IN_STOCK', 'MANUAL', $4, $5, $6, $7) RETURNING id`, [tenantId, tag, ids.cat, ids.co, ids.site, ids.room1, ids.cc100]))[0].id as string;
+  const transfer = async (asset: string) => (await call('mgr', 'POST', '/asset-requests', { requestType: 'TRANSFER', assetId: asset, reason: '이동',
+    targetCostCenterId: ids.cc200, effectiveDate: '2026-11-01', submit: true })).body;
+  const shape = (b: { approvals: { approverRole: string; costCenter?: string }[] }) => b.approvals.map((x) => [x.approverRole, x.costCenter]);
+
+  // CC200에 부서 관리자 없음 → 보내는 부서만
+  const t1 = await transfer(await mk('T-0001'));
+  assert.deepEqual(shape(t1), [['DEPT_MANAGER', 'CC100 · CC100'], ['ASSET_ACCOUNTANT', undefined]]);
+  await call('mgr', 'POST', `/asset-requests/${t1.id}:cancel`);
+
+  // 두 부서를 같은 사람(dept1)이 관리 → 한 단계
+  const same = await call('adm', 'POST', '/admin/dept-managers', { costCenterId: ids.cc200, email: 'dept1@req.test' });
+  assert.equal(same.status, 201);
+  const t2 = await transfer(await mk('T-0002'));
+  assert.deepEqual(shape(t2), [['DEPT_MANAGER', 'CC100 · CC100'], ['ASSET_ACCOUNTANT', undefined]]);
+  await call('mgr', 'POST', `/asset-requests/${t2.id}:cancel`);
+
+  // 받는 부서에 다른 관리자도 있음(dept1·new) → 두 단계, dept1이 1단계를 승인하면 2단계도 함께 승인
+  await call('adm', 'POST', '/admin/dept-managers', { costCenterId: ids.cc200, email: 'new@req.test' });
+  const t3 = await transfer(await mk('T-0003'));
+  assert.deepEqual(shape(t3), [['DEPT_MANAGER', 'CC100 · CC100'], ['DEPT_MANAGER', 'CC200 · CC200'], ['ASSET_ACCOUNTANT', undefined]]);
+  const a = await call('dept1', 'POST', `/approvals/${await step(t3.id, 1)}:approve`, {});
+  assert.equal(a.body.requestStatus, 'MGR_APPROVED');
+  const d = await call('mgr', 'GET', `/asset-requests/${t3.id}`);
+  assert.deepEqual(d.body.approvals.map((x: { decision: string; comment?: string }) => [x.decision, x.comment]),
+    [['APPROVED', undefined], ['APPROVED', '[동일 승인자] 1단계 승인으로 함께 승인'], ['PENDING', undefined]]);
+  assert.equal((await call('acct', 'POST', `/approvals/${await step(t3.id, 3)}:approve`, {})).body.requestStatus, 'POSTED');
 });

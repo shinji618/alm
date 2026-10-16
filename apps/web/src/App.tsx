@@ -13,6 +13,7 @@ import { RequestList } from '@/pages/requests/RequestList';
 import { RequestDetail } from '@/pages/requests/RequestDetail';
 import { CompanySettings } from '@/pages/admin/CompanySettings';
 import { FinMasters } from '@/pages/admin/FinMasters';
+import { DeptManagers } from '@/pages/admin/DeptManagers';
 import { SapIntegration } from '@/pages/sap/SapIntegration';
 
 // 만든 화면(그 외 메뉴는 아직 자리 화면)
@@ -44,6 +45,7 @@ function Routed() {
         <Route path="/sap" element={<SapIntegration />} />
         <Route path="/admin/companies" element={<CompanySettings />} />
         <Route path="/admin/fin-masters" element={<FinMasters />} />
+        <Route path="/admin/dept-managers" element={<DeptManagers />} />
         {NAV_ITEMS.filter((i) => !BUILT.has(i.path)).map((i) => (
           <Route key={i.path} path={i.path} element={<Placeholder />} />
         ))}

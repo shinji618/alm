@@ -32,7 +32,8 @@
     "design": "Design system",
     "admin": "Administration",
     "companies": "Companies & SAP",
-    "finMasters": "Cost centers & classes"
+    "finMasters": "Cost centers & classes",
+    "deptManagers": "Department managers"
   },
   "common": {
     "clear": "Clear",
@@ -387,7 +388,8 @@
       "finalMessage": "Once approved it is queued for SAP posting (or applied right away for non-SAP assets) and cannot be undone.",
       "proxyNote": "This cost center has no department manager, so an asset accountant decides step 1 instead. Step 2 must be approved by a different asset accountant.",
       "noSapPosting": "This company does not use SAP, so the request is applied in ALM after approval.",
-      "noApproval": "This company has no approval steps; the request is applied on submit."
+      "noApproval": "This company has no approval steps; the request is applied on submit.",
+      "proxyStep": "proxy decision"
     },
     "form": {
       "saveDraft": "Save draft",
@@ -625,5 +627,36 @@
     "connectionHint": "Register connections and rotate secrets with the CloudShell commands in runbook 13.",
     "inactiveConn": "Off",
     "mappings": "Field mappings"
+  },
+  "dm": {
+    "title": "Department managers",
+    "description": "Manage the department manager (step-1 approver) and contact details for each cost center. Transfers are approved by the sending department, then the receiving department, then the asset accountant.",
+    "search": "Search cost center, name or manager",
+    "missingOnly": "Without a manager only",
+    "profitCenter": "Profit center",
+    "managers": "Department managers",
+    "none": "None",
+    "sapResponsible": "SAP person responsible",
+    "sapNote": "The SAP person responsible (KS02) is for reference only. Approvers are the department managers assigned here.",
+    "noneNote": "No department manager. An asset accountant approves step 1 on their behalf (for transfers, only the other department approves if it has a manager).",
+    "active": "Active",
+    "inactive": "Inactive (dates or user)",
+    "notLinked": "Not signed in yet",
+    "validity": "Valid {{from}} – {{until}}",
+    "edit": "Edit",
+    "remove": "Remove",
+    "add": "Assign department manager",
+    "removeTitle": "Remove {{name}}?",
+    "removeMessage": "Removes only the department manager assignment for {{cc}}. The user account stays.",
+    "removed": "Removed",
+    "email": "Email (sign-in ID)",
+    "emailHint": "Check the email format",
+    "emailNewHint": "A new user is created if none exists (name required). Linked at first SSO sign-in.",
+    "name": "Name",
+    "phone": "Phone",
+    "phoneHint": "Digits, + ( ) - . and spaces, 3–30 characters",
+    "validFrom": "Valid from",
+    "validUntil": "Valid until",
+    "dateOrder": "Must be on or after the start date"
   }
 }
