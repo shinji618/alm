@@ -1126,6 +1126,12 @@ paths:
         description: users 검색어
         schema:
           type: string
+      - name: role
+        in: query
+        required: false
+        description: 'users 역할 필터(예: COUNTER — 유효한 역할만)'
+        schema:
+          type: string
       - name: siteId
         in: query
         required: false

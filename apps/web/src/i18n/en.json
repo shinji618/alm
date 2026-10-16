@@ -679,5 +679,159 @@
     "validFrom": "Valid from",
     "validUntil": "Valid until",
     "dateOrder": "Must be on or after the start date"
+  },
+  "count": {
+    "list": {
+      "description": "Plan physical counts by site, assign rooms to counters, follow PDA scanning, resolve variances and post the count date to SAP.",
+      "new": "New count campaign",
+      "allStatus": "All stages",
+      "empty": "No count campaigns yet.",
+      "search": "Search code or name"
+    },
+    "col": {
+      "code": "Code",
+      "name": "Name",
+      "status": "Stage",
+      "keyDate": "Key date",
+      "dueDate": "Due",
+      "progress": "Counted",
+      "variances": "Variances"
+    },
+    "status": {
+      "SCOPING": "Scoping",
+      "COUNTING": "Counting",
+      "REVIEW": "Variance review",
+      "POSTING": "Posting",
+      "CLOSED": "Closed",
+      "CANCELLED": "Cancelled"
+    },
+    "create": {
+      "note": "The campaign starts in Scoping. Assign a counter to every room, then start counting.",
+      "codeHint": "2–6 letters or digits (e.g. PI26Q4)",
+      "dueHint": "Due date must be on or after the key date",
+      "siteHint": "Choose at least one site",
+      "sites": "Sites in scope",
+      "keyDateHint": "Count date posted to SAP (IVDAT)",
+      "capitalizedOnly": "Capitalized (SAP) assets only",
+      "submit": "Create campaign",
+      "created": "Campaign {{code}} created"
+    },
+    "detail": {
+      "dates": "{{company}} · key date {{key}} · due {{due}}",
+      "back": "All campaigns",
+      "steps": "Campaign stages",
+      "unassigned": "{{n}} room(s) have no counter yet. Assign every room before starting.",
+      "postings": "SAP postings:"
+    },
+    "kpi": {
+      "total": "In scope",
+      "found": "Found",
+      "misplaced": "Misplaced",
+      "pending": "Not yet counted",
+      "notFound": "Not found",
+      "unregistered": "Unregistered"
+    },
+    "tab": {
+      "rooms": "Rooms",
+      "items": "Assets",
+      "variances": "Variances",
+      "unregistered": "Unregistered ({{n}})"
+    },
+    "act": {
+      "start": "Start counting",
+      "startMsg": "The scope is frozen and count items are created for every asset in scope. Counters see their rooms on the PDA.",
+      "started": "Counting started",
+      "closeCounting": "End counting",
+      "closeCountingMsg": "{{pending}} asset(s) not yet counted will be marked Not found. PDA scans stop except for recounts.",
+      "countingClosed": "Counting ended — review the variances",
+      "post": "Post results",
+      "postMsgSap": "Creates a SAP posting (last count date) for every counted SAP asset. Assets without SAP are updated in ALM right away.",
+      "postMsg": "Updates the last count date of every counted asset.",
+      "posted": "Results posted",
+      "close": "Close campaign",
+      "closeMsg": "Closes the campaign once every SAP posting is done.",
+      "closed": "Campaign closed",
+      "cancel": "Cancel campaign",
+      "cancelMsg": "The campaign is cancelled. Scans already received are kept.",
+      "cancelled": "Campaign cancelled"
+    },
+    "rooms": {
+      "room": "Room",
+      "assignee": "Counter",
+      "assignFor": "Counter for {{room}}",
+      "unassigned": "Unassigned",
+      "expected": "Assets",
+      "counted": "Counted",
+      "pending": "Pending",
+      "assigned": "{{room}} assigned to {{name}}",
+      "noCounters": "No user has the Counter role. Add the role in user administration first.",
+      "empty": "No rooms in scope. Check that the assets in scope have a room."
+    },
+    "task": {
+      "NOT_STARTED": "Not started",
+      "IN_PROGRESS": "In progress",
+      "COMPLETED": "Completed"
+    },
+    "items": {
+      "tag": "Asset tag",
+      "description": "Description",
+      "expected": "Registered room",
+      "found": "Found in",
+      "result": "Result",
+      "counted": "Counted",
+      "photos": "Photos",
+      "action": "Resolution",
+      "relabel": "Relabel",
+      "search": "Search tag or description",
+      "allResults": "All results"
+    },
+    "result": {
+      "PENDING": "Pending",
+      "FOUND": "Found",
+      "MISPLACED": "Misplaced",
+      "NOT_FOUND": "Not found"
+    },
+    "condition": {
+      "GOOD": "Good",
+      "DAMAGED": "Damaged",
+      "UNUSED": "Unused"
+    },
+    "action": {
+      "MASTER_CHANGE": "Change room (request)",
+      "RECOUNT": "Recount",
+      "RETIRE_REQUEST": "Retire (request)",
+      "MARK_MISSING": "Mark missing",
+      "REPAIR": "Send to repair",
+      "ACCEPT": "Accept as is"
+    },
+    "var": {
+      "show": "Show",
+      "all": "All variances",
+      "unresolved": "Unresolved only",
+      "bulk": "Resolve selected",
+      "selected": "{{n}} selected",
+      "note": "Note",
+      "apply": "Apply",
+      "help": "Select rows, then choose an action that fits all of them. Room changes and retirements create requests that follow the normal approval flow.",
+      "done": "{{n}} variance(s) resolved",
+      "partial": "{{ok}} resolved, {{bad}} failed: {{message}}",
+      "empty": "No variances to resolve."
+    },
+    "unreg": {
+      "tempNo": "Temp no.",
+      "category": "Category",
+      "serial": "Serial",
+      "reportedBy": "Reported",
+      "barcode": "Scanned value",
+      "open": "Open",
+      "REGISTER": "Register as asset",
+      "NON_ASSET": "Not an asset",
+      "registerTitle": "Register as a new asset",
+      "model": "Model",
+      "costCenter": "Cost center",
+      "registered": "{{no}} registered as an asset",
+      "dismissed": "{{no}} marked as not an asset",
+      "empty": "No unregistered assets reported."
+    }
   }
 }

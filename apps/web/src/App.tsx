@@ -15,9 +15,11 @@ import { CompanySettings } from '@/pages/admin/CompanySettings';
 import { FinMasters } from '@/pages/admin/FinMasters';
 import { DeptManagers } from '@/pages/admin/DeptManagers';
 import { SapIntegration } from '@/pages/sap/SapIntegration';
+import { CountList } from '@/pages/counts/CountList';
+import { CountDetail } from '@/pages/counts/CountDetail';
 
 // 만든 화면(그 외 메뉴는 아직 자리 화면)
-const BUILT = new Set(['/assets', '/requests', '/sap', '/admin/companies', '/admin/fin-masters', '/design']);
+const BUILT = new Set(['/assets', '/requests', '/counts', '/sap', '/admin/companies', '/admin/fin-masters', '/admin/dept-managers', '/design']);
 
 function Routed() {
   const { t } = useTranslation();
@@ -42,6 +44,8 @@ function Routed() {
         <Route path="/assets/:id" element={<AssetDetail />} />
         <Route path="/requests" element={<RequestList />} />
         <Route path="/requests/:id" element={<RequestDetail />} />
+        <Route path="/counts" element={<CountList />} />
+        <Route path="/counts/:id" element={<CountDetail />} />
         <Route path="/sap" element={<SapIntegration />} />
         <Route path="/admin/companies" element={<CompanySettings />} />
         <Route path="/admin/fin-masters" element={<FinMasters />} />

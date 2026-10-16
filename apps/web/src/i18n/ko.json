@@ -679,5 +679,159 @@
     "validFrom": "유효 시작일",
     "validUntil": "유효 종료일",
     "dateOrder": "시작일 이후여야 합니다"
+  },
+  "count": {
+    "list": {
+      "description": "사이트별 실물 실사를 계획하고, 룸마다 실사 담당을 배정하고, PDA 스캔 진행을 보며 차이를 처리한 뒤 SAP에 실사일을 전기합니다.",
+      "new": "새 실사 캠페인",
+      "allStatus": "모든 단계",
+      "empty": "실사 캠페인이 없습니다.",
+      "search": "코드·이름 검색"
+    },
+    "col": {
+      "code": "코드",
+      "name": "이름",
+      "status": "단계",
+      "keyDate": "기준일",
+      "dueDate": "기한",
+      "progress": "실사율",
+      "variances": "차이"
+    },
+    "status": {
+      "SCOPING": "범위 확정",
+      "COUNTING": "실사 중",
+      "REVIEW": "차이 검토",
+      "POSTING": "결과 전기",
+      "CLOSED": "종료",
+      "CANCELLED": "취소"
+    },
+    "create": {
+      "note": "캠페인은 '범위 확정' 단계로 시작합니다. 모든 룸에 실사 담당을 배정한 뒤 실사를 시작하세요.",
+      "codeHint": "영문·숫자 2~6자 (예: PI26Q4)",
+      "dueHint": "기한은 기준일 이후여야 합니다",
+      "siteHint": "사이트를 하나 이상 고르세요",
+      "sites": "실사 사이트",
+      "keyDateHint": "SAP에 전기할 실사일(IVDAT)",
+      "capitalizedOnly": "자본화(SAP) 자산만",
+      "submit": "캠페인 만들기",
+      "created": "캠페인 {{code}}을(를) 만들었습니다"
+    },
+    "detail": {
+      "dates": "{{company}} · 기준일 {{key}} · 기한 {{due}}",
+      "back": "캠페인 목록",
+      "steps": "캠페인 단계",
+      "unassigned": "담당이 없는 룸이 {{n}}곳 있습니다. 실사를 시작하기 전에 모든 룸에 배정하세요.",
+      "postings": "SAP 전기:"
+    },
+    "kpi": {
+      "total": "대상",
+      "found": "확인",
+      "misplaced": "위치 불일치",
+      "pending": "미확인",
+      "notFound": "미발견",
+      "unregistered": "미등록"
+    },
+    "tab": {
+      "rooms": "룸",
+      "items": "대상 자산",
+      "variances": "차이",
+      "unregistered": "미등록 ({{n}})"
+    },
+    "act": {
+      "start": "실사 시작",
+      "startMsg": "범위를 확정하고 범위 안 자산마다 실사 대상을 만듭니다. 실사 담당은 PDA에서 자기 룸을 봅니다.",
+      "started": "실사를 시작했습니다",
+      "closeCounting": "실사 종료",
+      "closeCountingMsg": "아직 확인하지 않은 자산 {{pending}}건은 미발견으로 확정합니다. 이후 PDA 스캔은 재실사만 받습니다.",
+      "countingClosed": "실사를 종료했습니다 — 차이를 검토하세요",
+      "post": "결과 전기",
+      "postMsgSap": "실사한 SAP 자산마다 SAP 전기 건(최종 실사일)을 만듭니다. SAP에 없는 자산은 ALM에 바로 반영합니다.",
+      "postMsg": "실사한 자산의 최종 실사일을 반영합니다.",
+      "posted": "결과를 전기했습니다",
+      "close": "캠페인 종료",
+      "closeMsg": "SAP 전기가 모두 끝났으면 캠페인을 종료합니다.",
+      "closed": "캠페인을 종료했습니다",
+      "cancel": "캠페인 취소",
+      "cancelMsg": "캠페인을 취소합니다. 이미 받은 스캔 기록은 남깁니다.",
+      "cancelled": "캠페인을 취소했습니다"
+    },
+    "rooms": {
+      "room": "룸",
+      "assignee": "실사 담당",
+      "assignFor": "{{room}} 실사 담당",
+      "unassigned": "미배정",
+      "expected": "대상",
+      "counted": "확인",
+      "pending": "미확인",
+      "assigned": "{{room}} 담당: {{name}}",
+      "noCounters": "실사 담당(COUNTER) 역할이 있는 사용자가 없습니다. 사용자 관리에서 역할을 먼저 주세요.",
+      "empty": "범위에 룸이 없습니다. 대상 자산에 룸이 지정돼 있는지 확인하세요."
+    },
+    "task": {
+      "NOT_STARTED": "시작 전",
+      "IN_PROGRESS": "진행 중",
+      "COMPLETED": "완료"
+    },
+    "items": {
+      "tag": "자산태그",
+      "description": "자산명",
+      "expected": "등록 룸",
+      "found": "발견 룸",
+      "result": "판정",
+      "counted": "실사",
+      "photos": "사진",
+      "action": "처리",
+      "relabel": "라벨 재출력",
+      "search": "태그·자산명 검색",
+      "allResults": "모든 판정"
+    },
+    "result": {
+      "PENDING": "미확인",
+      "FOUND": "확인",
+      "MISPLACED": "위치 불일치",
+      "NOT_FOUND": "미발견"
+    },
+    "condition": {
+      "GOOD": "정상",
+      "DAMAGED": "파손",
+      "UNUSED": "미사용"
+    },
+    "action": {
+      "MASTER_CHANGE": "룸 변경(요청)",
+      "RECOUNT": "재실사",
+      "RETIRE_REQUEST": "폐기(요청)",
+      "MARK_MISSING": "분실 처리",
+      "REPAIR": "수리 입고",
+      "ACCEPT": "차이 수용"
+    },
+    "var": {
+      "show": "보기",
+      "all": "모든 차이",
+      "unresolved": "미처리만",
+      "bulk": "고른 행 처리",
+      "selected": "{{n}}건 선택",
+      "note": "메모",
+      "apply": "적용",
+      "help": "행을 고르고 모두에 쓸 수 있는 처리를 고르세요. 룸 변경·폐기는 요청을 만들어 일반 승인 절차를 거칩니다.",
+      "done": "차이 {{n}}건을 처리했습니다",
+      "partial": "{{ok}}건 처리, {{bad}}건 실패: {{message}}",
+      "empty": "처리할 차이가 없습니다."
+    },
+    "unreg": {
+      "tempNo": "임시번호",
+      "category": "카테고리",
+      "serial": "시리얼",
+      "reportedBy": "보고",
+      "barcode": "읽은 값",
+      "open": "미처리",
+      "REGISTER": "자산으로 등록",
+      "NON_ASSET": "자산 아님",
+      "registerTitle": "새 자산으로 등록",
+      "model": "모델",
+      "costCenter": "코스트센터",
+      "registered": "{{no}}을(를) 자산으로 등록했습니다",
+      "dismissed": "{{no}}을(를) 자산 아님으로 처리했습니다",
+      "empty": "보고된 미등록 자산이 없습니다."
+    }
   }
 }

@@ -1,0 +1,5 @@
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.bulk { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; padding: 10px 12px; }
+.sites { display: flex; flex-wrap: wrap; gap: 4px 16px; grid-column: 1 / -1; }
+.assign { min-width: 180px; }

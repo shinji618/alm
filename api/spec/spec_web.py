@@ -128,7 +128,7 @@ W('공통','PATCH','/me','patchMe','내 설정 변경','로그인 사용자','Me
 W('공통','GET','/lookups','getLookups','드롭다운 값','로그인 사용자',None,'Lookups','200','company, site, room, cost_center, asset_class, category, model, vendor, app_user, code','전체',
   ['types에 적은 것만 돌려준다. 응답은 5분 캐시(ETag).', '사용자 범위(회사코드·사이트) 밖의 값은 빼고 돌려준다.',
    'users는 approval.decide·asset.assign·count.manage·admin.user 중 하나가 있어야 하고, 이름·이메일·부서만 돌려준다(없으면 빈 목록).'],
-  params=[('types','query','string','Y','쉼표 구분 (예: sites,rooms,costCenters)'),('q','query','string','N','users 검색어'),('siteId','query','uuid','N','rooms 필터')])
+  params=[('types','query','string','Y','쉼표 구분 (예: sites,rooms,costCenters)'),('q','query','string','N','users 검색어'),('role','query','string','N','users 역할 필터(예: COUNTER — 유효한 역할만)'),('siteId','query','uuid','N','rooms 필터')])
 W('공통','GET','/search','search','전역 검색(Top bar)','로그인 사용자',None,'SearchResult','200','asset, asset_request, contract, license, config_item','앱 셸',
   ['자산은 태그·시리얼·호스트명·IP·사용자 이름 부분 일치, 나머지는 번호·이름.', 'Enter 키는 /assets?q= 로 이동(자산 목록 검색).',
    '엔터티마다 그 목록 API와 같은 권한·범위를 적용한다(asset.read, request.read, contract.read, license.read, cmdb.read). 권한이 없는 엔터티는 결과에서 뺀다.'],
