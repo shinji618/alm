@@ -499,23 +499,36 @@ CLASS lcl_bapi IMPLEMENTATION.
     ENDTRY.
   ENDMETHOD.
 
+  " RETURN(구조 또는 표)과 RETURN_ALL(표)의 메시지를 모두 출력하고, E·A가 있으면 그것을, 없으면 RETURN을 돌려준다
   METHOD ret.
     FIELD-SYMBOLS: <t> TYPE STANDARD TABLE.
-    READ TABLE mt_p INTO DATA(ls_p) WITH KEY name = 'RETURN'.
-    IF sy-subrc <> 0.
-      RETURN.
-    ENDIF.
-    IF ls_p-kind = 'T'.
-      ASSIGN ls_p-ref->* TO <t>.
-      LOOP AT <t> ASSIGNING FIELD-SYMBOL(<l>).
-        MOVE-CORRESPONDING <l> TO rs.
-        IF rs-type CA 'EA'.
-          RETURN.
+    DATA: ls_m TYPE bapiret2, lt_all TYPE STANDARD TABLE OF bapiret2 WITH EMPTY KEY.
+    LOOP AT mt_p INTO DATA(ls_p) WHERE name = 'RETURN' OR name = 'RETURN_ALL'.
+      IF ls_p-kind = 'T'.
+        ASSIGN ls_p-ref->* TO <t>.
+        LOOP AT <t> ASSIGNING FIELD-SYMBOL(<l>).
+          CLEAR ls_m.
+          MOVE-CORRESPONDING <l> TO ls_m.
+          APPEND ls_m TO lt_all.
+        ENDLOOP.
+      ELSE.
+        ASSIGN ls_p-ref->* TO FIELD-SYMBOL(<s>).
+        CLEAR ls_m.
+        MOVE-CORRESPONDING <s> TO ls_m.
+        IF ls_m-type IS NOT INITIAL.
+          INSERT ls_m INTO lt_all INDEX 1.
         ENDIF.
-      ENDLOOP.
-    ELSE.
-      ASSIGN ls_p-ref->* TO FIELD-SYMBOL(<s>).
-      MOVE-CORRESPONDING <s> TO rs.
+      ENDIF.
+    ENDLOOP.
+    LOOP AT lt_all INTO ls_m.
+      WRITE / |    { ls_m-type } { ls_m-id }/{ ls_m-number } { ls_m-message }|.
+    ENDLOOP.
+    READ TABLE lt_all INTO rs WITH KEY type = 'A'.
+    IF sy-subrc <> 0.
+      READ TABLE lt_all INTO rs WITH KEY type = 'E'.
+      IF sy-subrc <> 0.
+        READ TABLE lt_all INTO rs INDEX 1.
+      ENDIF.
     ENDIF.
   ENDMETHOD.
 
@@ -795,6 +808,7 @@ START-OF-SELECTION.
           lv_skip   TYPE abap_bool,
           lv_bktxt  TYPE bkpf-bktxt,
           lv_objkey TYPE string,
+          lv_deakt  TYPE anla-deakt,
           lv_today  TYPE string.
     lv_today = |{ sy-datum DATE = ISO }|.
 
@@ -985,12 +999,19 @@ START-OF-SELECTION.
             APPEND VALUE #( type = 'E' id = 'ZALM' number = '003' text = 'Partial retirement is not supported (v1)' ) TO ls_res-messages.
           ELSE.
             lv_bktxt = ls_env-posting_id.
+            CLEAR lv_deakt.
+            SELECT SINGLE deakt FROM anla WHERE bukrs = @ls_env-company_code AND anln1 = @ls_env-asset-asset_no
+              AND anln2 = @ls_env-asset-sub_no INTO @lv_deakt.
             SELECT SINGLE belnr, gjahr FROM bkpf
               WHERE bukrs = @ls_env-company_code AND bktxt = @lv_bktxt AND stblg = @space
               INTO @DATA(ls_bkpf).
             IF sy-subrc = 0.
               WRITE / |  이미 전기됨 → { ls_bkpf-belnr }/{ ls_bkpf-gjahr }|.
               ls_res-sap_document = VALUE #( belnr = ls_bkpf-belnr gjahr = ls_bkpf-gjahr ).
+            ELSEIF lv_deakt IS NOT INITIAL.
+              " 이미 비활성(전체 폐기)인데 요청번호 전표를 못 찾음: 이중 전기를 막기 위해 전기하지 않고 회신도 하지 않는다
+              WRITE / '  자산이 이미 비활성(DEAKT) - 요청번호(BKTXT) 전표를 찾지 못해 전기하지 않음. AW01N에서 확인 필요'.
+              lv_skip = abap_true.
             ELSE.
               DATA(lo_rt) = NEW lcl_bapi( 'BAPI_ASSET_RETIREMENT_POST' ).
               lo_rt->set( iv_param = 'GENERALPOSTINGDATA' iv_field = 'COMP_CODE' iv_value = ls_env-company_code ).
@@ -1030,8 +1051,21 @@ START-OF-SELECTION.
                   lv_objkey = lo_rt->get( iv_param = 'DOCUMENTREFERENCE' iv_field = 'OBJ_KEY' ).
                   IF strlen( lv_objkey ) >= 18.
                     ls_res-sap_document = VALUE #( belnr = lv_objkey(10) gjahr = lv_objkey+14(4) ).
+                  ELSE.
+                    " 문서 참조가 비면 머리글 텍스트(BKTXT)로 방금 만든 전표를 찾는다
+                    SELECT SINGLE belnr, gjahr FROM bkpf
+                      WHERE bukrs = @ls_env-company_code AND bktxt = @lv_bktxt AND stblg = @space
+                      INTO @DATA(ls_bk2).
+                    IF sy-subrc = 0.
+                      ls_res-sap_document = VALUE #( belnr = ls_bk2-belnr gjahr = ls_bk2-gjahr ).
+                    ENDIF.
                   ENDIF.
-                  WRITE / |  폐기 전기 → { lv_objkey }|.
+                  WRITE / |  폐기 전기 → { ls_res-sap_document-belnr }/{ ls_res-sap_document-gjahr } (OBJ_KEY { lv_objkey })|.
+                  IF ls_res-sap_document IS INITIAL.
+                    " 전표를 확인하지 못하면 회신하지 않는다(15분 뒤 다시 가져가며, 그때 BKTXT 전표가 있으면 그 번호로 회신)
+                    WRITE / '  전표를 찾지 못함 - AW01N·FB03에서 확인 필요. ALM에 회신하지 않음'.
+                    lv_skip = abap_true.
+                  ENDIF.
                 ENDIF.
               ENDIF.
             ENDIF.
