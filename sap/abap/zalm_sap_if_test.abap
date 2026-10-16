@@ -20,6 +20,12 @@
 *&          P_LOC: STORT(위치=룸 코드)도 넘긴다. T499S에 없는 위치면 BAPI 오류이므로 기본 해제
 *&          P_TRUN: BAPI 시험 실행(TESTRUN) - SAP에 만들지 않고 메시지만 출력, 성공·실패 모두 ALM 회신 안 함(잠금은 15분 뒤 풀림)
 *&          클래스 화면 레이아웃에서 입력 불가 필드(AY/219)면 시리얼·룸·위치를 빼고 한 번 더 시도(회신에 W 메시지)
+*&        IF-AA-04 변경(ASSET_CHANGE, 손익센터가 같은 코스트센터 이관 포함) → BAPI_FIXEDASSET_CHANGE
+*&        IF-AA-06 폐기(ASSET_RETIRE: SCRAP·LOSS) → BAPI_ASSET_RETIREMENT_POST 전체 폐기(P_TTRET 거래유형)
+*&          BKTXT(머리글 텍스트)=요청번호. 같은 BKTXT 전표가 있으면 다시 전기하지 않고 그 전표로 POSTED(재실행 안전)
+*&          매각(SALE, 매출 금액 필드)과 손익센터가 바뀌는 이관(IF-AA-05 ABUMN)은 아직 - 가져가지 않거나 회신하지 않는다
+*&          BAPI는 FUPARAREF로 매개변수를 읽어 동적으로 부른다. 필드가 없으면 호출하지 않고 서명을 출력(회신 안 함)
+*&   - SIG: 위 BAPI들의 매개변수·필드 목록 출력(시스템별 서명 확인용)
 *&   clientId·비밀은 화면 입력(SM59 사용자 필드 12자 제한, 13 런북 7-2)
 *&---------------------------------------------------------------------*
 REPORT zalm_sap_if_test.
@@ -43,7 +49,9 @@ PARAMETERS: p_md  AS CHECKBOX DEFAULT 'X',
             p_clm AS CHECKBOX DEFAULT ' ',
             p_pst AS CHECKBOX DEFAULT ' ',
             p_loc AS CHECKBOX DEFAULT ' ',
-            p_trun AS CHECKBOX DEFAULT ' '.
+            p_trun AS CHECKBOX DEFAULT ' ',
+            p_ttret TYPE bwasl DEFAULT '200',
+            p_sig  AS CHECKBOX DEFAULT ' '.
 
 TYPES: ty_amount TYPE p LENGTH 15 DECIMALS 2.
 TYPES: BEGIN OF ty_company,
@@ -146,7 +154,15 @@ TYPES: BEGIN OF ty_company,
          deact_date   TYPE string,
        END OF ty_recon.
 " IF-AA-03 전기 봉투(claim 응답)와 결과 회신
-TYPES: BEGIN OF ty_create_pl,
+TYPES: BEGIN OF ty_fields,
+         description  TYPE string,
+         serial_no    TYPE string,
+         inventory_no TYPE string,
+         location     TYPE string,
+         room         TYPE string,
+         cost_center  TYPE string,
+       END OF ty_fields,
+       BEGIN OF ty_create_pl,
          asset_class  TYPE string,
          description  TYPE string,
          cost_center  TYPE string,
@@ -157,7 +173,21 @@ TYPES: BEGIN OF ty_create_pl,
          room         TYPE string,
          po_no        TYPE string,
          po_item      TYPE string,
+         " ASSET_CHANGE
+         fields                 TYPE ty_fields,
+         cost_center_valid_from TYPE string,
+         " ASSET_RETIRE
+         retire_type  TYPE string,
+         sale_amount  TYPE ty_amount,
+         customer     TYPE string,
+         is_partial   TYPE abap_bool,
+         reason       TYPE string,
        END OF ty_create_pl,
+       BEGIN OF ty_env_asset,
+         asset_no     TYPE string,
+         sub_no       TYPE string,
+         inventory_no TYPE string,
+       END OF ty_env_asset,
        BEGIN OF ty_envelope,
          posting_id   TYPE string,
          type         TYPE string,
@@ -165,6 +195,7 @@ TYPES: BEGIN OF ty_create_pl,
          posting_date TYPE string,
          value_date   TYPE string,
          attempt      TYPE i,
+         asset        TYPE ty_env_asset,
          payload      TYPE ty_create_pl,
        END OF ty_envelope,
        BEGIN OF ty_claim,
@@ -183,10 +214,15 @@ TYPES: BEGIN OF ty_create_pl,
          sub_no       TYPE string,
          inventory_no TYPE string,
        END OF ty_res_asset,
+       BEGIN OF ty_sap_doc,
+         belnr TYPE string,
+         gjahr TYPE string,
+       END OF ty_sap_doc,
        BEGIN OF ty_result,
-         posting_id TYPE string,
-         status     TYPE string,
-         asset      TYPE ty_res_asset,
+         posting_id   TYPE string,
+         status       TYPE string,
+         sap_document TYPE ty_sap_doc,
+         asset        TYPE ty_res_asset,
          messages   TYPE STANDARD TABLE OF ty_res_msg WITH EMPTY KEY,
        END OF ty_result.
 
@@ -350,6 +386,153 @@ CLASS lcl_api IMPLEMENTATION.
       WRITE / iv_text+lv_off(lv_n).
       lv_off = lv_off + lv_n.
     ENDWHILE.
+  ENDMETHOD.
+ENDCLASS.
+
+*----------------------------------------------------------------------*
+" BAPI 동적 호출: FUPARAREF에서 매개변수·타입을 읽어 데이터를 만들고, 필드를 이름으로 채운다.
+" 시스템마다 다른 서명(필드 이름)을 컴파일 오류 없이 다루고, 없는 필드는 mt_missing에 모은다
+CLASS lcl_bapi DEFINITION.
+  PUBLIC SECTION.
+    DATA: mv_ok      TYPE abap_bool READ-ONLY,
+          mt_missing TYPE string_table READ-ONLY,
+          mv_error   TYPE string READ-ONLY.
+    METHODS constructor IMPORTING iv_func TYPE csequence.
+    METHODS has IMPORTING iv_param TYPE csequence RETURNING VALUE(rv) TYPE abap_bool.
+    METHODS set IMPORTING iv_param TYPE csequence iv_field TYPE csequence OPTIONAL iv_value TYPE any.
+    METHODS get IMPORTING iv_param TYPE csequence iv_field TYPE csequence OPTIONAL RETURNING VALUE(rv) TYPE string.
+    METHODS call.
+    METHODS ret RETURNING VALUE(rs) TYPE bapiret2.
+    METHODS signature.
+  PRIVATE SECTION.
+    TYPES: BEGIN OF ty_p,
+             name TYPE string,
+             kind TYPE c LENGTH 1,
+             type TYPE string,
+             ref  TYPE REF TO data,
+           END OF ty_p.
+    DATA: mv_func TYPE rs38l_fnam,
+          mt_p    TYPE STANDARD TABLE OF ty_p WITH EMPTY KEY.
+ENDCLASS.
+
+CLASS lcl_bapi IMPLEMENTATION.
+  METHOD constructor.
+    mv_func = to_upper( iv_func ).
+    SELECT parameter, paramtype, structure FROM fupararef
+      WHERE funcname = @mv_func AND r3state = 'A' AND paramtype IN ('I','E','T','C')
+      INTO TABLE @DATA(lt_par).
+    IF lt_par IS INITIAL.
+      mv_error = |{ mv_func } 함수가 없습니다|.
+      RETURN.
+    ENDIF.
+    LOOP AT lt_par INTO DATA(ls_par) WHERE structure IS NOT INITIAL.
+      DATA(ls_p) = VALUE ty_p( name = ls_par-parameter kind = ls_par-paramtype type = ls_par-structure ).
+      TRY.
+          IF ls_p-kind = 'T'.
+            CREATE DATA ls_p-ref TYPE STANDARD TABLE OF (ls_p-type).
+          ELSE.
+            CREATE DATA ls_p-ref TYPE (ls_p-type).
+          ENDIF.
+          APPEND ls_p TO mt_p.
+        CATCH cx_sy_create_data_error.
+          APPEND |{ ls_p-name }({ ls_p-type }) 타입 생성 실패| TO mt_missing.
+      ENDTRY.
+    ENDLOOP.
+    mv_ok = abap_true.
+  ENDMETHOD.
+
+  METHOD has.
+    rv = xsdbool( line_exists( mt_p[ name = to_upper( iv_param ) ] ) ).
+  ENDMETHOD.
+
+  METHOD set.
+    FIELD-SYMBOLS: <d> TYPE any, <c> TYPE any.
+    READ TABLE mt_p INTO DATA(ls_p) WITH KEY name = to_upper( iv_param ).
+    IF sy-subrc <> 0.
+      APPEND to_upper( iv_param ) TO mt_missing.
+      RETURN.
+    ENDIF.
+    ASSIGN ls_p-ref->* TO <d>.
+    IF iv_field IS INITIAL.
+      <d> = iv_value.
+      RETURN.
+    ENDIF.
+    ASSIGN COMPONENT to_upper( iv_field ) OF STRUCTURE <d> TO <c>.
+    IF sy-subrc <> 0.
+      APPEND |{ to_upper( iv_param ) }-{ to_upper( iv_field ) }| TO mt_missing.
+      RETURN.
+    ENDIF.
+    <c> = iv_value.
+  ENDMETHOD.
+
+  METHOD get.
+    FIELD-SYMBOLS: <d> TYPE any, <c> TYPE any.
+    READ TABLE mt_p INTO DATA(ls_p) WITH KEY name = to_upper( iv_param ).
+    CHECK sy-subrc = 0.
+    ASSIGN ls_p-ref->* TO <d>.
+    IF iv_field IS INITIAL.
+      rv = |{ <d> }|.
+      RETURN.
+    ENDIF.
+    ASSIGN COMPONENT to_upper( iv_field ) OF STRUCTURE <d> TO <c>.
+    CHECK sy-subrc = 0.
+    rv = |{ <c> }|.
+  ENDMETHOD.
+
+  METHOD call.
+    DATA: lt_bind TYPE abap_func_parmbind_tab,
+          lt_exc  TYPE abap_func_excpbind_tab.
+    LOOP AT mt_p INTO DATA(ls_p).
+      INSERT VALUE #( name = ls_p-name
+                      kind = SWITCH #( ls_p-kind WHEN 'I' THEN abap_func_exporting WHEN 'E' THEN abap_func_importing
+                                                 WHEN 'T' THEN abap_func_tables ELSE abap_func_changing )
+                      value = ls_p-ref ) INTO TABLE lt_bind.
+    ENDLOOP.
+    INSERT VALUE #( name = 'OTHERS' value = 99 ) INTO TABLE lt_exc.
+    TRY.
+        CALL FUNCTION mv_func PARAMETER-TABLE lt_bind EXCEPTION-TABLE lt_exc.
+        IF sy-subrc <> 0.
+          mv_error = |{ mv_func } 예외 sy-subrc={ sy-subrc }|.
+        ENDIF.
+      CATCH cx_sy_dyn_call_error INTO DATA(lx).
+        mv_error = |{ mv_func }: { lx->get_text( ) }|.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD ret.
+    FIELD-SYMBOLS: <t> TYPE STANDARD TABLE.
+    READ TABLE mt_p INTO DATA(ls_p) WITH KEY name = 'RETURN'.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    IF ls_p-kind = 'T'.
+      ASSIGN ls_p-ref->* TO <t>.
+      LOOP AT <t> ASSIGNING FIELD-SYMBOL(<l>).
+        MOVE-CORRESPONDING <l> TO rs.
+        IF rs-type CA 'EA'.
+          RETURN.
+        ENDIF.
+      ENDLOOP.
+    ELSE.
+      ASSIGN ls_p-ref->* TO FIELD-SYMBOL(<s>).
+      MOVE-CORRESPONDING <s> TO rs.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD signature.
+    WRITE / |== { mv_func } { mv_error }|.
+    LOOP AT mt_p INTO DATA(ls_p).
+      WRITE / |  { ls_p-kind } { ls_p-name } : { ls_p-type }|.
+      TRY.
+          DATA(lo_t) = cl_abap_typedescr=>describe_by_name( ls_p-type ).
+          IF lo_t IS INSTANCE OF cl_abap_structdescr.
+            DATA(lv_comps) = REDUCE string( INIT x = `` FOR c IN CAST cl_abap_structdescr( lo_t )->components
+                                            NEXT x = |{ x } { c-name }| ).
+            WRITE / |      { lv_comps }|.
+          ENDIF.
+        CATCH cx_root ##NO_HANDLER.
+      ENDTRY.
+    ENDLOOP.
   ENDMETHOD.
 ENDCLASS.
 
@@ -583,7 +766,14 @@ START-OF-SELECTION.
                      iv_body = |\{"batchId":"{ gv_batch }-POST","maxItems":10\}| ).
   ENDIF.
 
-  "---------------- IF-AA-03 자산 생성 전기(claim → BAPI → 결과 회신) ----------------
+  "---------------- BAPI 서명 출력 ----------------
+  IF p_sig = abap_true.
+    LOOP AT VALUE string_table( ( `BAPI_FIXEDASSET_CHANGE` ) ( `BAPI_ASSET_RETIREMENT_POST` ) ( `BAPI_ASSET_TRANSFER_POST` ) ) INTO DATA(lv_fn).
+      NEW lcl_bapi( lv_fn )->signature( ).
+    ENDLOOP.
+  ENDIF.
+
+  "---------------- IF-AA-03·04·06 전기(claim → BAPI → 결과 회신) ----------------
   IF p_pst = abap_true.
     DATA: ls_claim  TYPE ty_claim,
           ls_res    TYPE ty_result,
@@ -601,10 +791,15 @@ START-OF-SELECTION.
           ls_ret    TYPE bapiret2,
           lv_invnr  TYPE anla-invnr,
           lv_try    TYPE i,
-          lv_dropped TYPE abap_bool.
+          lv_dropped TYPE abap_bool,
+          lv_skip   TYPE abap_bool,
+          lv_bktxt  TYPE bkpf-bktxt,
+          lv_objkey TYPE string,
+          lv_today  TYPE string.
+    lv_today = |{ sy-datum DATE = ISO }|.
 
     go_api->exec( EXPORTING iv_method = 'POST' iv_path = '/sap/postings:claim' iv_key = |{ gv_batch }-PST|
-                            iv_body = |\{"batchId":"{ gv_batch }-PST","maxItems":10,"types":["ASSET_CREATE"]\}|
+                            iv_body = |\{"batchId":"{ gv_batch }-PST","maxItems":10,"types":["ASSET_CREATE","ASSET_CHANGE","ASSET_RETIRE"]\}|
                   IMPORTING ev_status = lv_cstat ev_body = lv_cbody ).
     IF lv_cstat = 200.
       /ui2/cl_json=>deserialize( EXPORTING json = lv_cbody pretty_name = /ui2/cl_json=>pretty_mode-camel_case
@@ -612,93 +807,241 @@ START-OF-SELECTION.
     ENDIF.
     WRITE / |전기 대상 { lines( ls_claim-items ) }건|.
 
-    LOOP AT ls_claim-items INTO DATA(ls_env) WHERE type = 'ASSET_CREATE'.
-      CLEAR: ls_res, lv_anln1, lv_anln2, ls_ret, lv_dropped.
+    LOOP AT ls_claim-items INTO DATA(ls_env).
+      CLEAR: ls_res, lv_anln1, lv_anln2, ls_ret, lv_dropped, lv_skip.
       ls_res-posting_id = ls_env-posting_id.
       DATA(ls_pl) = ls_env-payload.
-      WRITE / |{ ls_env-posting_id } { ls_env-company_code } { ls_pl-inventory_no } { ls_pl-asset_class } { ls_pl-cost_center } "{ ls_pl-description }"|.
+      DATA(lv_pdate) = replace( val = COND string( WHEN ls_env-posting_date IS NOT INITIAL THEN ls_env-posting_date ELSE lv_today )
+                                sub = '-' with = '' occ = 0 ).
+      DATA(lv_vdate) = COND string( WHEN ls_env-value_date IS NOT INITIAL
+                                    THEN replace( val = ls_env-value_date sub = '-' with = '' occ = 0 ) ELSE lv_pdate ).
+      CASE ls_env-type.
+        WHEN 'ASSET_CREATE'.
+          WRITE / |{ ls_env-posting_id } { ls_env-company_code } { ls_pl-inventory_no } { ls_pl-asset_class } { ls_pl-cost_center } "{ ls_pl-description }"|.
 
-      " 재실행 안전: 같은 자산태그(INVNR) 자산이 이미 있으면 그 번호로 회신
-      lv_invnr = ls_pl-inventory_no.
-      SELECT SINGLE anln1, anln2 FROM anla
-        WHERE bukrs = @ls_env-company_code AND invnr = @lv_invnr
-        INTO (@lv_anln1, @lv_anln2).
-      IF sy-subrc = 0.
-        WRITE / |  이미 있음 → { lv_anln1 }-{ lv_anln2 }|.
-      ELSE.
-        " 1차는 모든 필드. 자산 클래스 화면 레이아웃에서 입력 불가 필드(AY/219)면
-        " 선택 필드(시리얼·룸·위치)를 빼고 한 번 더 시도하고, 회신에 W 메시지로 남긴다
-        DO 2 TIMES.
-          lv_try = sy-index.
-          CLEAR: ls_key, ls_gen, ls_genx, ls_time, ls_timex, ls_pinf, ls_pinfx, lv_anln1, lv_anln2, ls_ret.
-          ls_key-companycode = ls_env-company_code.
-          ls_gen-assetclass = |{ ls_pl-asset_class ALPHA = IN WIDTH = 8 }|.
-          ls_gen-descript   = ls_pl-description.
-          ls_gen-invent_no  = ls_pl-inventory_no.
-          ls_genx-assetclass = ls_genx-descript = ls_genx-invent_no = abap_true.
-          ls_time-costcenter = |{ ls_pl-cost_center ALPHA = IN WIDTH = 10 }|.
-          ls_timex-costcenter = abap_true.
-          IF lv_try = 1.
-            IF ls_pl-serial_no IS NOT INITIAL.
-              ls_gen-serial_no = ls_pl-serial_no.
-              ls_genx-serial_no = abap_true.
+          " 재실행 안전: 같은 자산태그(INVNR) 자산이 이미 있으면 그 번호로 회신
+          lv_invnr = ls_pl-inventory_no.
+          SELECT SINGLE anln1, anln2 FROM anla
+            WHERE bukrs = @ls_env-company_code AND invnr = @lv_invnr
+            INTO (@lv_anln1, @lv_anln2).
+          IF sy-subrc = 0.
+            WRITE / |  이미 있음 → { lv_anln1 }-{ lv_anln2 }|.
+          ELSE.
+            " 1차는 모든 필드. 자산 클래스 화면 레이아웃에서 입력 불가 필드(AY/219)면
+            " 선택 필드(시리얼·룸·위치)를 빼고 한 번 더 시도하고, 회신에 W 메시지로 남긴다
+            DO 2 TIMES.
+              lv_try = sy-index.
+              CLEAR: ls_key, ls_gen, ls_genx, ls_time, ls_timex, ls_pinf, ls_pinfx, lv_anln1, lv_anln2, ls_ret.
+              ls_key-companycode = ls_env-company_code.
+              ls_gen-assetclass = |{ ls_pl-asset_class ALPHA = IN WIDTH = 8 }|.
+              ls_gen-descript   = ls_pl-description.
+              ls_gen-invent_no  = ls_pl-inventory_no.
+              ls_genx-assetclass = ls_genx-descript = ls_genx-invent_no = abap_true.
+              ls_time-costcenter = |{ ls_pl-cost_center ALPHA = IN WIDTH = 10 }|.
+              ls_timex-costcenter = abap_true.
+              IF lv_try = 1.
+                IF ls_pl-serial_no IS NOT INITIAL.
+                  ls_gen-serial_no = ls_pl-serial_no.
+                  ls_genx-serial_no = abap_true.
+                ENDIF.
+                IF p_loc = abap_true AND ls_pl-location IS NOT INITIAL.
+                  ls_time-location = ls_pl-location.
+                  ls_timex-location = abap_true.
+                ENDIF.
+                IF ls_pl-room IS NOT INITIAL.
+                  ls_time-room = ls_pl-room.
+                  ls_timex-room = abap_true.
+                ENDIF.
+              ENDIF.
+              IF ls_pl-cap_date IS NOT INITIAL.
+                ls_pinf-cap_date = replace( val = ls_pl-cap_date sub = '-' with = '' occ = 0 ).
+                ls_pinfx-cap_date = abap_true.
+              ENDIF.
+
+              CALL FUNCTION 'BAPI_FIXEDASSET_CREATE1'
+                EXPORTING
+                  key                 = ls_key
+                  testrun             = p_trun
+                  generaldata         = ls_gen
+                  generaldatax        = ls_genx
+                  postinginformation  = ls_pinf
+                  postinginformationx = ls_pinfx
+                  timedependentdata   = ls_time
+                  timedependentdatax  = ls_timex
+                IMPORTING
+                  asset               = lv_anln1
+                  subnumber           = lv_anln2
+                  return              = ls_ret.
+              WRITE / |  BAPI({ lv_try }) { ls_ret-type } { ls_ret-id }/{ ls_ret-number } { ls_ret-message }|.
+
+              IF ls_ret-type CA 'EA'.
+                CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+                IF lv_try = 1 AND ls_ret-id = 'AY' AND ls_ret-number = '219'
+                   AND ( ls_genx-serial_no = abap_true OR ls_timex-room = abap_true OR ls_timex-location = abap_true ).
+                  lv_dropped = abap_true.
+                  WRITE / '  입력 불가 필드 - 시리얼·룸·위치를 빼고 다시 시도'.
+                  CONTINUE.
+                ENDIF.
+              ENDIF.
+              EXIT.
+            ENDDO.
+
+            IF ls_ret-type CA 'EA'.
+              ls_res-status = 'FAILED'.
+              APPEND VALUE #( type = ls_ret-type id = ls_ret-id number = ls_ret-number text = ls_ret-message ) TO ls_res-messages.
+            ELSEIF p_trun = abap_true.
+              CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+            ELSE.
+              CALL FUNCTION 'BAPI_TRANSACTION_COMMIT' EXPORTING wait = abap_true.
+              WRITE / |  생성 → { lv_anln1 }-{ lv_anln2 }|.
             ENDIF.
-            IF p_loc = abap_true AND ls_pl-location IS NOT INITIAL.
-              ls_time-location = ls_pl-location.
-              ls_timex-location = abap_true.
-            ENDIF.
-            IF ls_pl-room IS NOT INITIAL.
-              ls_time-room = ls_pl-room.
-              ls_timex-room = abap_true.
+            IF lv_dropped = abap_true AND ls_res-status IS INITIAL.
+              APPEND VALUE #( type = 'W' id = 'AY' number = '219'
+                              text = 'Serial no./room/location not ready for input in the asset class screen layout - not transferred to SAP' )
+                TO ls_res-messages.
             ENDIF.
           ENDIF.
-          IF ls_pl-cap_date IS NOT INITIAL.
-            ls_pinf-cap_date = replace( val = ls_pl-cap_date sub = '-' with = '' occ = 0 ).
-            ls_pinfx-cap_date = abap_true.
+
+        WHEN 'ASSET_CHANGE'.
+          " IF-AA-04: 바뀐 필드만 BAPI_FIXEDASSET_CHANGE (코스트센터는 시간종속 데이터)
+          DATA(ls_f) = ls_pl-fields.
+          WRITE / |{ ls_env-posting_id } CHANGE { ls_env-asset-asset_no }-{ ls_env-asset-sub_no } { ls_f-description } { ls_f-cost_center } { ls_f-location }|.
+          DATA(lo_ch) = NEW lcl_bapi( 'BAPI_FIXEDASSET_CHANGE' ).
+          lo_ch->set( iv_param = 'COMPANYCODE' iv_value = ls_env-company_code ).
+          lo_ch->set( iv_param = 'ASSET' iv_value = ls_env-asset-asset_no ).
+          lo_ch->set( iv_param = 'SUBNUMBER' iv_value = ls_env-asset-sub_no ).
+          DATA(lv_nchg) = 0.
+          IF ls_f-description IS NOT INITIAL.
+            lo_ch->set( iv_param = 'GENERALDATA' iv_field = 'DESCRIPT' iv_value = ls_f-description ).
+            lo_ch->set( iv_param = 'GENERALDATAX' iv_field = 'DESCRIPT' iv_value = abap_true ).
+            lv_nchg = lv_nchg + 1.
           ENDIF.
-
-          CALL FUNCTION 'BAPI_FIXEDASSET_CREATE1'
-            EXPORTING
-              key                 = ls_key
-              testrun             = p_trun
-              generaldata         = ls_gen
-              generaldatax        = ls_genx
-              postinginformation  = ls_pinf
-              postinginformationx = ls_pinfx
-              timedependentdata   = ls_time
-              timedependentdatax  = ls_timex
-            IMPORTING
-              asset               = lv_anln1
-              subnumber           = lv_anln2
-              return              = ls_ret.
-          WRITE / |  BAPI({ lv_try }) { ls_ret-type } { ls_ret-id }/{ ls_ret-number } { ls_ret-message }|.
-
-          IF ls_ret-type CA 'EA'.
-            CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
-            IF lv_try = 1 AND ls_ret-id = 'AY' AND ls_ret-number = '219'
-               AND ( ls_genx-serial_no = abap_true OR ls_timex-room = abap_true OR ls_timex-location = abap_true ).
-              lv_dropped = abap_true.
-              WRITE / '  입력 불가 필드 - 시리얼·룸·위치를 빼고 다시 시도'.
-              CONTINUE.
+          IF ls_f-serial_no IS NOT INITIAL.
+            lo_ch->set( iv_param = 'GENERALDATA' iv_field = 'SERIAL_NO' iv_value = ls_f-serial_no ).
+            lo_ch->set( iv_param = 'GENERALDATAX' iv_field = 'SERIAL_NO' iv_value = abap_true ).
+            lv_nchg = lv_nchg + 1.
+          ENDIF.
+          IF ls_f-inventory_no IS NOT INITIAL.
+            lo_ch->set( iv_param = 'GENERALDATA' iv_field = 'INVENT_NO' iv_value = ls_f-inventory_no ).
+            lo_ch->set( iv_param = 'GENERALDATAX' iv_field = 'INVENT_NO' iv_value = abap_true ).
+            lv_nchg = lv_nchg + 1.
+          ENDIF.
+          IF ls_f-cost_center IS NOT INITIAL.
+            lo_ch->set( iv_param = 'TIMEDEPENDENTDATA' iv_field = 'COSTCENTER' iv_value = |{ ls_f-cost_center ALPHA = IN WIDTH = 10 }| ).
+            lo_ch->set( iv_param = 'TIMEDEPENDENTDATAX' iv_field = 'COSTCENTER' iv_value = abap_true ).
+            lv_nchg = lv_nchg + 1.
+          ENDIF.
+          IF ls_f-room IS NOT INITIAL.
+            lo_ch->set( iv_param = 'TIMEDEPENDENTDATA' iv_field = 'ROOM' iv_value = ls_f-room ).
+            lo_ch->set( iv_param = 'TIMEDEPENDENTDATAX' iv_field = 'ROOM' iv_value = abap_true ).
+            lv_nchg = lv_nchg + 1.
+          ENDIF.
+          IF ls_f-location IS NOT INITIAL.
+            IF p_loc = abap_true.
+              lo_ch->set( iv_param = 'TIMEDEPENDENTDATA' iv_field = 'LOCATION' iv_value = ls_f-location ).
+              lo_ch->set( iv_param = 'TIMEDEPENDENTDATAX' iv_field = 'LOCATION' iv_value = abap_true ).
+              lv_nchg = lv_nchg + 1.
+            ELSE.
+              APPEND VALUE #( type = 'W' id = 'ZALM' number = '001'
+                              text = |Location { ls_f-location } not transferred (P_LOC off)| ) TO ls_res-messages.
             ENDIF.
           ENDIF.
-          EXIT.
-        ENDDO.
+          IF lo_ch->mt_missing IS NOT INITIAL OR lo_ch->mv_ok = abap_false.
+            WRITE / |  BAPI 서명 불일치: { concat_lines_of( table = lo_ch->mt_missing sep = `, ` ) } { lo_ch->mv_error }|.
+            lo_ch->signature( ).
+            lv_skip = abap_true.
+          ELSEIF lv_nchg = 0.
+            WRITE / '  SAP에 바꿀 필드 없음 → POSTED'.
+          ELSE.
+            IF lo_ch->has( 'TESTRUN' ).
+              lo_ch->set( iv_param = 'TESTRUN' iv_value = p_trun ).
+            ENDIF.
+            lo_ch->call( ).
+            ls_ret = lo_ch->ret( ).
+            IF lo_ch->mv_error IS NOT INITIAL AND ls_ret IS INITIAL.
+              ls_ret = VALUE #( type = 'E' id = 'ZALM' number = '002' message = lo_ch->mv_error ).
+            ENDIF.
+            WRITE / |  BAPI { ls_ret-type } { ls_ret-id }/{ ls_ret-number } { ls_ret-message }|.
+            IF ls_ret-type CA 'EA'.
+              CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+              ls_res-status = 'FAILED'.
+              APPEND VALUE #( type = ls_ret-type id = ls_ret-id number = ls_ret-number text = ls_ret-message ) TO ls_res-messages.
+            ELSEIF p_trun = abap_true.
+              CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+            ELSE.
+              CALL FUNCTION 'BAPI_TRANSACTION_COMMIT' EXPORTING wait = abap_true.
+              WRITE / '  변경 완료'.
+            ENDIF.
+          ENDIF.
 
-        IF ls_ret-type CA 'EA'.
-          ls_res-status = 'FAILED'.
-          APPEND VALUE #( type = ls_ret-type id = ls_ret-id number = ls_ret-number text = ls_ret-message ) TO ls_res-messages.
-        ELSEIF p_trun = abap_true.
-          CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
-        ELSE.
-          CALL FUNCTION 'BAPI_TRANSACTION_COMMIT' EXPORTING wait = abap_true.
-          WRITE / |  생성 → { lv_anln1 }-{ lv_anln2 }|.
-        ENDIF.
-        IF lv_dropped = abap_true AND ls_res-status IS INITIAL.
-          APPEND VALUE #( type = 'W' id = 'AY' number = '219'
-                          text = 'Serial no./room/location not ready for input in the asset class screen layout - not transferred to SAP' )
-            TO ls_res-messages.
-        ENDIF.
+        WHEN 'ASSET_RETIRE'.
+          " IF-AA-06: 전체 폐기(ABAVN). BKTXT=요청번호로 중복 전기 방지
+          WRITE / |{ ls_env-posting_id } RETIRE { ls_env-asset-asset_no }-{ ls_env-asset-sub_no } { ls_pl-retire_type } { ls_pl-reason }|.
+          IF ls_pl-retire_type = 'SALE'.
+            WRITE / '  매각(SALE)은 아직 지원하지 않음 - 회신하지 않음(15분 뒤 다시 대상)'.
+            lv_skip = abap_true.
+          ELSEIF ls_pl-is_partial = abap_true.
+            ls_res-status = 'FAILED'.
+            APPEND VALUE #( type = 'E' id = 'ZALM' number = '003' text = 'Partial retirement is not supported (v1)' ) TO ls_res-messages.
+          ELSE.
+            lv_bktxt = ls_env-posting_id.
+            SELECT SINGLE belnr, gjahr FROM bkpf
+              WHERE bukrs = @ls_env-company_code AND bktxt = @lv_bktxt AND stblg = @space
+              INTO @DATA(ls_bkpf).
+            IF sy-subrc = 0.
+              WRITE / |  이미 전기됨 → { ls_bkpf-belnr }/{ ls_bkpf-gjahr }|.
+              ls_res-sap_document = VALUE #( belnr = ls_bkpf-belnr gjahr = ls_bkpf-gjahr ).
+            ELSE.
+              DATA(lo_rt) = NEW lcl_bapi( 'BAPI_ASSET_RETIREMENT_POST' ).
+              lo_rt->set( iv_param = 'GENERALPOSTINGDATA' iv_field = 'COMP_CODE' iv_value = ls_env-company_code ).
+              lo_rt->set( iv_param = 'GENERALPOSTINGDATA' iv_field = 'ASSETMAINO' iv_value = ls_env-asset-asset_no ).
+              lo_rt->set( iv_param = 'GENERALPOSTINGDATA' iv_field = 'ASSETSUBNO' iv_value = ls_env-asset-sub_no ).
+              lo_rt->set( iv_param = 'GENERALPOSTINGDATA' iv_field = 'ASSETTRTYP' iv_value = p_ttret ).
+              lo_rt->set( iv_param = 'GENERALPOSTINGDATA' iv_field = 'PSTNG_DATE' iv_value = lv_pdate ).
+              lo_rt->set( iv_param = 'GENERALPOSTINGDATA' iv_field = 'DOC_DATE' iv_value = lv_pdate ).
+              lo_rt->set( iv_param = 'GENERALPOSTINGDATA' iv_field = 'ASVAL_DATE' iv_value = lv_vdate ).
+              lo_rt->set( iv_param = 'GENERALPOSTINGDATA' iv_field = 'HEADER_TXT' iv_value = ls_env-posting_id ).
+              lo_rt->set( iv_param = 'RETIREMENTDATA' iv_field = 'COMPL_RET' iv_value = abap_true ).
+              IF lo_rt->has( 'TESTRUN' ).
+                lo_rt->set( iv_param = 'TESTRUN' iv_value = p_trun ).
+              ENDIF.
+              IF lo_rt->mt_missing IS NOT INITIAL OR lo_rt->mv_ok = abap_false.
+                WRITE / |  BAPI 서명 불일치: { concat_lines_of( table = lo_rt->mt_missing sep = `, ` ) } { lo_rt->mv_error }|.
+                lo_rt->signature( ).
+                lv_skip = abap_true.
+              ELSE.
+                lo_rt->call( ).
+                ls_ret = lo_rt->ret( ).
+                IF lo_rt->mv_error IS NOT INITIAL AND ls_ret IS INITIAL.
+                  ls_ret = VALUE #( type = 'E' id = 'ZALM' number = '002' message = lo_rt->mv_error ).
+                ENDIF.
+                WRITE / |  BAPI { ls_ret-type } { ls_ret-id }/{ ls_ret-number } { ls_ret-message }|.
+                IF ls_ret-type CA 'EA'.
+                  CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+                  ls_res-status = 'FAILED'.
+                  APPEND VALUE #( type = ls_ret-type id = ls_ret-id number = ls_ret-number text = ls_ret-message ) TO ls_res-messages.
+                ELSEIF p_trun = abap_true.
+                  CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+                ELSE.
+                  CALL FUNCTION 'BAPI_TRANSACTION_COMMIT' EXPORTING wait = abap_true.
+                  " 회계전표 키 OBJ_KEY = BELNR(10) BUKRS(4) GJAHR(4)
+                  lv_objkey = lo_rt->get( iv_param = 'DOCUMENTREFERENCE' iv_field = 'OBJ_KEY' ).
+                  IF strlen( lv_objkey ) >= 18.
+                    ls_res-sap_document = VALUE #( belnr = lv_objkey(10) gjahr = lv_objkey+14(4) ).
+                  ENDIF.
+                  WRITE / |  폐기 전기 → { lv_objkey }|.
+                ENDIF.
+              ENDIF.
+            ENDIF.
+          ENDIF.
+
+        WHEN OTHERS.
+          WRITE / |{ ls_env-posting_id } { ls_env-type } - 이 프로그램은 처리하지 않음(회신 안 함)|.
+          lv_skip = abap_true.
+      ENDCASE.
+
+      IF lv_skip = abap_true.
+        CONTINUE.
       ENDIF.
 
       " 시험 실행은 결과(성공·실패 모두)를 ALM에 회신하지 않는다. 잠금은 15분 뒤 풀려 다시 대상이 된다
@@ -708,7 +1051,9 @@ START-OF-SELECTION.
       ENDIF.
       IF ls_res-status IS INITIAL.
         ls_res-status = 'POSTED'.
-        ls_res-asset = VALUE #( asset_no = lv_anln1 sub_no = lv_anln2 inventory_no = ls_pl-inventory_no ).
+        IF ls_env-type = 'ASSET_CREATE'.
+          ls_res-asset = VALUE #( asset_no = lv_anln1 sub_no = lv_anln2 inventory_no = ls_pl-inventory_no ).
+        ENDIF.
       ENDIF.
       DATA(lv_rjson) = /ui2/cl_json=>serialize( data = ls_res pretty_name = /ui2/cl_json=>pretty_mode-camel_case
                                                 compress = abap_true ).
