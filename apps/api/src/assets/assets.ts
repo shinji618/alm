@@ -436,11 +436,11 @@ export async function assignments(c: PoolClient, p: Principal, id: string) {
 
 export async function attachments(c: PoolClient, p: Principal, id: string) {
   await scoped(c, p, 'asset.read', id);
-  const rows = (await c.query(`SELECT f.id, f.file_name, f.content_type, f.size_bytes, f.kind, u.display_name, f.created_at
+  const rows = (await c.query(`SELECT f.id, f.file_name, f.content_type, f.size_bytes, f.kind, f.owner_type, u.display_name, f.created_at
       FROM attachment f LEFT JOIN app_user u ON u.id = f.created_by
      WHERE f.linked_at IS NOT NULL AND ((f.owner_type = 'asset' AND f.owner_id = $1)
         OR (f.owner_type = 'count_item' AND f.owner_id IN (SELECT id FROM count_item WHERE asset_id = $1)))
      ORDER BY f.created_at DESC LIMIT 200`, [id])).rows;
   return { items: rows.map((r) => ({ id: r.id, fileName: r.file_name, contentType: r.content_type, sizeBytes: Number(r.size_bytes),
-    kind: r.kind === 'PHOTO' ? 'PHOTO' : 'DOCUMENT', uploadedBy: r.display_name ?? '', createdAt: iso(r.created_at) })) };
+    kind: r.kind === 'PHOTO' ? 'PHOTO' : 'DOCUMENT', source: r.owner_type === 'asset' ? 'ASSET' : 'COUNT', uploadedBy: r.display_name ?? '', createdAt: iso(r.created_at) })) };
 }

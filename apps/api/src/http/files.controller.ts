@@ -1,10 +1,10 @@
 // 첨부 업로드·다운로드 URL(openapi presignAttachment·downloadAttachment). 실제 파일은 브라우저가 S3와 직접 주고받는다
-import { Body, Controller, Get, HttpCode, Inject, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
 import { Db } from '../db/pool';
 import { Config } from '../config';
 import { AlmError } from '../common/errors';
 import { UUID } from '../common/validate';
-import { downloadUrl, FileStore, presignWeb } from '../files/files';
+import { completeWeb, downloadUrl, FileStore, presignWeb, removeWeb } from '../files/files';
 import { AlmContext, Ctx, Operation, txOf } from './context';
 import { CONFIG, DB, FILES } from './tokens';
 
@@ -26,11 +26,29 @@ export class FilesController {
     return this.db.withTx(txOf(ctx), (c) => presignWeb(c, store, ctx.principal!, body));
   }
 
-  @Get('attachments/:id\\:download')
-  @Operation('downloadAttachment')
-  download(@Ctx() ctx: AlmContext, @Param('id') id: string) {
+  @Post('attachments/:id\\:complete')
+  @HttpCode(200)
+  @Operation('completeAttachment')
+  complete(@Ctx() ctx: AlmContext, @Param('id') id: string) {
     const store = needStore(this.files);
     if (!UUID.test(id)) throw new AlmError(404, 'ALM-E404', '첨부를 찾을 수 없습니다');
-    return this.db.withTx(txOf(ctx), (c) => downloadUrl(c, store, ctx.principal!, id, !!this.cfg.filesScanRequired));
+    return this.db.withTx(txOf(ctx), (c) => completeWeb(c, store, ctx.principal!, id));
+  }
+
+  @Get('attachments/:id\\:download')
+  @Operation('downloadAttachment')
+  download(@Ctx() ctx: AlmContext, @Param('id') id: string, @Query('inline') inline?: string) {
+    const store = needStore(this.files);
+    if (!UUID.test(id)) throw new AlmError(404, 'ALM-E404', '첨부를 찾을 수 없습니다');
+    return this.db.withTx(txOf(ctx), (c) => downloadUrl(c, store, ctx.principal!, id, !!this.cfg.filesScanRequired, new Date(), inline === 'true'));
+  }
+
+  @Delete('attachments/:id')
+  @HttpCode(204)
+  @Operation('deleteAttachment')
+  async remove(@Ctx() ctx: AlmContext, @Param('id') id: string) {
+    const store = needStore(this.files);
+    if (!UUID.test(id)) throw new AlmError(404, 'ALM-E404', '첨부를 찾을 수 없습니다');
+    await this.db.withTx(txOf(ctx), (c) => removeWeb(c, store, ctx.principal!, id));
   }
 }

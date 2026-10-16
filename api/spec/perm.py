@@ -91,7 +91,7 @@ OPS = {
     # auth & common
     'authLogin': None, 'authCallback': None, 'authRefresh': None, 'authLogout': None,
     'getMe': 'auth', 'patchMe': 'auth', 'getLookups': 'auth', 'search': 'auth', 'listNotifications': 'auth', 'readNotification': 'auth',
-    'presignAttachment': 'auth', 'downloadAttachment': 'auth', 'createExport': 'auth', 'getExport': 'auth',
+    'presignAttachment': 'auth', 'completeAttachment': 'auth', 'downloadAttachment': 'auth', 'deleteAttachment': 'auth', 'createExport': 'auth', 'getExport': 'auth',
     'getDashboard': 'dashboard.read',
     # assets
     'listAssets': 'asset.read', 'getAsset': 'asset.read', 'listAssetHistory': 'asset.read', 'listAssetAssignments': 'asset.read',
@@ -154,7 +154,7 @@ PARAM_PERMS = {('createRunRequest', 'isClosing = true'): 'sap.finance'}
 COND = {
     'getExport': '요청자 본인', 'search': '엔터티별 조회 권한·범위로 거른 결과만', 'getLookups': 'users는 approval.decide·asset.assign·count.manage·admin.user 중 하나',
     'createRunRequest': 'isClosing = true는 sap.finance', 'fixAssetRequest': 'POST_ERROR, 기술 필드만(회계 필드는 재승인)',
-    'authRefresh': '쿠키 alm_rt + X-ALM-CSRF + Origin', 'authLogout': '쿠키 alm_rt + X-ALM-CSRF + Origin', 'presignAttachment': '대상 화면의 쓰기 권한', 'downloadAttachment': '대상 화면의 조회 권한',
+    'authRefresh': '쿠키 alm_rt + X-ALM-CSRF + Origin', 'authLogout': '쿠키 alm_rt + X-ALM-CSRF + Origin', 'presignAttachment': '대상 화면의 쓰기 권한', 'completeAttachment': '올린 사람', 'downloadAttachment': '대상 화면의 조회 권한', 'deleteAttachment': '대상 화면의 쓰기 권한',
     'createExport': '대상 목록의 조회 권한. 금액 열은 amount.read', 'listTickets': '연결된 자산 조회 범위',
     'patchPurchaseRequest': '요청자 본인, DRAFT', 'submitPurchaseRequest': '요청자 본인', 'cancelPurchaseRequest': '요청자 본인 또는 asset.write',
     'patchAssetRequest': '요청자 본인, DRAFT', 'submitAssetRequest': '요청자 본인',

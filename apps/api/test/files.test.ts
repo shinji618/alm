@@ -33,12 +33,14 @@ const fakeCognito = {
   verifyAccess: async (t: string) => { const [, u, c] = t.split(':'); if (!u) throw new Error('bad'); return { sub: 's', username: u, client_id: c, token_use: 'access', exp: 0 }; },
 };
 // S3 흉내: 올라간 객체·검사 태그를 직접 정한다
-const objects = new Map<string, { sha256b64: string; scan?: string }>();
+const objects = new Map<string, { sha256b64: string; scan?: string; size?: number }>();
+const removed: string[] = [];
 const files: FileStore = {
   presignPut: async (key, o) => ({ url: `https://s3.test/${key}?put&ttl=${o.expiresSec}&len=${o.size}`, headers: { 'Content-Type': o.contentType, 'x-amz-checksum-sha256': o.sha256b64 } }),
-  presignGet: async (key, o) => `https://s3.test/${key}?get&name=${encodeURIComponent(o.fileName)}`,
-  head: async (key) => (objects.has(key) ? { size: 1, sha256b64: objects.get(key)!.sha256b64 } : null),
+  presignGet: async (key, o) => `https://s3.test/${key}?get&name=${encodeURIComponent(o.fileName)}${o.inline ? '&inline' : ''}`,
+  head: async (key) => (objects.has(key) ? { size: objects.get(key)!.size ?? 1000, sha256b64: objects.get(key)!.sha256b64 } : null),
   scanStatus: async (key) => objects.get(key)?.scan,
+  remove: async (key) => { removed.push(key); objects.delete(key); },
 };
 const limiter = new SharedLimiter(new MemoryCounterStore());
 const sha = createHash('sha256').update('hello').digest('hex');
@@ -95,7 +97,7 @@ test('첨부 올리기: 검증(형식·크기·실행 파일·이미지 종류),
   assert.equal((await call('am', 'POST', '/attachments:presign', presignBody({ ownerId: '00000000-0000-0000-0000-000000000000' }))).status, 404);
 });
 
-test('첨부 올리기 → 내려받기: 업로드 전 409, 검사 전 409, 악성 403, 통과 후 URL(5분)', { skip }, async () => {
+test('첨부 올리기 → 완료 → 내려받기: 완료 전 목록·내려받기 없음, 크기·체크섬 확인, 검사 전 409, 악성 403, 통과 후 URL(5분)', { skip }, async () => {
   const r = await call('am', 'POST', '/attachments:presign', presignBody());
   assert.equal(r.status, 200);
   const key = `tenant/${tenantId}/asset/${r.body.attachmentId}`;
@@ -103,11 +105,21 @@ test('첨부 올리기 → 내려받기: 업로드 전 409, 검사 전 409, 악�
   assert.deepEqual(r.body.headers, { 'Content-Type': 'application/pdf', 'x-amz-checksum-sha256': Buffer.from(sha, 'hex').toString('base64') });
   assert.ok(Math.abs(Date.parse(r.body.expiresAt) - Date.now() - 300_000) < 5_000);
   const row = (await owner.query('SELECT owner_type, owner_id, linked_at, s3_key, created_by FROM attachment WHERE id = $1', [r.body.attachmentId])).rows[0];
-  assert.equal(row.owner_id, assetId); assert.ok(row.linked_at); assert.equal(row.s3_key, key); assert.equal(row.created_by, ids.am);
+  assert.equal(row.owner_id, assetId); assert.equal(row.linked_at, null, '완료 전에는 연결 안 함'); assert.equal(row.s3_key, key); assert.equal(row.created_by, ids.am);
 
   const dl = () => call('am', 'GET', `/attachments/${r.body.attachmentId}:download`);
-  assert.equal((await dl()).body.code, 'ALM-E111', '아직 안 올라감');
-  objects.set(key, { sha256b64: Buffer.from(sha, 'hex').toString('base64') });
+  const done = () => call('am', 'POST', `/attachments/${r.body.attachmentId}:complete`);
+  assert.equal((await dl()).status, 404, '연결 전');
+  assert.equal((await call('am', 'GET', `/assets/${assetId}/attachments`)).body.items.length, 0, '완료 전 목록에 없음');
+  assert.equal((await done()).body.code, 'ALM-E111', '아직 안 올라감');
+  objects.set(key, { sha256b64: Buffer.from(sha, 'hex').toString('base64'), size: 999 });
+  assert.equal((await done()).status, 409, '크기가 다름');
+  objects.get(key)!.size = 1000;
+  assert.equal((await call('emp', 'POST', `/attachments/${r.body.attachmentId}:complete`)).status, 404, '올린 사람만');
+  const c1 = await done();
+  assert.equal(c1.status, 200); assert.deepEqual([c1.body.fileName, c1.body.kind, c1.body.uploadedBy], ['보증서.pdf', 'DOCUMENT', 'Asset Mgr']);
+  assert.equal((await done()).status, 200, '멱등');
+  assert.equal((await call('am', 'GET', `/assets/${assetId}/attachments`)).body.items.length, 1);
   assert.equal((await dl()).status, 409, '검사 전');
   objects.get(key)!.scan = 'THREATS_FOUND';
   assert.equal((await dl()).status, 403);
@@ -115,8 +127,23 @@ test('첨부 올리기 → 내려받기: 업로드 전 409, 검사 전 409, 악�
   const ok = await dl();
   assert.equal(ok.status, 200);
   assert.equal(ok.body.url, `https://s3.test/${key}?get&name=${encodeURIComponent('보증서.pdf')}`);
+  assert.ok(!(await call('am', 'GET', `/attachments/${r.body.attachmentId}:download?inline=true`)).body.url.endsWith('&inline'), '문서는 inline 안 됨');
   assert.equal((await call('cnt', 'GET', `/attachments/${r.body.attachmentId}:download`)).status, 403, '본인 범위(OWN) 조회는 ScopeService 전까지 거부');
   assert.equal((await call('am', 'GET', '/attachments/not-a-uuid:download')).status, 404);
+
+  // 사진: inline 미리보기, 삭제(쓰기 권한), 실사 사진은 삭제 불가
+  const ph = await call('am', 'POST', '/attachments:presign', presignBody({ kind: 'PHOTO', fileName: 'front.jpg', contentType: 'image/jpeg' }));
+  const pkey = `tenant/${tenantId}/asset/${ph.body.attachmentId}`;
+  objects.set(pkey, { sha256b64: Buffer.from(sha, 'hex').toString('base64'), scan: 'NO_THREATS_FOUND' });
+  assert.equal((await call('am', 'POST', `/attachments/${ph.body.attachmentId}:complete`)).body.kind, 'PHOTO');
+  assert.ok((await call('am', 'GET', `/attachments/${ph.body.attachmentId}:download?inline=true`)).body.url.endsWith('&inline'));
+  assert.equal((await call('emp', 'DELETE', `/attachments/${ph.body.attachmentId}`)).status, 403);
+  assert.equal((await call('am', 'DELETE', `/attachments/${ph.body.attachmentId}`)).status, 204);
+  assert.deepEqual(removed, [pkey]);
+  assert.equal((await call('am', 'GET', `/assets/${assetId}/attachments`)).body.items.length, 1);
+  const [ci] = (await owner.query(`INSERT INTO attachment (id, tenant_id, owner_type, owner_id, kind, file_name, content_type, size_bytes, s3_key, linked_at)
+    VALUES (gen_random_uuid(), $1, 'count_item', gen_random_uuid(), 'PHOTO', 'scan.jpg', 'image/jpeg', 10, 'k', now()) RETURNING id`, [tenantId])).rows;
+  assert.equal((await call('am', 'DELETE', `/attachments/${ci.id}`)).status, 409, '실사 사진');
 });
 
 test('PDA 사진: 대상 없이 발급(연결 대기), 15분, 이미지·5 MB만, 기기 헤더 필수', { skip }, async () => {

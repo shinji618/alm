@@ -1277,7 +1277,9 @@ paths:
       description: 'ALM-111, 220, 230, 240 · 테이블: attachment
 
 
-        - 대상이 있으므로 owner_id·linked_at을 발급 때 채운다(PDA와 다름).
+        - 대상(owner_id)은 발급 때 정하고, 연결(linked_at)은 S3 업로드 뒤 :complete에서 한다(끝나지 않은 업로드는 목록에 없고 24시간 뒤 정리).
+
+        - 자산은 자산 범위(회사·사이트·코스트센터·본인) 안에서 asset.write. 그 밖의 대상은 테넌트 전체 범위.
 
         - 최대 25 MB. 실행 파일 형식은 거부.'
       parameters:
@@ -1310,16 +1312,18 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/AttachmentPresign'
-  /attachments/{id}:download:
-    get:
-      operationId: downloadAttachment
-      summary: 파일 다운로드 URL
+  /attachments/{id}:complete:
+    post:
+      operationId: completeAttachment
+      summary: 업로드 완료
       tags:
       - WEB
-      description: '공통 · 테이블: attachment
+      description: 'ALM-111, 220, 230 · 테이블: attachment
 
 
-        - S3 presigned GET 5분.'
+        - S3 객체의 크기·SHA-256이 발급 때 신고한 값과 같으면 대상에 연결(linked_at). 다르거나 아직 없으면 409 ALM-E111.
+
+        - 멱등(이미 연결됐으면 그대로 돌려줌). 올린 사람만(아니면 404).'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       - name: id
@@ -1329,6 +1333,53 @@ paths:
         schema:
           type: string
           format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Attachment'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: auth
+      x-condition: 올린 사람
+      security:
+      - webAuth:
+        - web
+  /attachments/{id}:download:
+    get:
+      operationId: downloadAttachment
+      summary: 파일 다운로드 URL
+      tags:
+      - WEB
+      description: '공통 · 테이블: attachment
+
+
+        - S3 presigned GET 5분.
+
+        - inline=true면 이미지는 브라우저에서 바로 표시(미리보기). 문서는 항상 내려받기.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      - name: inline
+        in: query
+        required: false
+        description: 이미지 미리보기
+        schema:
+          type: boolean
       responses:
         '200':
           description: 성공
@@ -1346,6 +1397,45 @@ paths:
           $ref: '#/components/responses/E500'
       x-permission: auth
       x-condition: 대상 화면의 조회 권한
+      security:
+      - webAuth:
+        - web
+  /attachments/{id}:
+    delete:
+      operationId: deleteAttachment
+      summary: 첨부 삭제
+      tags:
+      - WEB
+      description: 'ALM-111, 220, 230 · 테이블: attachment, audit_log
+
+
+        - 대상의 쓰기 권한(자산은 범위 안 asset.write). S3 객체도 지운다. 행 삭제는 audit_log에 남는다.
+
+        - 실사 사진(count_item·count_unregistered)은 지울 수 없다(409 ALM-E322).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: 성공(본문 없음)
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: auth
+      x-condition: 대상 화면의 쓰기 권한
       security:
       - webAuth:
         - web
@@ -10680,6 +10770,13 @@ components:
           - PHOTO
           - DOCUMENT
           description: 종류
+        source:
+          type: string
+          enum:
+          - ASSET
+          - COUNT
+          - OTHER
+          description: 어디서 올렸나(자산 화면 · 실사 사진 · 그 밖의 대상). 실사 사진은 지울 수 없음
         uploadedBy:
           type: string
           description: 올린 사람

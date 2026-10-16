@@ -259,6 +259,27 @@
       "flags": "표시",
       "deleted": "PO 삭제",
       "grCancelled": "입고 취소"
+    },
+    "att": {
+      "add": "사진·파일 추가",
+      "drop": "사진이나 파일을 여기로 끌어 놓거나 버튼으로 고르세요(최대 25 MB, 실행 파일 불가).",
+      "working": "올리는 중",
+      "done": "완료",
+      "error": "실패",
+      "tooLarge": "25 MB를 넘습니다",
+      "badType": "허용되지 않는 형식입니다(사진: JPG·PNG·WebP·HEIC, 문서: PDF·Office·CSV·TXT)",
+      "putFailed": "저장소 업로드 실패(HTTP {{status}})",
+      "photos": "사진",
+      "documents": "문서",
+      "noPhotos": "사진이 없습니다.",
+      "open": "{{name}} 크게 보기",
+      "fromCount": "실사",
+      "delete": "삭제",
+      "deleteTitle": "{{name}}을(를) 삭제할까요?",
+      "deleteMessage": "파일이 저장소에서도 지워집니다. 삭제 기록은 감사 로그에 남습니다.",
+      "deleted": "삭제했습니다",
+      "scanning": "보안 검사 중",
+      "unavailable": "미리보기 불가"
     }
   },
   "request": {

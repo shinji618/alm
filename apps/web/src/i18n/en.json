@@ -259,6 +259,27 @@
       "flags": "Flags",
       "deleted": "PO deleted",
       "grCancelled": "GR cancelled"
+    },
+    "att": {
+      "add": "Add photos or files",
+      "drop": "Drag photos or files here, or choose them with the button (up to 25 MB, no executables).",
+      "working": "Uploading",
+      "done": "Done",
+      "error": "Failed",
+      "tooLarge": "Larger than 25 MB",
+      "badType": "File type not allowed (photos: JPG, PNG, WebP, HEIC; documents: PDF, Office, CSV, TXT)",
+      "putFailed": "Storage upload failed (HTTP {{status}})",
+      "photos": "Photos",
+      "documents": "Documents",
+      "noPhotos": "No photos.",
+      "open": "Open {{name}}",
+      "fromCount": "Count",
+      "delete": "Delete",
+      "deleteTitle": "Delete {{name}}?",
+      "deleteMessage": "The file is also removed from storage. The deletion is kept in the audit log.",
+      "deleted": "Deleted",
+      "scanning": "Security scan in progress",
+      "unavailable": "No preview"
     }
   },
   "request": {

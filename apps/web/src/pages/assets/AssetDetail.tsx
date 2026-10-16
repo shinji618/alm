@@ -13,6 +13,7 @@ import { useAsync } from '@/lib/useAsync';
 import { useSession } from '@/lib/session';
 import type { AssetDetail as Detail, ChangeResult, Lookups, LookupItem } from './types';
 import { RequestDrawer } from '../requests/RequestDrawer';
+import { AttachmentPanel } from './AttachmentPanel';
 import s from './assets.module.css';
 
 type Tab = 'general' | 'financial' | 'history' | 'assignments' | 'attachments';
@@ -91,7 +92,7 @@ export function AssetDetail() {
             : tab === 'financial' ? <><Financial d={d} lang={lang} /><h3>{t('asset.po.title')}</h3><Purchase d={d} lang={lang} /></>
             : tab === 'history' ? <History id={id} lang={lang} />
             : tab === 'assignments' ? <Assignments id={id} lang={lang} />
-            : <Attachments id={id} />}
+            : <AttachmentPanel ownerType="asset" ownerId={id} listPath={`/assets/${id}/attachments`} canWrite={can('asset.write')} />}
         </div>
       </Panel>
 
@@ -230,22 +231,6 @@ function Assignments({ id, lang }: { id: string; lang: Lang }) {
         { key: 'checkedOutAt', label: t('asset.assignmentCol.out'), render: (x) => formatDateTime(x.checkedOutAt) },
         { key: 'dueBackDate', label: t('asset.assignmentCol.due'), render: (x) => formatDate(x.dueBackDate, lang) },
         { key: 'returnedAt', label: t('asset.assignmentCol.returned'), render: (x) => formatDateTime(x.returnedAt) },
-      ]} />
-  );
-}
-
-interface Attachment { id: string; fileName: string; contentType: string; sizeBytes: number; kind: string; uploadedBy: string; createdAt: string }
-function Attachments({ id }: { id: string }) {
-  const { t } = useTranslation();
-  const r = useAsync((sig) => api.get<{ items: Attachment[] }>(`/assets/${id}/attachments`, sig), [id]);
-  return (
-    <DataTable rows={r.data?.items ?? []} loading={r.loading} rowId={(x) => x.id} empty={<EmptyState message={t('asset.detail.noAttachments')} />}
-      columns={[
-        { key: 'fileName', label: t('asset.attachmentCol.name') },
-        { key: 'kind', label: t('asset.attachmentCol.kind') },
-        { key: 'sizeBytes', label: t('asset.attachmentCol.size'), align: 'right', render: (x) => `${Math.max(1, Math.round(x.sizeBytes / 1024))} KB` },
-        { key: 'uploadedBy', label: t('asset.attachmentCol.by') },
-        { key: 'createdAt', label: t('asset.attachmentCol.at'), render: (x) => formatDateTime(x.createdAt) },
       ]} />
   );
 }

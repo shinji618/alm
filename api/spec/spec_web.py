@@ -97,6 +97,7 @@ fileName | string | Y | 파일명
 contentType | string | Y | MIME
 sizeBytes | int | Y | 크기
 kind | enum(PHOTO,DOCUMENT) | Y | 종류
+source | enum(ASSET,COUNT,OTHER) | N | 어디서 올렸나(자산 화면 · 실사 사진 · 그 밖의 대상). 실사 사진은 지울 수 없음
 uploadedBy | string | Y | 올린 사람
 createdAt | datetime | Y | 올린 일시
 ''')
@@ -136,8 +137,14 @@ W('공통','GET','/notifications','listNotifications','화면 알림','로그인
   params=[('unread','query','bool','N','안 읽은 것만')] + PG[:2])
 W('공통','POST','/notifications/{id}:read','readNotification','알림 읽음','로그인 사용자',None,'NotificationItem','200, 404','notification','앱 셸',['멱등.'],params=[ID()])
 W('공통','POST','/attachments:presign','presignAttachment','파일 업로드 URL','대상 화면의 쓰기 권한','AttachmentPresign','PresignResponse','200, 400, 403, 413','attachment','ALM-111, 220, 230, 240',
-  ['대상이 있으므로 owner_id·linked_at을 발급 때 채운다(PDA와 다름).', '최대 25 MB. 실행 파일 형식은 거부.'])
-W('공통','GET','/attachments/{id}:download','downloadAttachment','파일 다운로드 URL','대상 화면의 조회 권한',None,'DownloadUrl','200, 403, 404','attachment','공통',[ 'S3 presigned GET 5분.'],params=[ID()])
+  ['대상(owner_id)은 발급 때 정하고, 연결(linked_at)은 S3 업로드 뒤 :complete에서 한다(끝나지 않은 업로드는 목록에 없고 24시간 뒤 정리).', '자산은 자산 범위(회사·사이트·코스트센터·본인) 안에서 asset.write. 그 밖의 대상은 테넌트 전체 범위.', '최대 25 MB. 실행 파일 형식은 거부.'])
+W('공통','POST','/attachments/{id}:complete','completeAttachment','업로드 완료',
+  '올린 사람',None,'Attachment','200, 404, 409','attachment','ALM-111, 220, 230',
+  [ 'S3 객체의 크기·SHA-256이 발급 때 신고한 값과 같으면 대상에 연결(linked_at). 다르거나 아직 없으면 409 ALM-E111.', '멱등(이미 연결됐으면 그대로 돌려줌). 올린 사람만(아니면 404).'],params=[ID()])
+W('공통','GET','/attachments/{id}:download','downloadAttachment','파일 다운로드 URL','대상 화면의 조회 권한',None,'DownloadUrl','200, 403, 404','attachment','공통',
+  [ 'S3 presigned GET 5분.', 'inline=true면 이미지는 브라우저에서 바로 표시(미리보기). 문서는 항상 내려받기.'],params=[ID(),('inline','query','bool','N','이미지 미리보기')])
+W('공통','DELETE','/attachments/{id}','deleteAttachment','첨부 삭제','대상 화면의 쓰기 권한',None,None,'204, 403, 404, 409','attachment, audit_log','ALM-111, 220, 230',
+  [ '대상의 쓰기 권한(자산은 범위 안 asset.write). S3 객체도 지운다. 행 삭제는 audit_log에 남는다.', '실사 사진(count_item·count_unregistered)은 지울 수 없다(409 ALM-E322).'],params=[ID()],ok='204')
 W('공통','POST','/exports','createExport','엑셀·CSV 내보내기','목록 조회 권한','ExportRequest','ExportJob','202, 400, 403','-','ALM-110, 140, 220, 230, 240, 310',
   ['비동기. 5만 행까지 30초 안 목표. 금액 열은 amount.read 권한이 있을 때만 포함.'], ok='202')
 W('공통','GET','/exports/{id}','getExport','내보내기 상태','요청자',None,'ExportJob','200, 404','-','공통',['파일은 24시간 뒤 삭제.'],params=[ID()])
