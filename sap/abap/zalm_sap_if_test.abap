@@ -999,9 +999,11 @@ START-OF-SELECTION.
               lo_rt->set( iv_param = 'GENERALPOSTINGDATA' iv_field = 'ASSETTRTYP' iv_value = p_ttret ).
               lo_rt->set( iv_param = 'GENERALPOSTINGDATA' iv_field = 'PSTNG_DATE' iv_value = lv_pdate ).
               lo_rt->set( iv_param = 'GENERALPOSTINGDATA' iv_field = 'DOC_DATE' iv_value = lv_pdate ).
-              lo_rt->set( iv_param = 'GENERALPOSTINGDATA' iv_field = 'ASVAL_DATE' iv_value = lv_vdate ).
-              lo_rt->set( iv_param = 'GENERALPOSTINGDATA' iv_field = 'HEADER_TXT' iv_value = ls_env-posting_id ).
+              " 가치일은 RETIREMENTDATA-VALUEDATE, 머리글 텍스트(BKTXT)는 FURTHERPOSTINGDATA-HEADER_TXT (S/4 BAPIFAPO_* 서명)
               lo_rt->set( iv_param = 'RETIREMENTDATA' iv_field = 'COMPL_RET' iv_value = abap_true ).
+              lo_rt->set( iv_param = 'RETIREMENTDATA' iv_field = 'VALUEDATE' iv_value = lv_vdate ).
+              lo_rt->set( iv_param = 'FURTHERPOSTINGDATA' iv_field = 'HEADER_TXT' iv_value = ls_env-posting_id ).
+              " TESTRUN 매개변수가 없는 시스템: 시험 실행은 호출 뒤 COMMIT 없이 ROLLBACK(업데이트 작업이 버려져 전기되지 않음)
               IF lo_rt->has( 'TESTRUN' ).
                 lo_rt->set( iv_param = 'TESTRUN' iv_value = p_trun ).
               ENDIF.
