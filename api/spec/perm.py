@@ -89,7 +89,7 @@ EXCLUSIVE_ROLES = ['AUDITOR']   # cannot be combined with any other role (H-05)
 # operationId -> permission (str) or any-of list. Data-level rules (요청자 본인, 승인 단계 역할) are in each endpoint's rules. Data-level rules (요청자 본인, 승인 단계 역할) are in each endpoint's rules.
 OPS = {
     # auth & common
-    'authLogin': None, 'authCallback': None, 'authRefresh': None, 'authLogout': None,
+    'authLogin': None, 'authPdaConfig': None, 'authCallback': None, 'authRefresh': None, 'authLogout': None,
     'getMe': 'auth', 'patchMe': 'auth', 'getLookups': 'auth', 'search': 'auth', 'listNotifications': 'auth', 'readNotification': 'auth',
     'presignAttachment': 'auth', 'completeAttachment': 'auth', 'downloadAttachment': 'auth', 'deleteAttachment': 'auth', 'createExport': 'auth', 'getExport': 'auth',
     'getDashboard': 'dashboard.read',

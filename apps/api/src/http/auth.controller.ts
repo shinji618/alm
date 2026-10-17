@@ -1,4 +1,4 @@
-// BFF 로그인(openapi authLogin·authCallback·authRefresh·authLogout, 09 6.4). 서버 세션 저장소 없이 암호화 쿠키만 쓴다.
+// BFF 로그인(openapi authLogin·authCallback·authRefresh·authLogout, 09 6.4)과 PDA 로그인 설정(authPdaConfig). 서버 세션 저장소 없이 암호화 쿠키만 쓴다.
 import { Controller, Get, HttpCode, Inject, Post, Query, Req, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { Config } from '../config';
@@ -54,6 +54,23 @@ export class AuthController {
     const verifier = randomToken(48), state = randomToken(24);
     this.cookie(res, PKCE, seal(this.cfg.cookieKeys, PKCE, { v: verifier, s: state, r: safeReturnTo(returnTo) }, PKCE_TTL), PKCE_TTL, 'lax');
     res.redirect(302, this.cognito.authorizeUrl({ idp, state, challenge: s256(verifier) }));
+  }
+
+  // PDA 로그인 설정(AppAuth, 09 6.5): 이메일 도메인 → 테넌트 IdP. PKCE·토큰 교환은 앱이 Cognito와 직접(공개 클라이언트)
+  @Get('pda-config')
+  @Operation('authPdaConfig')
+  async pdaConfig(@Query('email') email: string, @Req() req: AlmRequest) {
+    const domain = typeof email === 'string' ? domainOf(email) : undefined;
+    if (!domain) throw E.badRequest('이메일 형식이 아닙니다');
+    const idp = (await this.db.query<{ idp: string | null }>('SELECT auth_idp_by_domain($1) AS idp', [domain]))[0]?.idp;
+    if (!idp || !this.cfg.cognito.pdaClientId) {
+      log.warn('pda login unknown domain', { domain, ip: req.alm.ip, correlationId: req.alm.correlationId });
+      throw E.loginDenied('등록된 회사 계정이 아닙니다. 관리자에게 문의하세요');
+    }
+    const b = this.cognito.base;
+    return { authorizationEndpoint: `${b}/oauth2/authorize`, tokenEndpoint: `${b}/oauth2/token`, revocationEndpoint: `${b}/oauth2/revoke`,
+      endSessionEndpoint: `${b}/logout`, clientId: this.cfg.cognito.pdaClientId, redirectUri: 'com.bsg.alm://auth', identityProvider: idp,
+      scopes: ['openid', 'email', 'profile'] };
   }
 
   @Get('callback')

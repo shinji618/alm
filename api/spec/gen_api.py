@@ -67,7 +67,7 @@ def build_openapi():
                     op.setdefault('x-param-permission', []).append({'when': cond, 'permission': p2})
             if e['op'] in perm.COND:
                 op['x-condition'] = perm.COND[e['op']]
-        if e['op'] in ('authLogin', 'authCallback', 'authRefresh', 'authLogout'):
+        if e['op'] in ('authLogin', 'authPdaConfig', 'authCallback', 'authRefresh', 'authLogout'):
             op['security'] = []
             if e['req']:
                 op['requestBody'] = {'required': True, 'content': {'application/json': {'schema': {'$ref': f"#/components/schemas/{e['req']}"}}}}

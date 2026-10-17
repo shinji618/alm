@@ -8197,6 +8197,42 @@ paths:
         '500':
           $ref: '#/components/responses/E500'
       security: []
+  /auth/pda-config:
+    get:
+      operationId: authPdaConfig
+      summary: PDA 로그인 설정
+      tags:
+      - WEB
+      description: 'PDA-01 · 테이블: tenant
+
+
+        - PDA 앱(AppAuth)이 로그인 전에 부른다. email 도메인으로 auth_idp_by_domain() → IdP 이름과 Cognito 엔드포인트·alm-pda 클라이언트를 돌려준다.
+
+        - PKCE와 토큰 교환은 앱이 Cognito와 직접 한다(공개 클라이언트). 모르는 도메인은 authLogin과 같은 403 ALM-E405 문구.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: email
+        in: query
+        required: true
+        description: 로그인 이메일
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PdaAuthConfig'
+        '400':
+          $ref: '#/components/responses/E400'
+        '403':
+          $ref: '#/components/responses/E403'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      security: []
   /auth/callback:
     get:
       operationId: authCallback
@@ -16219,6 +16255,45 @@ components:
           description: Cognito·IdP 로그아웃 URL(브라우저가 이동)
       required:
       - logoutUrl
+    PdaAuthConfig:
+      type: object
+      description: PDA 로그인 설정(AppAuth)
+      properties:
+        authorizationEndpoint:
+          type: string
+          description: Cognito /oauth2/authorize
+        tokenEndpoint:
+          type: string
+          description: Cognito /oauth2/token
+        revocationEndpoint:
+          type: string
+          description: Cognito /oauth2/revoke
+        endSessionEndpoint:
+          type: string
+          description: Cognito /logout
+        clientId:
+          type: string
+          description: alm-pda 앱 클라이언트(공개, 비밀 없음)
+        redirectUri:
+          type: string
+          description: com.bsg.alm://auth
+        identityProvider:
+          type: string
+          description: 이메일 도메인의 테넌트 IdP(authorize의 identity_provider)
+        scopes:
+          type: array
+          items:
+            type: string
+          description: openid email profile
+      required:
+      - authorizationEndpoint
+      - tokenEndpoint
+      - revocationEndpoint
+      - endSessionEndpoint
+      - clientId
+      - redirectUri
+      - identityProvider
+      - scopes
     SecurityEventRow:
       type: object
       description: 보안 이벤트

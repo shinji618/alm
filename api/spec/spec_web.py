@@ -1620,6 +1620,20 @@ W('인증','GET','/auth/login','authLogin','로그인 시작','없음',None,'Acc
    'PKCE code_verifier와 state는 암호화 쿠키 alm_pkce(5분, HttpOnly, Secure, SameSite=Lax, Path=/api/v1/auth)에 둔다.',
    '모르는 도메인도 같은 화면 문구로 안내해 고객사 여부를 드러내지 않는다(403 ALM-E405, CloudWatch에만 기록). 호출 제한: WAF IP당 5분 300회(등록된 고객사 출구 IP 제외).'],
   params=[('email','query','string','Y','로그인 이메일'),('returnTo','query','string','N','로그인 뒤 돌아갈 화면 경로(같은 사이트 상대 경로만)')], ok='302')
+schema('PdaAuthConfig', 'PDA 로그인 설정(AppAuth)', '''
+authorizationEndpoint | string | Y | Cognito /oauth2/authorize
+tokenEndpoint | string | Y | Cognito /oauth2/token
+revocationEndpoint | string | Y | Cognito /oauth2/revoke
+endSessionEndpoint | string | Y | Cognito /logout
+clientId | string | Y | alm-pda 앱 클라이언트(공개, 비밀 없음)
+redirectUri | string | Y | com.bsg.alm://auth
+identityProvider | string | Y | 이메일 도메인의 테넌트 IdP(authorize의 identity_provider)
+scopes | [string] | Y | openid email profile
+''')
+W('인증','GET','/auth/pda-config','authPdaConfig','PDA 로그인 설정','없음',None,'PdaAuthConfig','200, 400, 403','tenant','PDA-01',
+  ['PDA 앱(AppAuth)이 로그인 전에 부른다. email 도메인으로 auth_idp_by_domain() → IdP 이름과 Cognito 엔드포인트·alm-pda 클라이언트를 돌려준다.',
+   'PKCE와 토큰 교환은 앱이 Cognito와 직접 한다(공개 클라이언트). 모르는 도메인은 authLogin과 같은 403 ALM-E405 문구.'],
+  params=[('email','query','string','Y','로그인 이메일')])
 W('인증','GET','/auth/callback','authCallback','로그인 콜백','없음',None,'AccessToken','302, 400, 403','app_user, security_event','로그인 화면',
   ['state 확인 → 코드 교환(웹 앱 클라이언트, 비밀 있음) → 액세스 토큰의 username(ID 토큰은 cognito:username)으로 auth_tenant_by_username() → 테넌트·idp_subject.',
    'app_user를 (tenant, idp_subject)로 찾는다. 없으면 idp_subject가 비어 있고 이메일이 같은 미리 등록된 사용자에 연결(ID 토큰 email_verified가 true이거나 SAML일 때만). 그래도 없으면 tenant.jit_provision이 true일 때만 EMPLOYEE로 생성, 아니면 403 ALM-E405. 비활성 사용자·유효한 역할이 없는 감사인도 403.',

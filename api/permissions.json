@@ -343,6 +343,7 @@
  },
  "operations": {
   "authLogin": null,
+  "authPdaConfig": null,
   "authCallback": null,
   "authRefresh": null,
   "authLogout": null,

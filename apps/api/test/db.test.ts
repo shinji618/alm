@@ -166,6 +166,13 @@ test('HTTP: 로그인 → 콜백 → 갱신 → /me → 로그아웃', { skip },
     assert.equal(unknown.headers.get('content-type'), 'application/problem+json; charset=utf-8');
     assert.equal(prob.correlationId, unknown.headers.get('x-correlation-id'));
 
+    // PDA 로그인 설정: 도메인 → IdP, Cognito 엔드포인트·공개 클라이언트(모르는 도메인은 같은 403)
+    assert.equal((await fetch(`${base}/auth/pda-config?email=a@unknown.com`)).status, 403);
+    const pc = (await (await fetch(`${base}/auth/pda-config?email=admin@Example.com`)).json()) as any;
+    assert.deepEqual(pc, { authorizationEndpoint: 'https://auth.example.test/oauth2/authorize', tokenEndpoint: 'https://auth.example.test/oauth2/token',
+      revocationEndpoint: 'https://auth.example.test/oauth2/revoke', endSessionEndpoint: 'https://auth.example.test/logout', clientId: 'pda',
+      redirectUri: 'com.bsg.alm://auth', identityProvider: 'T-TEST', scopes: ['openid', 'email', 'profile'] });
+
     const login = await fetch(`${base}/auth/login?email=admin@Example.com&returnTo=/assets`, { redirect: 'manual' });
     assert.equal(login.status, 302);
     const loc = new URL(login.headers.get('location')!);
