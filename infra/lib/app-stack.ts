@@ -307,15 +307,16 @@ export class AppStack extends Stack {
         scheduleExpression: `cron(${cron})`, scheduleExpressionTimezone: tz,
         target: { arn: `arn:aws:scheduler:::aws-sdk:${service}:${action}`, roleArn: nightly.roleArn, input: JSON.stringify(input) },
       });
-      // 평일 runHours(ET) 동안 운영. DB는 앱보다 20분 먼저 켜고 5분 늦게 끈다. 자정(24) 이후 정지는 다음 날(화~토) 새벽 시각으로 건다
-      const { start, stop } = cfg.runHours ?? { start: 7, stop: 20 };
-      const stopDays = stop >= 24 ? 'TUE-SAT' : 'MON-FRI', stopHour = stop % 24;
+      // runHours(ET) 동안 운영(평일 또는 매일). DB는 앱보다 20분 먼저 켜고 5분 늦게 끈다. 자정(24) 이후 정지는 다음 날 새벽 시각으로 건다(평일이면 화~토)
+      const { start, stop, days = 'weekdays' } = cfg.runHours ?? { start: 7, stop: 20 };
+      const startDays = days === 'daily' ? '*' : 'MON-FRI';
+      const stopDays = days === 'daily' ? '*' : stop >= 24 ? 'TUE-SAT' : 'MON-FRI', stopHour = stop % 24;
       for (const [svcId, svc, desired] of [['Api', 'api', cfg.api.desired], ['Worker', 'worker', cfg.worker.desired]] as const) {
         sdk(`Stop${svcId}`, `0 ${stopHour} ? * ${stopDays} *`, 'ecs', 'updateService', { Cluster: this.cluster.clusterName, Service: svc, DesiredCount: 0 });
-        sdk(`Start${svcId}`, `0 ${start} ? * MON-FRI *`, 'ecs', 'updateService', { Cluster: this.cluster.clusterName, Service: svc, DesiredCount: desired });
+        sdk(`Start${svcId}`, `0 ${start} ? * ${startDays} *`, 'ecs', 'updateService', { Cluster: this.cluster.clusterName, Service: svc, DesiredCount: desired });
       }
       sdk('StopDb', `5 ${stopHour} ? * ${stopDays} *`, 'rds', 'stopDBInstance', { DbInstanceIdentifier: `alm-${env}` });
-      sdk('StartDb', `40 ${start - 1} ? * MON-FRI *`, 'rds', 'startDBInstance', { DbInstanceIdentifier: `alm-${env}` });
+      sdk('StartDb', `40 ${start - 1} ? * ${startDays} *`, 'rds', 'startDBInstance', { DbInstanceIdentifier: `alm-${env}` });
     }
 
     // 배포 파이프라인(infra/scripts/deploy.sh)이 읽는 값

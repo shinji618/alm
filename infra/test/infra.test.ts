@@ -168,12 +168,12 @@ describe('Edge (10 5장)', () => {
 describe('야간 정지(A-10)', () => {
   const crons = (e: string) => new Map(Object.entries(tpl(e, 'app').findResources('AWS::Scheduler::Schedule'))
     .map(([id, r]: [string, any]) => [id.replace(/[0-9A-F]{8}$/, ''), r.Properties.ScheduleExpression as string]));
-  it('DEV는 평일 07~24시 운영(자정 정지는 화~토 새벽), PRD는 정지 없음', () => {
+  it('DEV는 매일(주말 포함) 07~24시 운영, PRD는 정지 없음', () => {
     const dev = crons('dev'), prd = crons('prd');
-    expect(dev.get('StopApi')).toBe('cron(0 0 ? * TUE-SAT *)');
-    expect(dev.get('StopDb')).toBe('cron(5 0 ? * TUE-SAT *)');
-    expect(dev.get('StartApi')).toBe('cron(0 7 ? * MON-FRI *)');
-    expect(dev.get('StartDb')).toBe('cron(40 6 ? * MON-FRI *)');
+    expect(dev.get('StopApi')).toBe('cron(0 0 ? * * *)');
+    expect(dev.get('StopDb')).toBe('cron(5 0 ? * * *)');
+    expect(dev.get('StartApi')).toBe('cron(0 7 ? * * *)');
+    expect(dev.get('StartDb')).toBe('cron(40 6 ? * * *)');
     expect(prd.has('StopApi')).toBe(false);
   });
 });

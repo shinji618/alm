@@ -68,7 +68,7 @@ migrate_ready() {
   aws ecs describe-task-definition --task-definition "$fam" \
     --query "taskDefinition.containerDefinitions[?name=='app'].secrets[].name" --output text 2>/dev/null | grep -qw DB_MASTER_PASSWORD
 }
-# DB가 꺼져 있으면(야간 정지: DEV 00:05~06:40, QA 20:05~06:40 ET) migrate가 접속하지 못해 실패한다 → 먼저 알리고 멈춘다.
+# DB가 꺼져 있으면(야간 정지: DEV 매일 00:05~06:40, QA 평일 20:05~06:40·주말 ET) migrate가 접속하지 못해 실패한다 → 먼저 알리고 멈춘다.
 # 켜지는 중이면 기다린다. 상태를 못 읽으면(권한 등) 그대로 진행한다
 check_db() {
   local st
@@ -77,7 +77,7 @@ check_db() {
     available) ;;
     unknown|None) echo "::warning::DB alm-${ENV} 상태를 읽지 못했습니다(배포 역할 rds:DescribeDBInstances 필요 — deploy-global.sh로 Alm-${Env}-Ci 갱신). 그대로 진행합니다" ;;
     stopped|stopping)
-      echo "::error::DB alm-${ENV}가 ${st} 상태입니다(야간 정지 — DEV 00:05~06:40, QA 20:05~06:40 ET). 07:00 ET 이후 Re-run 하거나, DB를 켠 뒤(aws rds start-db-instance --db-instance-identifier alm-${ENV}) Re-run 하세요" >&2
+      echo "::error::DB alm-${ENV}가 ${st} 상태입니다(야간 정지 — DEV 매일 00:05~06:40, QA 평일 20:05~06:40·주말 종일 ET). 07:00 ET 이후 Re-run 하거나, DB를 켠 뒤(aws rds start-db-instance --db-instance-identifier alm-${ENV}) Re-run 하세요" >&2
       exit 1 ;;
     *) echo "DB alm-${ENV} 상태 ${st}: available까지 기다림"; aws rds wait db-instance-available --db-instance-identifier "alm-${ENV}" ;;
   esac
