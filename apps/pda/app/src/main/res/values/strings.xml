@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="r_device_serial">Device serial (X-Device-Id)</string>
+    <string name="r_api_base">API base URL</string>
+    <string name="r_email_domain">Default sign-in email domain</string>
+</resources>

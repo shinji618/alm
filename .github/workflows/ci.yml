@@ -97,6 +97,19 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
       - run: sh -n scripts/migrate.sh && bash -n ../../infra/scripts/db-seed.sh
 
+  pda:
+    name: PDA 앱(단위 시험·APK 빌드)
+    runs-on: ubuntu-24.04
+    defaults:
+      run: { working-directory: apps/pda }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17', cache: gradle }
+      - run: ./gradlew --no-daemon testDevDebugUnitTest lintDevDebug assembleDevPilot
+      - uses: actions/upload-artifact@v4
+        with: { name: alm-count-dev-pilot-apk, path: apps/pda/app/build/outputs/apk/dev/pilot/*.apk, if-no-files-found: error, retention-days: 14 }
+
   infra:
     name: 인프라(CDK synth·cdk-nag·시험)
     runs-on: ubuntu-24.04

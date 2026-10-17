@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MDM(관리형 구성)으로 넣는 값. 없으면 앱 설정 화면 값을 쓴다 -->
+<restrictions xmlns:android="http://schemas.android.com/apk/res/android">
+    <restriction android:key="deviceSerial" android:title="@string/r_device_serial" android:restrictionType="string" android:defaultValue="" />
+    <restriction android:key="apiBase" android:title="@string/r_api_base" android:restrictionType="string" android:defaultValue="" />
+    <restriction android:key="loginEmailDomain" android:title="@string/r_email_domain" android:restrictionType="string" android:defaultValue="" />
+</restrictions>
