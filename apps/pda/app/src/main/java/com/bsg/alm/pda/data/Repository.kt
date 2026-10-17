@@ -54,11 +54,12 @@ class Repository(private val ctx: Context, private val settings: Settings, val a
 
     /** 로그인 직후: 사용자 확인(/pda/me) + 기기 등록 → 동기화 */
     suspend fun afterLogin() {
+        // 기기 등록이 먼저: 서버는 등록 안 된 기기의 다른 PDA API를 모두 403 ALM-E406으로 막는다(등록 API만 허용)
+        deviceId = api.registerDevice("${Build.MANUFACTURER} ${Build.MODEL}".trim()).deviceId
         val me = api.me()
         if (auth.userId != null && auth.userId != me.userId) dao.clearUser(auth.userId!!)
         auth.userId = me.userId
         auth.displayName = me.displayName
-        deviceId = api.registerDevice("${Build.MANUFACTURER} ${Build.MODEL}".trim()).deviceId
         sync(full = false)
     }
 
