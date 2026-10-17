@@ -63,6 +63,11 @@ class Settings(private val ctx: Context) {
         get() = prefs.getString("scanExtra", null) ?: DEFAULT_SCAN_EXTRA
         set(v) = prefs.edit().putString("scanExtra", v.trim()).apply()
 
+    /** 스캔을 바로 보낼지. 끄면 대기열에 모아 두었다가 'Send now'로 보낸다(보내기 전에 지우고 다시 시험할 때) */
+    var autoSend: Boolean
+        get() = prefs.getBoolean("autoSend", true)
+        set(v) = prefs.edit().putBoolean("autoSend", v).apply()
+
     var continuousScan: Boolean
         get() = prefs.getBoolean("continuous", true)
         set(v) = prefs.edit().putBoolean("continuous", v).apply()

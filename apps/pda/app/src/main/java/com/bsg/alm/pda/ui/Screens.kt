@@ -265,14 +265,14 @@ fun ScanScreen(vm: AppViewModel, online: Boolean, pending: Int) {
             }
             LazyColumn(Modifier.weight(1f)) {
                 if (recent.isEmpty()) item { Text("No scans in this room yet.", color = Muted, modifier = Modifier.padding(8.dp)) }
-                items(recent, key = { it.id }) { q -> QueueRow(q, onClick = { vm.openConfirm(q.label) }) }
+                items(recent, key = { it.id }) { q -> QueueRow(q, onClick = { vm.openConfirm(q.label) }, onDelete = { vm.discard(q.id) }) }
             }
         }
     }
 }
 
 @Composable
-fun QueueRow(q: QueueItem, onClick: (() -> Unit)? = null, onRetry: (() -> Unit)? = null) {
+fun QueueRow(q: QueueItem, onClick: (() -> Unit)? = null, onRetry: (() -> Unit)? = null, onDelete: (() -> Unit)? = null) {
     val result = q.serverResult ?: q.localResult
     Row(Modifier.fillMaxWidth().let { if (onClick != null) it.clickable(onClick = onClick) else it }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
@@ -286,6 +286,7 @@ fun QueueRow(q: QueueItem, onClick: (() -> Unit)? = null, onRetry: (() -> Unit)?
                 when (q.state) { QueueItem.SENT -> Ok; QueueItem.REJECTED -> Bad; else -> Warn })
             Text(hm.format(Date(q.createdAt)), fontSize = 12.sp, color = Muted)
             if (onRetry != null && q.state == QueueItem.REJECTED) TextButton(onClick = onRetry) { Text("Retry") }
+            if (onDelete != null && q.state != QueueItem.SENT) TextButton(onClick = onDelete) { Text("Remove", color = Bad) }
         }
     }
     HorizontalDivider()
@@ -430,16 +431,34 @@ fun StatusScreen(vm: AppViewModel, online: Boolean, pending: Int) {
 @Composable
 fun QueueScreen(vm: AppViewModel, online: Boolean, pending: Int) {
     val q by vm.queue.collectAsState(initial = emptyList())
+    val auto by vm.autoSend.collectAsState()
+    var ask by remember { mutableStateOf(false) }
+    val unsent = q.count { it.state != QueueItem.SENT }
     Column(Modifier.fillMaxSize()) {
         Header("PDA-08", "Upload queue", null, online, pending) {
             TextButton(onClick = { vm.sendNow() }) { Text("Send now", color = Color.White) }
         }
-        Text("Scans are saved on this device first and sent automatically when there is a connection.", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(12.dp))
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Send automatically", fontWeight = FontWeight.Medium)
+                    Text(if (auto) "Scans are sent as soon as there is a connection." else "Holding: scans stay on this device until you tap Send now. You can remove them before sending.",
+                        fontSize = 12.sp, color = if (auto) Muted else Warn)
+                }
+                Switch(auto, { vm.setAutoSend(it) })
+            }
+            OutlinedButton(onClick = { ask = true }, enabled = unsent > 0, modifier = Modifier.fillMaxWidth()) { Text("Clear unsent ($unsent)", color = if (unsent > 0) Bad else Muted) }
+        }
         LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp)) {
             if (q.isEmpty()) item { Text("Nothing to send.", color = Muted) }
-            items(q, key = { it.id }) { x -> QueueRow(x, onRetry = { vm.retry(x.id) }) }
+            items(q, key = { it.id }) { x -> QueueRow(x, onRetry = { vm.retry(x.id) }, onDelete = { vm.discard(x.id) }) }
         }
     }
+    if (ask) AlertDialog(onDismissRequest = { ask = false },
+        title = { Text("Clear $unsent unsent item(s)?") },
+        text = { Text("Scans, unregistered reports and room updates that have not been sent are deleted from this device, and the assets go back to not counted. Items already sent stay in ALM.") },
+        confirmButton = { TextButton(onClick = { ask = false; vm.discardAll() }) { Text("Clear", color = Bad) } },
+        dismissButton = { TextButton(onClick = { ask = false }) { Text("Cancel") } })
 }
 
 // ---------------- 설정(관리자·스캐너 시험) ----------------

@@ -19,6 +19,7 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
     override suspend fun doWork(): Result {
         val repo = (applicationContext as AlmApp).repo
         if (!repo.auth.isSignedIn || repo.auth.userId == null) return Result.success()
+        if (!(applicationContext as AlmApp).settings.autoSend) return Result.success()
         return try { repo.flush(); Result.success() } catch (e: ApiException) {
             if (e.offline || e.status >= 500 || e.status == 429) Result.retry() else Result.success()
         } catch (e: Exception) { Result.retry() }

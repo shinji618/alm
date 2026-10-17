@@ -67,7 +67,7 @@ class Repository(private val ctx: Context, private val settings: Settings, val a
     suspend fun sync(full: Boolean = false): Result<Unit> = syncLock.withLock {
         _status.value = _status.value.copy(running = true, error = null)
         val r = runCatching {
-            flush()
+            flush(force = false)
             if (deviceId == null) deviceId = api.registerDevice("${Build.MANUFACTURER} ${Build.MODEL}".trim()).deviceId
             val uid = userId
             val tasks = api.tasks().items
@@ -196,7 +196,8 @@ class Repository(private val ctx: Context, private val settings: Settings, val a
 
     // ---------------- 전송 ----------------
     /** 대기열을 순서대로 보낸다. 연속한 스캔은 200건, 미등록은 50건씩 묶는다. 통신이 끊기면 멈추고 다음에 이어서 */
-    suspend fun flush() = flushLock.withLock {
+    suspend fun flush(force: Boolean = false) = flushLock.withLock {
+        if (!force && !settings.autoSend) return@withLock
         val uid = auth.userId ?: return@withLock
         val dev = deviceId ?: return@withLock
         val items = dao.pending(uid)
@@ -280,13 +281,30 @@ class Repository(private val ctx: Context, private val settings: Settings, val a
 
     /** 로그아웃 전에 보내기를 시도하고, 보낸 업무 데이터는 지운다. 미전송 건은 암호화된 채 남는다(그 사용자가 다시 로그인할 때 전송) */
     suspend fun signOut(): Int {
-        runCatching { flush() }
+        runCatching { flush(force = true) }
         val uid = auth.userId
         val left = uid?.let { dao.pendingNow(it) } ?: 0
         if (uid != null) dao.clearUser(uid)
         auth.signOut()
         return left
     }
+
+    /**
+     * 보내지 않은 건 지우기(시험·잘못 스캔한 경우). 이미 보낸 건은 지울 수 없다(서버 기록 — 웹에서 재실사로 되돌림).
+     * 스캔을 지우면 그 자산의 기기 결과도 되돌린다(같은 자산의 다른 미전송 스캔이 남아 있으면 그대로)
+     */
+    suspend fun discard(ids: List<Long>): Int {
+        val uid = userId
+        val items = dao.unsentByIds(ids).filter { it.userId == uid }
+        for (q in items) {
+            dao.deleteUnsent(q.id)
+            deletePhotos(q)
+            if (q.type == "SCAN" && dao.pendingScansFor(uid, q.campaignId, q.label) == 0) dao.clearLocal(uid, q.campaignId, q.label)
+        }
+        return items.size
+    }
+
+    suspend fun discardAllUnsent(): Int = discard(dao.unsentIds(userId))
 
     fun photoDir(): File = File(ctx.cacheDir, "photos").apply { mkdirs() }
 }

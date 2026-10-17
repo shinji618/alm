@@ -126,6 +126,11 @@ interface CountDao {
     @Query("SELECT count(*) FROM queue WHERE userId = :userId AND type = 'SCAN' AND state = 'PENDING' AND campaignId = :campaignId AND upper(label) = upper(:tag)")
     suspend fun pendingScansFor(userId: String, campaignId: String, tag: String): Int
     @Query("UPDATE queue SET state = 'PENDING', error = NULL WHERE id = :id") suspend fun retry(id: Long)
+    @Query("SELECT * FROM queue WHERE id IN (:ids) AND state <> 'SENT'") suspend fun unsentByIds(ids: List<Long>): List<QueueItem>
+    @Query("SELECT id FROM queue WHERE userId = :userId AND state <> 'SENT'") suspend fun unsentIds(userId: String): List<Long>
+    @Query("DELETE FROM queue WHERE id = :id AND state <> 'SENT'") suspend fun deleteUnsent(id: Long)
+    @Query("UPDATE work_item SET localResult = NULL, localRoomId = NULL, localCountedAt = NULL, localCondition = NULL WHERE userId = :userId AND campaignId = :campaignId AND upper(assetTag) = upper(:tag)")
+    suspend fun clearLocal(userId: String, campaignId: String, tag: String)
     @Query("DELETE FROM queue WHERE state <> 'PENDING' AND createdAt < :before") suspend fun purgeSent(before: Long)
 
     /** 로그아웃·전송 완료 후 정리: 보낸 업무 데이터는 지운다(미전송 대기열은 남김) */

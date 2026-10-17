@@ -175,6 +175,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         busy.value = false
         val e = r.exceptionOrNull()
         when {
+            e == null && !settings.autoSend -> toast("${task.roomCode} marked complete. Tap Send now in the queue to send it.")
             e == null -> toast("${task.roomCode} completed")
             e is ApiException && e.offline -> toast("${task.roomCode} marked complete. It will be sent when online.")
             else -> toast(errorText(e))
@@ -182,7 +183,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun retry(id: Long) = viewModelScope.launch { repo.dao.retry(id); SyncWorker.kick(getApplication()) }
-    fun sendNow() = viewModelScope.launch { runCatching { repo.flush() }.onFailure { toast(errorText(it)) }.onSuccess { toast("Sent") } }
+    fun sendNow() = viewModelScope.launch { runCatching { repo.flush(force = true) }.onFailure { toast(errorText(it)) }.onSuccess { toast("Sent") } }
+
+    val autoSend = MutableStateFlow(settings.autoSend)
+    fun setAutoSend(on: Boolean) { settings.autoSend = on; autoSend.value = on; if (on) SyncWorker.kick(getApplication()) }
+    fun discard(id: Long) = viewModelScope.launch { val n = repo.discard(listOf(id)); if (n > 0) toast("Removed (not sent)") }
+    fun discardAll() = viewModelScope.launch { val n = repo.discardAllUnsent(); toast(if (n > 0) "$n unsent item(s) cleared" else "Nothing to clear"); last.value = null }
 
     suspend fun categories() = repo.dao.codes("category")
     suspend fun conditions() = repo.dao.codes("condition")
