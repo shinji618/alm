@@ -22,6 +22,8 @@
 *&          클래스 화면 레이아웃에서 입력 불가 필드(AY/219)면 시리얼·룸·위치를 빼고 한 번 더 시도(회신에 W 메시지)
 *&        IF-AA-04 변경(ASSET_CHANGE, 손익센터가 같은 코스트센터 이관 포함) → BAPI_FIXEDASSET_CHANGE
 *&        IF-AA-06 폐기(ASSET_RETIRE: SCRAP·LOSS) → BAPI_ASSET_RETIREMENT_POST 전체 폐기(P_TTRET 거래유형)
+*&        IF-AA-07 실사 결과(COUNT_RESULT) → BAPI_FIXEDASSET_CHANGE 최종 실사일(IVDAT)·재고 메모(INVZU)
+*&          SAP 값이 이미 같으면 BAPI 없이 POSTED(재실행 안전). 필드 이름은 시스템마다 달라 후보 중 있는 것을 쓴다
 *&          BKTXT(머리글 텍스트)=요청번호. 같은 BKTXT 전표가 있으면 다시 전기하지 않고 그 전표로 POSTED(재실행 안전)
 *&          매각(SALE, 매출 금액 필드)과 손익센터가 바뀌는 이관(IF-AA-05 ABUMN)은 아직 - 가져가지 않거나 회신하지 않는다
 *&          BAPI는 FUPARAREF로 매개변수를 읽어 동적으로 부른다. 필드가 없으면 호출하지 않고 서명을 출력(회신 안 함)
@@ -182,6 +184,9 @@ TYPES: BEGIN OF ty_fields,
          customer     TYPE string,
          is_partial   TYPE abap_bool,
          reason       TYPE string,
+         " COUNT_RESULT
+         last_count_date TYPE string,
+         inventory_note  TYPE string,
        END OF ty_create_pl,
        BEGIN OF ty_env_asset,
          asset_no     TYPE string,
@@ -399,6 +404,8 @@ CLASS lcl_bapi DEFINITION.
           mv_error   TYPE string READ-ONLY.
     METHODS constructor IMPORTING iv_func TYPE csequence.
     METHODS has IMPORTING iv_param TYPE csequence RETURNING VALUE(rv) TYPE abap_bool.
+    "! 매개변수 구조에 있는 첫 필드 이름(후보 순서대로). 없으면 빈 값
+    METHODS field IMPORTING iv_param TYPE csequence it_names TYPE string_table RETURNING VALUE(rv) TYPE string.
     METHODS set IMPORTING iv_param TYPE csequence iv_field TYPE csequence OPTIONAL iv_value TYPE any.
     METHODS get IMPORTING iv_param TYPE csequence iv_field TYPE csequence OPTIONAL RETURNING VALUE(rv) TYPE string.
     METHODS call.
@@ -443,6 +450,20 @@ CLASS lcl_bapi IMPLEMENTATION.
 
   METHOD has.
     rv = xsdbool( line_exists( mt_p[ name = to_upper( iv_param ) ] ) ).
+  ENDMETHOD.
+
+  METHOD field.
+    FIELD-SYMBOLS: <d> TYPE any, <c> TYPE any.
+    READ TABLE mt_p INTO DATA(ls_p) WITH KEY name = to_upper( iv_param ).
+    CHECK sy-subrc = 0.
+    ASSIGN ls_p-ref->* TO <d>.
+    LOOP AT it_names INTO DATA(lv_n).
+      ASSIGN COMPONENT to_upper( lv_n ) OF STRUCTURE <d> TO <c>.
+      IF sy-subrc = 0.
+        rv = to_upper( lv_n ).
+        RETURN.
+      ENDIF.
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD set.
@@ -809,11 +830,13 @@ START-OF-SELECTION.
           lv_bktxt  TYPE bkpf-bktxt,
           lv_objkey TYPE string,
           lv_deakt  TYPE anla-deakt,
-          lv_today  TYPE string.
+          lv_today  TYPE string,
+          lv_ivdat  TYPE d,
+          lv_invzu  TYPE anla-invzu.
     lv_today = |{ sy-datum DATE = ISO }|.
 
     go_api->exec( EXPORTING iv_method = 'POST' iv_path = '/sap/postings:claim' iv_key = |{ gv_batch }-PST|
-                            iv_body = |\{"batchId":"{ gv_batch }-PST","maxItems":10,"types":["ASSET_CREATE","ASSET_CHANGE","ASSET_RETIRE"]\}|
+                            iv_body = |\{"batchId":"{ gv_batch }-PST","maxItems":10,"types":["ASSET_CREATE","ASSET_CHANGE","ASSET_RETIRE","COUNT_RESULT"]\}|
                   IMPORTING ev_status = lv_cstat ev_body = lv_cbody ).
     IF lv_cstat = 200.
       /ui2/cl_json=>deserialize( EXPORTING json = lv_cbody pretty_name = /ui2/cl_json=>pretty_mode-camel_case
@@ -1066,6 +1089,74 @@ START-OF-SELECTION.
                     WRITE / '  전표를 찾지 못함 - AW01N·FB03에서 확인 필요. ALM에 회신하지 않음'.
                     lv_skip = abap_true.
                   ENDIF.
+                ENDIF.
+              ENDIF.
+            ENDIF.
+          ENDIF.
+
+        WHEN 'COUNT_RESULT'.
+          " IF-AA-07: 최종 실사일(ANLA-IVDAT)·재고 메모(ANLA-INVZU)를 BAPI_FIXEDASSET_CHANGE로
+          lv_ivdat = replace( val = ls_pl-last_count_date sub = '-' with = '' occ = 0 ).
+          lv_invzu = ls_pl-inventory_note.
+          WRITE / |{ ls_env-posting_id } COUNT { ls_env-asset-asset_no }-{ ls_env-asset-sub_no } IVDAT { ls_pl-last_count_date } INVZU { ls_pl-inventory_note }|.
+          SELECT SINGLE ivdat, invzu FROM anla
+            WHERE bukrs = @ls_env-company_code AND anln1 = @ls_env-asset-asset_no AND anln2 = @ls_env-asset-sub_no
+            INTO @DATA(ls_cur).
+          IF sy-subrc <> 0.
+            ls_res-status = 'FAILED'.
+            APPEND VALUE #( type = 'E' id = 'ZALM' number = '004'
+                            text = |Asset { ls_env-asset-asset_no }-{ ls_env-asset-sub_no } not found in company code { ls_env-company_code }| ) TO ls_res-messages.
+            WRITE / '  SAP에 자산 없음 → FAILED'.
+          ELSEIF ls_cur-ivdat = lv_ivdat AND ( lv_invzu IS INITIAL OR ls_cur-invzu = lv_invzu ).
+            WRITE / '  SAP 값이 이미 같음 → POSTED'.
+          ELSE.
+            DATA(lo_ct) = NEW lcl_bapi( 'BAPI_FIXEDASSET_CHANGE' ).
+            DATA(lv_fdate) = lo_ct->field( iv_param = 'GENERALDATA'
+                                           it_names = VALUE #( ( `LAST_INVENTORY_DATE` ) ( `LAST_INVENT_DATE` ) ( `INVENT_DATE` ) ( `IVDAT` ) ) ).
+            DATA(lv_fnote) = lo_ct->field( iv_param = 'GENERALDATA'
+                                           it_names = VALUE #( ( `INVENTORY_NOTE` ) ( `INVENT_NOTE` ) ( `INV_NOTE` ) ( `INVZU` ) ) ).
+            IF lv_fdate IS INITIAL.
+              WRITE / '  GENERALDATA에 최종 실사일 필드가 없음 - 서명을 출력하고 회신하지 않음(필드 이름을 알려 주세요)'.
+              lo_ct->signature( ).
+              lv_skip = abap_true.
+            ELSE.
+              lo_ct->set( iv_param = 'COMPANYCODE' iv_value = ls_env-company_code ).
+              lo_ct->set( iv_param = 'ASSET' iv_value = ls_env-asset-asset_no ).
+              lo_ct->set( iv_param = 'SUBNUMBER' iv_value = ls_env-asset-sub_no ).
+              lo_ct->set( iv_param = 'GENERALDATA' iv_field = lv_fdate iv_value = lv_ivdat ).
+              lo_ct->set( iv_param = 'GENERALDATAX' iv_field = lv_fdate iv_value = abap_true ).
+              IF lv_invzu IS NOT INITIAL.
+                IF lv_fnote IS INITIAL.
+                  APPEND VALUE #( type = 'W' id = 'ZALM' number = '005'
+                                  text = |Inventory note { ls_pl-inventory_note } not transferred (no BAPI field)| ) TO ls_res-messages.
+                ELSE.
+                  lo_ct->set( iv_param = 'GENERALDATA' iv_field = lv_fnote iv_value = lv_invzu ).
+                  lo_ct->set( iv_param = 'GENERALDATAX' iv_field = lv_fnote iv_value = abap_true ).
+                ENDIF.
+              ENDIF.
+              IF lo_ct->has( 'TESTRUN' ).
+                lo_ct->set( iv_param = 'TESTRUN' iv_value = p_trun ).
+              ENDIF.
+              IF lo_ct->mt_missing IS NOT INITIAL OR lo_ct->mv_ok = abap_false.
+                WRITE / |  BAPI 서명 불일치: { concat_lines_of( table = lo_ct->mt_missing sep = `, ` ) } { lo_ct->mv_error }|.
+                lo_ct->signature( ).
+                lv_skip = abap_true.
+              ELSE.
+                lo_ct->call( ).
+                ls_ret = lo_ct->ret( ).
+                IF lo_ct->mv_error IS NOT INITIAL AND ls_ret IS INITIAL.
+                  ls_ret = VALUE #( type = 'E' id = 'ZALM' number = '002' message = lo_ct->mv_error ).
+                ENDIF.
+                WRITE / |  BAPI({ lv_fdate }{ COND string( WHEN lv_fnote IS NOT INITIAL THEN `·` && lv_fnote ) }) { ls_ret-type } { ls_ret-id }/{ ls_ret-number } { ls_ret-message }|.
+                IF ls_ret-type CA 'EA'.
+                  CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+                  ls_res-status = 'FAILED'.
+                  APPEND VALUE #( type = ls_ret-type id = ls_ret-id number = ls_ret-number text = ls_ret-message ) TO ls_res-messages.
+                ELSEIF p_trun = abap_true.
+                  CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+                ELSE.
+                  CALL FUNCTION 'BAPI_TRANSACTION_COMMIT' EXPORTING wait = abap_true.
+                  WRITE / '  실사일 반영 완료'.
                 ENDIF.
               ENDIF.
             ENDIF.
