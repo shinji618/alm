@@ -4,6 +4,7 @@ import { App } from '@/App';
 import { clearToken } from '@/lib/api';
 import type { Me } from '@/lib/session';
 import type { FilingDetail, FilingSummary } from '@/pages/tax/types';
+import { nextTaxYear } from '@/pages/tax/TaxHome';
 
 const acct: Me = { userId: 'u1', displayName: 'Accountant', email: 'a@bsg.test', locale: 'en', tenantCode: 'TEST', roles: [{ role: 'ASSET_ACCOUNTANT' }],
   permissions: ['asset.read', 'tax.read', 'tax.manage'], navCounts: {}, features: { sap: true } };
@@ -34,6 +35,14 @@ function mockFetch(handler: (url: string, init: RequestInit) => { status?: numbe
 afterEach(() => { vi.unstubAllGlobals(); clearToken(); window.history.pushState({}, '', '/'); });
 
 describe('property tax (ALM-260)', () => {
+  it('defaults to the next filing year', () => {
+    const ga = { lienMonth: 1, lienDay: 1, dueMonth: 4, dueDay: 1 };
+    const al = { lienMonth: 10, lienDay: 1, dueMonth: 12, dueDay: 31 };
+    expect(nextTaxYear(ga, new Date('2026-10-18T12:00:00Z'))).toBe(2027);
+    expect(nextTaxYear(ga, new Date('2026-03-10T12:00:00Z'))).toBe(2026);
+    expect(nextTaxYear(al, new Date('2026-10-18T12:00:00Z'))).toBe(2026);
+  });
+
   it('lists past filings and creates a new one', async () => {
     window.history.pushState({}, '', '/tax');
     const calls = mockFetch((url, init) => {

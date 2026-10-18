@@ -17,6 +17,15 @@ import s from '../assets/assets.module.css';
 import c from './tax.module.css';
 
 type Tab = 'filings' | 'jurisdictions' | 'factors';
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const lienOf = (j: Jurisdiction, year: string) => `${year}-${pad2(j.lienMonth)}-${pad2(j.lienDay)}`;
+/** 다음에 낼 신고의 과세 연도: 올해 기한이 지났으면 내년(예: GA 10월이면 2027년 신고 = 2027-01-01 기준 보유 자산) */
+export function nextTaxYear(j: Pick<Jurisdiction, 'lienMonth' | 'lienDay' | 'dueMonth' | 'dueDay'>, today = new Date()): number {
+  const y = today.getFullYear();
+  const md = today.toISOString().slice(5, 10);
+  const end = j.dueMonth ? `${pad2(j.dueMonth)}-${pad2(j.dueDay ?? 1)}` : `${pad2(j.lienMonth)}-${pad2(j.lienDay)}`;
+  return md > end ? y + 1 : y;
+}
 const md = (m?: number, d?: number) => (m ? `${String(m).padStart(2, '0')}/${String(d ?? 1).padStart(2, '0')}` : '—');
 
 export function TaxHome() {
@@ -123,11 +132,13 @@ function CreateFiling({ onClose, onCreated }: { onClose: () => void; onCreated: 
       <FormGrid onSubmit={() => void save()}>
         <SelectField label={t('company.code')} required value={companyId} error={errors.companyId} onChange={set('companyId')}
           options={[{ value: '', label: '—' }, ...companies.map((x) => ({ value: x.id, label: `${x.code} · ${x.label}` }))]} />
-        <SelectField label={t('tax.col.jurisdiction')} required value={f.jurisdictionId} error={errors.jurisdictionId} onChange={set('jurisdictionId')}
+        <SelectField label={t('tax.col.jurisdiction')} required value={f.jurisdictionId} error={errors.jurisdictionId}
+          onChange={(e) => { const j = jurs.find((x) => x.id === e.target.value); setF((v) => ({ ...v, jurisdictionId: e.target.value, ...(j ? { taxYear: String(nextTaxYear(j)) } : {}) })); }}
           hint={jurs.length ? undefined : t('tax.noJurisdictions')}
           options={[{ value: '', label: '—' }, ...jurs.map((x) => ({ value: x.id, label: `${x.state} · ${x.county} (${x.sites?.length ?? 0} ${t('tax.sitesShort')})` }))]} />
         <TextField label={t('tax.col.year')} required inputMode="numeric" maxLength={4} value={f.taxYear} error={errors.taxYear} onChange={set('taxYear')}
-          hint={jur ? t('tax.lienHint', { date: `${f.taxYear}-${String(jur.lienMonth).padStart(2, '0')}-${String(jur.lienDay).padStart(2, '0')}` }) : undefined} />
+          hint={jur ? <>{t('tax.lienHint', { date: lienOf(jur, f.taxYear) })}
+            {lienOf(jur, f.taxYear) > new Date().toISOString().slice(0, 10) ? <> · {t('tax.futureLien')}</> : null}</> : undefined} />
         {jur && !jur.taxable && <p className={c.note} role="status">{t('tax.notTaxable', { state: jur.state })}</p>}
         <div className={s.formActions}>
           <Button onClick={onClose}>{t('common.cancel')}</Button>

@@ -982,6 +982,7 @@
       "deleteMsg": "작성 중인 신고 자료를 삭제할까요?",
       "deleted": "삭제했습니다"
     },
-    "searchFilings": "회사·카운티·접수 번호 검색"
+    "searchFilings": "회사·카운티·접수 번호 검색",
+    "futureLien": "기준일이 미래라 오늘 보유 자산으로 추정합니다"
   }
 }

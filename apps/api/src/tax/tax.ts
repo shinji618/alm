@@ -262,9 +262,10 @@ async function compute(c: PoolClient, companyId: string, j: Jur, taxYear: number
 
   const lines: Line[] = [];
   const missingClass = new Set<string>();
+  let afterLien = 0;
   for (const a of rows) {
     const acq = day(a.acq_date)!;
-    if (acq > lien) continue;
+    if (acq > lien) { if (!['RETIRED', 'DISPOSED'].includes(a.status)) afterLien += 1; continue; }
     const disposal = day(a.disposal_date) ?? null;
     if (['RETIRED', 'DISPOSED'].includes(a.status) && (!disposal || disposal <= lien)) continue;
     const sapCost = num(a.sap_cost), almCost = num(a.purchase_cost);
@@ -317,6 +318,11 @@ async function compute(c: PoolClient, companyId: string, j: Jur, taxYear: number
   const exemption = !j.taxable ? mv : j.exemption_mode === 'THRESHOLD' ? (mv <= exAmt ? mv : 0) : j.exemption_mode === 'DEDUCT' ? Math.min(mv, exAmt) : 0;
   const assessed = j.taxable ? r2((mv - exemption) * Number(j.assessment_ratio)) : 0;
   const tax = r2(assessed * Number(j.millage) / 1000);
+  // 세액이 0인 이유를 화면에 바로 보이게
+  if (afterLien) warnings.push({ code: 'ACQUIRED_AFTER_LIEN', count: afterLien,
+    message: `기준일(${lien}) 뒤에 취득한 자산 ${afterLien}건은 이 연도 신고에 들어가지 않습니다(다음 연도 신고 대상). 취득일은 SAP 자본화일 → 구매일 → ALM 등록일 순으로 봅니다` });
+  if (!rows.length) warnings.push({ code: 'NO_ASSETS', message: '이 관할에 연결된 사이트에 이 회사 자산이 없습니다. 관할 탭에서 사이트 연결을 확인하세요' });
+  if (j.taxable && Number(j.millage) === 0) warnings.push({ code: 'ZERO_MILLAGE', message: '밀리지(세율)가 0이라 예상 세액이 0입니다. 관할 탭에서 카운티 밀리지를 입력하세요' });
   if (!j.taxable) warnings.push({ code: 'NOT_TAXABLE', message: `${j.state}는 사업용 동산을 과세하지 않습니다(신고 대상 아님). 목록은 참고용입니다` });
   else if (j.exemption_mode === 'THRESHOLD' && exemption > 0) warnings.push({ code: 'EXEMPT', message: `공정가치 합계가 $${exAmt.toLocaleString('en-US')} 이하라 면제됩니다(신고서는 제출)` });
   const due = j.due_month ? `${taxYear}-${pad(j.due_month)}-${pad(j.due_day ?? 1)}` : null;

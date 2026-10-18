@@ -982,6 +982,7 @@
       "deleteMsg": "Delete this draft filing?",
       "deleted": "Deleted"
     },
-    "searchFilings": "Search company, county or reference"
+    "searchFilings": "Search company, county or reference",
+    "futureLien": "The lien date is in the future: estimated from assets held today"
   }
 }
