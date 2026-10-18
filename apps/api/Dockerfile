@@ -2,7 +2,9 @@
 #   docker buildx build --platform linux/arm64 -f apps/api/Dockerfile .
 # 역할은 ECS 작업 정의의 명령으로 고른다: node dist/main <api|worker|migrate|seed|audit-archive|partman>, sh scripts/migrate.sh
 
-FROM public.ecr.aws/docker/library/node:24-alpine AS build
+# 기반 이미지: 기본은 ECR Public. CI가 429(공개 저장소 한도)면 같은 공식 이미지의 다른 미러를 --build-arg NODE_IMAGE로 넘긴다
+ARG NODE_IMAGE=public.ecr.aws/docker/library/node:24-alpine
+FROM ${NODE_IMAGE} AS build
 WORKDIR /src
 COPY apps/api/package.json apps/api/package-lock.json apps/api/
 RUN cd apps/api && npm ci --ignore-scripts --no-audit --no-fund
@@ -16,7 +18,7 @@ RUN cd apps/api && npm run build && npm prune --omit=dev --no-audit --no-fund
 ADD https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /src/certs/rds-global-bundle.pem
 RUN chmod 444 /src/certs/rds-global-bundle.pem && grep -q "BEGIN CERTIFICATE" /src/certs/rds-global-bundle.pem
 
-FROM public.ecr.aws/docker/library/node:24-alpine
+FROM ${NODE_IMAGE}
 # 실행에는 node만 필요하다. 이미지에 딸려 오는 npm·corepack·yarn은 지운다(번들된 의존성의 취약점이 Trivy 검사를 막음)
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn* \
       /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg

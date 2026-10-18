@@ -61,14 +61,29 @@ jobs:
           # 백엔드(3.4)가 생기기 전까지는 자리 이미지(infra/bootstrap-image)를 같은 태그로 올린다
           if [[ -f apps/api/Dockerfile ]]; then echo "context=." >> "$GITHUB_OUTPUT"; echo "file=apps/api/Dockerfile" >> "$GITHUB_OUTPUT"
           else echo "context=infra/bootstrap-image" >> "$GITHUB_OUTPUT"; echo "file=infra/bootstrap-image/Dockerfile" >> "$GITHUB_OUTPUT"; fi
+      - name: 기반 이미지 고르기(ECR Public 429면 미러)
+        id: base
+        run: |
+          # 같은 Docker 공식 node 이미지를 ECR Public → Google 미러 → Docker Hub 순으로 시도한다.
+          # ECR Public 익명 받기는 GitHub 실행기 IP 단위 데이터 한도가 있어 429(Data limit exceeded)가 날 수 있다
+          for img in public.ecr.aws/docker/library/node:24-alpine mirror.gcr.io/library/node:24-alpine docker.io/library/node:24-alpine; do
+            for try in 1 2; do
+              if docker buildx imagetools inspect "$img" --format '{{json .Manifest.Digest}}' > /tmp/digest 2>/tmp/err; then
+                echo "node=$img" >> "$GITHUB_OUTPUT"; echo "base $img digest $(cat /tmp/digest)"; exit 0
+              fi
+              echo "::warning::$img 받기 실패($try): $(head -c 300 /tmp/err)"; sleep $((try * 10))
+            done
+          done
+          echo "::error::기반 이미지를 받을 수 없습니다"; exit 1
       - name: 빌드·검사·푸시(이미 있으면 건너뜀)
         env:
           IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
           TAG: ${{ steps.meta.outputs.tag }}
+          NODE_IMAGE: ${{ steps.base.outputs.node }}
         run: |
           exists() { aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$1" >/dev/null 2>&1; }
           build_push() {  # build_push <태그> <context> <file>
-            docker buildx build --platform linux/arm64 --load --build-arg BUILD_ID="$1" -t "$IMAGE:$1" -f "$3" "$2"
+            docker buildx build --platform linux/arm64 --load --build-arg BUILD_ID="$1" --build-arg NODE_IMAGE="$NODE_IMAGE" -t "$IMAGE:$1" -f "$3" "$2"
             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.1 image --platform linux/arm64 \
               --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --no-progress "$IMAGE:$1"
             docker push "$IMAGE:$1"
