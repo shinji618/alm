@@ -1,0 +1,12 @@
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; padding: 10px 12px; }
+.warnings { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 6px; }
+.warnings li { padding: 8px 12px; border-radius: 8px; background: var(--warn-soft, rgba(234, 179, 8, 0.12)); }
+.sites { display: flex; flex-wrap: wrap; gap: 4px 16px; grid-column: 1 / -1; }
+.grid { overflow-x: auto; padding: 0 12px 12px; }
+.grid table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.grid th, .grid td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: right; }
+.grid th:first-child, .grid td:first-child { text-align: left; }
+.grid input { width: 64px; text-align: right; }
+.note { grid-column: 1 / -1; }

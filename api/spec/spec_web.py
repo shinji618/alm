@@ -1673,3 +1673,261 @@ W('관리','GET','/admin/security-events','listSecurityEvents','보안 이벤트
   params=[('eventType','query','string','N','이벤트(쉼표 구분)'),('actorId','query','uuid','N','사용자'),('from','query','date','N','시작'),('to','query','date','N','종료')]+PG)
 W('관리','GET','/admin/sod-conflicts','listSodConflicts','직무 충돌 점검',SA,None,'SodConflictList','200','user_role','관리',
   ['09 설계서 5.2의 충돌 규칙으로 현재 유효한 역할을 점검. 분기마다 내보내 SOX 증빙으로 보관.'])
+
+# ---------------- property tax (ALM-260, 2026-10) ----------------
+TX = 'ASSET_ACCOUNTANT, SYS_ADMIN(조회)'
+schema('TaxStatePreset', '주별 기본값(참고)', '''
+state | string(2) | Y | 주
+name | string | Y | 주 이름
+taxable | bool | Y | 사업용 동산 과세 여부(IL·NJ는 false)
+formCode | string | N | 신고서 양식
+lienMonth | int | Y | 기준일 월
+lienDay | int | Y | 기준일 일
+dueMonth | int | N | 기한 월
+dueDay | int | N | 기한 일
+assessmentRatio | number | Y | 평가율
+exemptionMode | enum(NONE,THRESHOLD,DEDUCT) | Y | 면제 방식
+exemptionAmount | number | Y | 면제 금액
+factorSet | enum(GA_DOR,AL_ADOR,CA_BOE581,GENERIC_SL) | Y | 계수표 종류
+typicalMillage | number | N | 대표 밀리지(추정용)
+note | string | Y | 신고 안내
+''')
+schema('TaxReferenceTable', '참고 계수표 요약', '''
+factorSet | enum(GA_DOR,AL_ADOR,CA_BOE581,GENERIC_SL) | Y | 계수표 종류
+tableYear | int | Y | 표 연도
+source | string | Y | 출처
+verified | bool | Y | 공식 표와 대조했는지
+classes | [string] | Y | 내용연수 구분
+''')
+schema('TaxReference', '재산세 참고값', '''
+presets | [TaxStatePreset] | Y | 주별 기본값
+factorSets | [string] | Y | 계수표 종류
+referenceTables | [TaxReferenceTable] | Y | 불러올 수 있는 참고표
+''')
+schema('TaxSiteRef', '관할에 속한 사이트', '''
+id | uuid | Y | 사이트
+siteCode | string | Y | 코드
+name | string | Y | 이름
+''')
+schema('TaxJurisdiction', '재산세 관할(주·카운티)', '''
+id | uuid | Y | id
+version | int | Y | 버전
+state | string(2) | Y | 주
+county | string(60) | Y | 카운티(TX는 감정 구역)
+name | string(100) | Y | 표시 이름
+taxable | bool | Y | 과세 여부
+formCode | string(20) | N | 신고서 양식
+lienMonth | int | Y | 기준일 월
+lienDay | int | Y | 기준일 일
+dueMonth | int | N | 기한 월
+dueDay | int | N | 기한 일
+assessmentRatio | number | Y | 평가율(0~1)
+millage | number | Y | 세율(평가액 $1,000당)
+exemptionMode | enum(NONE,THRESHOLD,DEDUCT) | Y | 면제 방식(THRESHOLD: 합계가 금액 이하면 전액, DEDUCT: 금액만큼 공제)
+exemptionAmount | number | Y | 면제 금액
+factorSet | enum(GA_DOR,AL_ADOR,CA_BOE581,GENERIC_SL) | Y | 계수표 종류
+notes | string | N | 메모
+isActive | bool | Y | 사용
+sites | [TaxSiteRef] | N | 연결된 사이트
+''')
+schema('TaxJurisdictionList', '관할 목록', '''
+items | [TaxJurisdiction] | Y | 행
+''')
+schema('TaxJurisdictionInput', '관할 등록·수정(수정은 보낸 필드만)', '''
+state | string(2) | Y | 주
+county | string(60) | Y | 카운티
+name | string(100) | Y | 이름
+taxable | bool | N | 과세 여부(기본 true)
+formCode | string(20) | N | 양식
+lienMonth | int | Y | 기준일 월
+lienDay | int | Y | 기준일 일
+dueMonth | int | N | 기한 월
+dueDay | int | N | 기한 일
+assessmentRatio | number | N | 평가율(기본 1)
+millage | number | N | 밀리지(기본 0)
+exemptionMode | enum(NONE,THRESHOLD,DEDUCT) | N | 면제 방식
+exemptionAmount | number | N | 면제 금액
+factorSet | enum(GA_DOR,AL_ADOR,CA_BOE581,GENERIC_SL) | Y | 계수표 종류
+notes | string(2000) | N | 메모
+isActive | bool | N | 사용
+''')
+schema('TaxJurisdictionSites', '관할의 사이트 지정', '''
+siteIds | [uuid] | Y | 이 관할에 속한 사이트 전체(빠진 사이트는 연결 해제, 다른 관할 사이트는 옮겨 옴)
+''')
+schema('TaxFactorRow', '계수표 행', '''
+lifeClass | string(10) | Y | 내용연수 구분
+age | int | Y | 경과연수
+factor | number | Y | 계수(원가 대비 공정가치 비율)
+''')
+schema('TaxFactorTable', '계수표', '''
+factorSet | enum(GA_DOR,AL_ADOR,CA_BOE581,GENERIC_SL) | Y | 종류
+tableYears | [int] | Y | 저장된 표 연도
+tableYear | int | N | 이 표의 연도
+source | string | N | 출처([verify]로 시작하면 미확인 참고값)
+ageStart | int | Y | 첫 경과연수(GA·CA 1, AL 0)
+rows | [TaxFactorRow] | Y | 행
+''')
+schema('TaxFactorInput', '계수표 저장(같은 종류·연도 표를 통째로 바꿈)', '''
+factorSet | enum(GA_DOR,AL_ADOR,CA_BOE581,GENERIC_SL) | Y | 종류
+tableYear | int | Y | 연도
+source | string(200) | N | 출처
+rows | [TaxFactorRow] | Y | 행(최대 2,000)
+''')
+schema('TaxFactorLoad', '참고표 불러오기', '''
+factorSet | enum(GA_DOR,AL_ADOR,CA_BOE581,GENERIC_SL) | Y | 종류
+''')
+schema('TaxClassMapItem', '카테고리 → 내용연수 구분', '''
+categoryId | uuid | Y | 카테고리
+categoryCode | string | N | 코드
+name | string | Y | 이름
+usefulLifeYears | int | N | 카테고리 내용연수
+lifeClass | string | N | 지정한 구분(없으면 기본값 사용)
+defaultClass | string | Y | 내용연수로 정한 기본 구분
+''')
+schema('TaxClassMap', '구분 매핑', '''
+factorSet | string | Y | 종류
+items | [TaxClassMapItem] | Y | 행
+''')
+schema('TaxClassMapEntry', '구분 매핑 저장 항목', '''
+categoryId | uuid | Y | 카테고리
+lifeClass | string(10) | N | 구분(비우면 지정 해제)
+''')
+schema('TaxClassMapInput', '구분 매핑 저장', '''
+factorSet | enum(GA_DOR,AL_ADOR,CA_BOE581,GENERIC_SL) | Y | 종류
+items | [TaxClassMapEntry] | Y | 바꿀 카테고리
+''')
+schema('TaxFilingSummary', '재산세 신고(과거 기록 목록 행)', '''
+id | uuid | Y | id
+version | int | Y | 버전
+companyId | uuid | Y | 회사
+companyCode | string | Y | 회사코드
+jurisdictionId | uuid | Y | 관할
+state | string | Y | 주
+county | string | Y | 카운티
+jurisdictionName | string | Y | 관할 이름
+formCode | string | N | 양식
+taxYear | int | Y | 과세 연도
+lienDate | date | Y | 기준일
+dueDate | date | N | 기한
+status | enum(DRAFT,FILED,ASSESSED) | Y | 작성 중 / 신고 완료 / 고지 기록
+assetCount | int | Y | 신고 자산 수
+totalCost | number | Y | 원가 합계
+totalMarketValue | number | Y | 공정가치 합계(원가 × 계수)
+exemption | number | Y | 면제
+assessedValue | number | Y | 평가액
+estimatedTax | number | Y | 예상 세액
+actualAssessed | number | N | 고지 평가액
+actualTax | number | N | 고지 세액
+filedAt | date | N | 신고일
+filingRef | string | N | 접수 번호
+generatedAt | datetime | N | 계산 일시
+''')
+schema('TaxFilingList', '재산세 신고 목록', '''
+items | [TaxFilingSummary] | Y | 행(최대 500)
+years | [int] | Y | 기록이 있는 연도
+''')
+schema('TaxScheduleRow', '취득연도별 요약', '''
+acquisitionYear | int | Y | 취득 연도
+lifeClass | string | Y | 구분
+count | int | Y | 자산 수
+cost | number | Y | 원가
+marketValue | number | Y | 공정가치
+factor | number | N | 계수
+''')
+schema('TaxWarning', '계산 경고', '''
+code | string | Y | OLD_FACTOR_TABLE, UNVERIFIED_FACTORS, NO_FACTOR_TABLE, GENERIC_FACTORS, NO_JURISDICTION, NO_FACTOR_CLASS, UNKNOWN_COST, NOT_TAXABLE, EXEMPT
+message | string | Y | 설명
+count | int | N | 건수
+''')
+schema('TaxFilingDetail', '재산세 신고 상세', '''
+id | uuid | Y | id
+version | int | Y | 버전
+companyCode | string | Y | 회사코드
+state | string | Y | 주
+county | string | Y | 카운티
+taxYear | int | Y | 과세 연도
+status | enum(DRAFT,FILED,ASSESSED) | Y | 상태
+estimatedTax | number | Y | 예상 세액
+params | object | Y | 계산 당시 관할 값(평가율·밀리지·면제·계수표 연도·출처·전년 신고 연도)
+warnings | [TaxWarning] | Y | 경고
+notes | string | N | 메모
+schedule | [TaxScheduleRow] | Y | 취득연도 × 구분 요약
+changes | object | Y | {NEW, CARRIED, DISPOSED: {count, cost}}
+prior | object | N | 전년 신고 요약 {id, taxYear, status, totalCost, totalMarketValue, assessedValue, estimatedTax, actualTax}
+''')
+schema('TaxFilingLine', '신고 자산 행(계산 시점 복사본)', '''
+assetId | uuid | N | 자산
+assetTag | string | Y | 자산 태그
+description | string | Y | 설명
+categoryName | string | N | 카테고리
+lifeClass | string | N | 구분
+acquisitionDate | date | N | 취득일(SAP 자본화일 → 구매일 → 등록일)
+acquisitionYear | int | N | 취득 연도
+originalCost | number | N | 원가(없으면 원가 모름)
+costSource | enum(SAP,ALM) | N | 원가 출처
+age | int | N | 경과연수
+factor | number | N | 계수
+marketValue | number | N | 공정가치
+siteCode | string | N | 사이트
+roomCode | string | N | 룸
+change | enum(NEW,CARRIED,DISPOSED) | Y | 전년 대비
+disposalDate | date | N | 처분일(DISPOSED)
+''')
+lst('TaxFilingLine', '신고 자산 행')
+schema('TaxFilingCreate', '신고 자료 만들기', '''
+companyId | uuid | Y | 회사
+jurisdictionId | uuid | Y | 관할
+taxYear | int | Y | 과세 연도(기준일 연도)
+''')
+schema('TaxFilingFile', '신고 완료', '''
+filedAt | date | Y | 신고일
+filingRef | string(60) | N | 접수 번호
+notes | string(2000) | N | 메모
+''')
+schema('TaxFilingPatch', '고지 결과·메모', '''
+actualAssessed | number | N | 고지 평가액(신고 후에만)
+actualTax | number | N | 고지 세액(신고 후에만)
+filingRef | string(60) | N | 접수 번호
+notes | string(2000) | N | 메모
+''')
+FS = 'Factor set'
+W('재산세','GET','/tax/reference','getTaxReference','주별 기본값·참고 계수표',TX,None,'TaxReference','200','-','ALM-260',
+  ['GA·AL·TX·CA·IL·NJ 기본값(2026-10 조사). 관할을 만들 때 채우는 값이며 신고 전에 관할 공식 자료로 확인한다.'])
+W('재산세','GET','/tax/jurisdictions','listTaxJurisdictions','관할 목록',TX,None,'TaxJurisdictionList','200','tax_jurisdiction, site','ALM-260',[ '연결된 사이트 포함.'])
+W('재산세','POST','/tax/jurisdictions','createTaxJurisdiction','관할 등록','ASSET_ACCOUNTANT','TaxJurisdictionInput','TaxJurisdiction','201, 400, 409','tax_jurisdiction','ALM-260',
+  ['같은 주·카운티 409.'],ok='201')
+W('재산세','PATCH','/tax/jurisdictions/{id}','patchTaxJurisdiction','관할 수정','ASSET_ACCOUNTANT','TaxJurisdictionInput','TaxJurisdiction','200, 400, 404','tax_jurisdiction','ALM-260',
+  ['보낸 필드만 바꾼다. 이미 만든 신고는 계산 당시 값(params)을 유지하고 다시 계산할 때 반영된다.'],params=[ID()])
+W('재산세','PUT','/tax/jurisdictions/{id}/sites','setTaxJurisdictionSites','관할의 사이트 지정','ASSET_ACCOUNTANT','TaxJurisdictionSites','TaxJurisdiction','200, 400, 404','site','ALM-260',
+  ['사이트는 관할 하나에만 속한다(site.tax_jurisdiction_id).'],params=[ID()])
+W('재산세','GET','/tax/factors','listTaxFactors','계수표 조회',TX,None,'TaxFactorTable','200, 400','tax_factor','ALM-260',[ 'tableYear를 비우면 가장 최근 표.'],
+  params=[('factorSet','query','string','Y',FS),('tableYear','query','int','N','표 연도')])
+W('재산세','PUT','/tax/factors','replaceTaxFactors','계수표 저장','ASSET_ACCOUNTANT','TaxFactorInput','TaxFactorTable','200, 400','tax_factor','ALM-260',
+  ['같은 종류·연도 표를 통째로 바꾼다. 같은 구분·경과연수가 두 번이면 400.'])
+W('재산세','POST','/tax/factors:load-reference','loadTaxReferenceFactors','참고표 불러오기','ASSET_ACCOUNTANT','TaxFactorLoad','TaxFactorTable','200, 400, 409','tax_factor','ALM-260',
+  ['조사한 참고표를 테넌트 표로 복사(같은 연도는 바꿈). 미확인 표는 출처가 [verify]로 시작하고 계산 경고가 붙는다.', 'GENERIC_SL은 참고표가 없어 409(정액 추정).'])
+W('재산세','GET','/tax/class-map','listTaxClassMap','카테고리별 내용연수 구분',TX,None,'TaxClassMap','200, 400','category, tax_class_map','ALM-260',
+  ['지정이 없으면 카테고리(없으면 자산클래스) 내용연수로 기본 구분을 정한다.'],params=[('factorSet','query','string','Y',FS)])
+W('재산세','PUT','/tax/class-map','replaceTaxClassMap','구분 매핑 저장','ASSET_ACCOUNTANT','TaxClassMapInput','TaxClassMap','200, 400','tax_class_map','ALM-260',[ '보낸 카테고리만 바꾼다.'])
+W('재산세','GET','/tax/filings','listTaxFilings','신고 목록(과거 기록)',TX,None,'TaxFilingList','200','tax_filing, tax_jurisdiction, company','ALM-260',[ '최근 연도부터. 최대 500건.'],
+  params=[('taxYear','query','int','N','연도'),('state','query','string','N','주'),('companyId','query','uuid','N','회사'),('jurisdictionId','query','uuid','N','관할'),('status','query','string','N','상태(쉼표 구분)')])
+W('재산세','POST','/tax/filings','createTaxFiling','신고 자료 만들기','ASSET_ACCOUNTANT','TaxFilingCreate','TaxFilingDetail','201, 400, 404, 409','tax_filing, tax_filing_line, asset, v_asset_value_latest','ALM-260',
+  ['대상: 관할 사이트의 회사 자산 중 기준일에 보유(취득일 ≤ 기준일, 기준일 전에 폐기·처분된 것 제외, 발주 중 제외).',
+   '원가: SAP 사용 회사의 SAP 자산은 SAP 취득가(APC), 아니면 ALM 구매가. 둘 다 없으면 원가 모름.',
+   '공정가치 = 원가 × 계수(기준 연도 이하 가장 최근 표, 경과연수가 표를 넘으면 마지막 값). 평가액 = (공정가치 − 면제) × 평가율. 예상 세액 = 평가액 × 밀리지 ÷ 1,000.',
+   '전년 신고와 비교해 NEW·CARRIED·DISPOSED. 같은 회사·관할·연도가 있으면 409.'],ok='201')
+W('재산세','GET','/tax/filings/{id}','getTaxFiling','신고 상세',TX,None,'TaxFilingDetail','200, 404','tax_filing, tax_filing_line','ALM-260',[ '취득연도별 요약·전년 대비·전년 신고 포함.'],params=[ID()])
+W('재산세','GET','/tax/filings/{id}/lines','listTaxFilingLines','신고 자산 행',TX,None,'TaxFilingLineList','200, 404','tax_filing_line','ALM-260',[ '기본 100행, 최대 500.'],
+  params=[ID(),('change','query','string','N','NEW·CARRIED·DISPOSED(쉼표 구분)'),('q','query','string','N','태그·설명'),('page','query','int','N','페이지'),('pageSize','query','int','N','페이지 크기')])
+W('재산세','PATCH','/tax/filings/{id}','patchTaxFiling','고지 결과·메모 기록','ASSET_ACCOUNTANT','TaxFilingPatch','TaxFilingDetail','200, 400, 404, 409','tax_filing','ALM-260',
+  ['고지 평가액·세액을 넣으면 ASSESSED. DRAFT에서는 409.'],params=[ID()])
+W('재산세','DELETE','/tax/filings/{id}','deleteTaxFiling','신고 자료 삭제','ASSET_ACCOUNTANT',None,None,'204, 404, 409','tax_filing, tax_filing_line','ALM-260',
+  ['DRAFT만. 신고한 건은 과거 기록이라 지울 수 없다.'],params=[ID()],ok='204')
+W('재산세','POST','/tax/filings/{id}:regenerate','regenerateTaxFiling','다시 계산','ASSET_ACCOUNTANT',None,'TaxFilingDetail','200, 404, 409','tax_filing, tax_filing_line','ALM-260',
+  ['DRAFT만. 현재 자산·관할·계수표로 행을 다시 만든다.'],params=[ID()])
+W('재산세','POST','/tax/filings/{id}:file','fileTaxFiling','신고 완료','ASSET_ACCOUNTANT','TaxFilingFile','TaxFilingDetail','200, 400, 404, 409','tax_filing','ALM-260',
+  ['DRAFT → FILED. 이후 행은 고정(과거 기록).'],params=[ID()])
+W('재산세','POST','/tax/filings/{id}:reopen','reopenTaxFiling','신고 취소(정정)','ASSET_ACCOUNTANT',None,'TaxFilingDetail','200, 404, 409','tax_filing','ALM-260',
+  ['FILED → DRAFT. 고지 결과가 있으면 409.'],params=[ID()])
+W('재산세','GET','/tax/filings/{id}/export','exportTaxFiling','신고 자료 엑셀',TX,None,'@xlsx','200, 404','tax_filing, tax_filing_line','ALM-260',
+  ['시트: Summary · By year acquired(신고서 취득연도별 표) · Asset listing · Unknown cost · Additions · Disposals. 파일명 BPP_{연도}_{주}_{카운티}_{회사}.xlsx.'],params=[ID()])

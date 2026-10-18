@@ -44,6 +44,8 @@ PERMS = {
     'count.manage':    ('실사', '캠페인 기획·배정·차이 처리·종료'),
     'count.post':      ('실사', '실사 결과 SAP 전기'),
     'count.scan':      ('실사', 'PDA 실사(스캔·미등록·작업 완료)'),
+    'tax.read':        ('재산세', '관할·계수표·신고 자료·과거 이력 조회(금액 포함)'),
+    'tax.manage':      ('재산세', '관할·계수표 설정, 신고 자료 생성·재계산·신고 완료·고지액 기록'),
     'label.read':      ('라벨', '템플릿·프린터·출력 이력 조회'),
     'label.print':     ('라벨', '라벨 출력'),
     'label.config':    ('라벨', '템플릿·프린터 설정'),
@@ -61,7 +63,7 @@ PERMS = {
 }
 
 R_ALL = ['dashboard.read', 'asset.read', 'amount.read', 'discovery.read', 'cmdb.read', 'license.read', 'contract.read',
-         'po.read', 'purchase.read', 'request.read', 'count.read', 'label.read', 'sap.status', 'sap.monitor', 'master.read']
+         'po.read', 'purchase.read', 'request.read', 'count.read', 'label.read', 'sap.status', 'sap.monitor', 'master.read', 'tax.read']
 
 # role -> {perm: scope}
 GRANTS = {
@@ -74,8 +76,8 @@ GRANTS = {
                       'label.print': 'ALL', 'master.write': 'ALL'},
     'DEPT_MANAGER': {'dashboard.read': 'CC', 'asset.read': 'CC', 'purchase.read': 'CC', 'request.read': 'CC', 'approval.decide': 'CC'},
     'ASSET_ACCOUNTANT': {**{p: 'ALL' for p in ['dashboard.read', 'asset.read', 'amount.read', 'license.read', 'contract.read', 'po.read',
-                                                'purchase.read', 'request.read', 'count.read', 'sap.status', 'sap.monitor', 'master.read']},
-                         'approval.decide': 'ALL', 'count.post': 'ALL', 'sap.operate': 'ALL', 'sap.finance': 'ALL', 'audit.read': 'ALL'},
+                                                'purchase.read', 'request.read', 'count.read', 'sap.status', 'sap.monitor', 'master.read', 'tax.read']},
+                         'tax.manage': 'ALL', 'approval.decide': 'ALL', 'count.post': 'ALL', 'sap.operate': 'ALL', 'sap.finance': 'ALL', 'audit.read': 'ALL'},
     'COUNTER': {'count.scan': 'TASK'},
     'EMPLOYEE': {'asset.read': 'OWN', 'purchase.read': 'OWN', 'purchase.request': 'OWN', 'request.read': 'OWN', 'request.create': 'OWN'},
     'AUDITOR': {**{p: 'ALL' for p in R_ALL}, 'audit.read': 'ALL'},
@@ -125,6 +127,13 @@ OPS = {
     'createCampaign': 'count.manage', 'patchCampaign': 'count.manage', 'previewScope': 'count.manage', 'startCampaign': 'count.manage',
     'assignCountTask': 'count.manage', 'closeCounting': 'count.manage', 'resolveVariances': 'count.manage',
     'resolveUnregistered': 'count.manage', 'closeCampaign': 'count.manage', 'cancelCampaign': 'count.manage', 'postCountResults': 'count.post',
+    # property tax
+    'getTaxReference': 'tax.read', 'listTaxJurisdictions': 'tax.read', 'listTaxFactors': 'tax.read', 'listTaxClassMap': 'tax.read',
+    'listTaxFilings': 'tax.read', 'getTaxFiling': 'tax.read', 'listTaxFilingLines': 'tax.read', 'exportTaxFiling': 'tax.read',
+    'createTaxJurisdiction': 'tax.manage', 'patchTaxJurisdiction': 'tax.manage', 'setTaxJurisdictionSites': 'tax.manage',
+    'replaceTaxFactors': 'tax.manage', 'loadTaxReferenceFactors': 'tax.manage', 'replaceTaxClassMap': 'tax.manage',
+    'createTaxFiling': 'tax.manage', 'patchTaxFiling': 'tax.manage', 'deleteTaxFiling': 'tax.manage',
+    'regenerateTaxFiling': 'tax.manage', 'fileTaxFiling': 'tax.manage', 'reopenTaxFiling': 'tax.manage',
     # label
     'listLabelTemplates': 'label.read', 'listPrinters': 'label.read', 'listLabelJobs': 'label.read', 'previewZpl': 'label.read',
     'createLabelTemplate': 'label.config', 'patchLabelTemplate': 'label.config', 'createPrinter': 'label.config', 'patchPrinter': 'label.config',
@@ -161,6 +170,7 @@ COND = {
     'cancelAssetRequest': '요청자 본인 또는 asset.write',
     'getPurchaseRequest': '범위 + 요청자·승인자', 'getAssetRequest': '범위 + 요청자·승인자',
     'approve': '승인 단계의 역할·범위(부서 관리자가 없으면 자산회계, 1단계 회사는 자산 관리자 대리), 요청자 본인 아님, 같은 요청의 앞 단계 승인자 아님', 'reject': '승인 단계의 역할·범위',
+    'regenerateTaxFiling': 'DRAFT만', 'deleteTaxFiling': 'DRAFT만', 'fileTaxFiling': 'DRAFT → FILED', 'reopenTaxFiling': 'FILED → DRAFT',
     'putUserRoles': '자기 자신 제외', 'patchUser': '이메일은 IdP 미연결 사용자만',
 }
 

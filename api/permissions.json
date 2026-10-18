@@ -163,6 +163,16 @@
    "description": "PDA 실사(스캔·미등록·작업 완료)"
   },
   {
+   "key": "tax.read",
+   "area": "재산세",
+   "description": "관할·계수표·신고 자료·과거 이력 조회(금액 포함)"
+  },
+  {
+   "key": "tax.manage",
+   "area": "재산세",
+   "description": "관할·계수표 설정, 신고 자료 생성·재계산·신고 완료·고지액 기록"
+  },
+  {
    "key": "label.read",
    "area": "라벨",
    "description": "템플릿·프린터·출력 이력 조회"
@@ -250,6 +260,7 @@
    "sap.status": "ALL",
    "sap.monitor": "ALL",
    "master.read": "ALL",
+   "tax.read": "ALL",
    "discovery.write": "ALL",
    "cmdb.write": "ALL",
    "label.config": "-",
@@ -275,6 +286,7 @@
    "label.read": "ALL",
    "sap.status": "ALL",
    "master.read": "ALL",
+   "tax.read": "ALL",
    "asset.write": "ALL",
    "asset.assign": "ALL",
    "discovery.write": "ALL",
@@ -306,6 +318,8 @@
    "sap.status": "ALL",
    "sap.monitor": "ALL",
    "master.read": "ALL",
+   "tax.read": "ALL",
+   "tax.manage": "ALL",
    "approval.decide": "ALL",
    "count.post": "ALL",
    "sap.operate": "ALL",
@@ -338,6 +352,7 @@
    "sap.status": "ALL",
    "sap.monitor": "ALL",
    "master.read": "ALL",
+   "tax.read": "ALL",
    "audit.read": "ALL"
   }
  },
@@ -457,6 +472,26 @@
   "closeCampaign": "count.manage",
   "cancelCampaign": "count.manage",
   "postCountResults": "count.post",
+  "getTaxReference": "tax.read",
+  "listTaxJurisdictions": "tax.read",
+  "listTaxFactors": "tax.read",
+  "listTaxClassMap": "tax.read",
+  "listTaxFilings": "tax.read",
+  "getTaxFiling": "tax.read",
+  "listTaxFilingLines": "tax.read",
+  "exportTaxFiling": "tax.read",
+  "createTaxJurisdiction": "tax.manage",
+  "patchTaxJurisdiction": "tax.manage",
+  "setTaxJurisdictionSites": "tax.manage",
+  "replaceTaxFactors": "tax.manage",
+  "loadTaxReferenceFactors": "tax.manage",
+  "replaceTaxClassMap": "tax.manage",
+  "createTaxFiling": "tax.manage",
+  "patchTaxFiling": "tax.manage",
+  "deleteTaxFiling": "tax.manage",
+  "regenerateTaxFiling": "tax.manage",
+  "fileTaxFiling": "tax.manage",
+  "reopenTaxFiling": "tax.manage",
   "listLabelTemplates": "label.read",
   "listPrinters": "label.read",
   "listLabelJobs": "label.read",

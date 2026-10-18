@@ -46,11 +46,13 @@ ENUMS = {
  'AuditAction': ('감사 동작', ['INSERT','UPDATE','DELETE']),
  'SecurityEventType': ('보안 이벤트', ['LOGIN','LOGIN_DENIED','LOGOUT','ACCESS_DENIED','EXPORT','SECRET_ROTATED','SAP_AUTH_FAILED','DEVICE_BLOCKED','SUPPORT_ACCESS']),
  'IdpType': ('IdP 연동 방식', ['SAML','OIDC']),
+ 'TaxFilingStatus': ('재산세 신고 상태', ['DRAFT','FILED','ASSESSED']),
+ 'TaxExemptionMode': ('재산세 면제 방식', ['NONE','THRESHOLD','DEDUCT']),
 }
 
 DOMAINS = [
  ('org', '조직·마스터'), ('asset', '자산'), ('cmdb', 'Discovery·CMDB'), ('license', '라이선스·계약'),
- ('purchase', '구매'), ('request', '요청·승인'), ('count', '실사'), ('label', '라벨'), ('sap', 'SAP 연동'), ('common', '공통'),
+ ('purchase', '구매'), ('request', '요청·승인'), ('count', '실사'), ('label', '라벨'), ('sap', 'SAP 연동'), ('tax', '재산세'), ('common', '공통'),
 ]
 
 T = []  # (domain, name, korean, desc, mode, cols, uniques, indexes, screens)
@@ -147,6 +149,7 @@ sap_location | vc(10) | | T499S STAND
 address | vc(200) | | 주소
 time_zone | vc(40) | | 시간대(비면 테넌트 기본)
 is_active | bool | NN =true | 사용 여부
+tax_jurisdiction_id | ->tax_jurisdiction | | 재산세 관할(카운티). 비면 재산세 신고에서 빠짐
 ''', uniques=[('tenant_id','site_code')], screens='전체')
 t('org','room','룸','실사·위치의 최소 단위. room_code를 SAP STORT에 전송', '''
 site_id | ->site | NN | 사이트
@@ -721,6 +724,80 @@ done_at | ts | | 완료 일시
 ''', indexes=[('tenant_id','status')], screens='ALM-310')
 
 # ---------------- common ----------------
+t('tax','tax_jurisdiction','재산세 관할','사업용 동산 재산세(Business Personal Property) 신고 관할 = 주·카운티. 기준일·기한·평가율·세율·면제·감가표', '''
+state | vc(2) | NN | 주 (예: GA)
+county | vc(60) | NN | 카운티(또는 감정 구역)
+name | vc(100) | NN | 표시 이름 (예: Fulton County Board of Assessors)
+taxable | bool | NN =true | 사업용 동산 과세 여부(IL·NJ는 대부분 과세 안 함)
+form_code | vc(20) | | 신고서 양식 (예: PT-50P, ADV-40, 50-144, BOE-571-L)
+lien_month | int | NN =1 | 기준일(평가일) 월
+lien_day | int | NN =1 | 기준일 일
+due_month | int | | 신고 기한 월
+due_day | int | | 신고 기한 일
+assessment_ratio | num(7,4) | NN =1 | 평가율(공정가치 대비, GA 0.4·AL 0.2·TX·CA 1)
+millage | num(9,4) | NN =0 | 세율(평가액 $1,000당, 밀리지). $100당 세율은 ×10
+exemption_mode | E:TaxExemptionMode | NN =NONE | 면제 방식: THRESHOLD = 공정가치 합계가 금액 이하면 전액 면제, DEDUCT = 금액만큼 차감
+exemption_amount | num(15,2) | NN =0 | 면제 금액(공정가치 기준)
+factor_set | vc(20) | NN | 감가 계수표 (GA_DOR, AL_ADOR, CA_BOE581, GENERIC_SL)
+notes | text | | 메모(제출처 주소·온라인 신고 사이트 등)
+is_active | bool | NN =true | 사용 여부
+''', uniques=[('tenant_id','state','county')], screens='ALM-260')
+t('tax','tax_factor','재산세 감가 계수','계수표 값: 기준일 연도 × 내용연수 구분 × 경과연수(기준일 연도 − 취득 연도) → 공정가치 = 원가 × 계수', '''
+factor_set | vc(20) | NN | 계수표
+table_year | int | NN | 적용 기준일 연도
+life_class | vc(10) | NN | 내용연수 구분 (예: GA I~IV, AL 5·8·10, CA COMP·L10)
+age | int | NN | 경과연수. 표의 마지막 경과연수보다 오래되면 마지막 값(하한)
+factor | num(7,4) | NN | 계수(0~1.5, CA는 원가지수 포함)
+source | vc(200) | | 출처(문서·URL)
+''', uniques=[('tenant_id','factor_set','table_year','life_class','age')], screens='ALM-260')
+t('tax','tax_class_map','재산세 분류 매핑','카테고리 → 계수표의 내용연수 구분. 없으면 카테고리 내용연수로 자동 구분', '''
+factor_set | vc(20) | NN | 계수표
+category_id | ->category | NN | 카테고리
+life_class | vc(10) | NN | 내용연수 구분
+''', uniques=[('factor_set','category_id')], screens='ALM-260')
+t('tax','tax_filing','재산세 신고','회사 × 관할 × 기준일 연도 신고 1건. 신고(FILED) 뒤에는 고정(과거 기록)', '''
+company_id | ->company | NN | 회사코드
+jurisdiction_id | ->tax_jurisdiction | NN | 관할
+tax_year | int | NN | 기준일 연도
+lien_date | date | NN | 기준일
+due_date | date | | 신고 기한
+status | E:TaxFilingStatus | NN =DRAFT | 상태
+asset_count | int | NN =0 | 대상 자산 수
+total_cost | num(15,2) | NN =0 | 원가 합계
+total_market_value | num(15,2) | NN =0 | 공정가치 합계(원가 × 계수)
+exemption | num(15,2) | NN =0 | 면제액
+assessed_value | num(15,2) | NN =0 | 평가액((공정가치 − 면제) × 평가율)
+estimated_tax | num(15,2) | NN =0 | 예상 세액(평가액 × 세율 ÷ 1,000)
+params | json | NN | 계산 당시 관할 설정·계수표 사본
+warnings | json | | 계산 경고(원가 없음, 위치 없음 등)
+generated_at | ts | NN =now | 계산 일시
+generated_by | ->app_user | | 계산한 사용자
+filed_at | date | | 신고일
+filed_by | ->app_user | | 신고 처리자
+filing_ref | vc(60) | | 접수 번호·확인 번호
+actual_assessed | num(15,2) | | 고지 평가액
+actual_tax | num(15,2) | | 고지 세액
+notes | text | | 메모
+''', uniques=[('company_id','jurisdiction_id','tax_year')], indexes=[('tenant_id','tax_year')], screens='ALM-260')
+t('tax','tax_filing_line','재산세 신고 자산','신고 1건의 자산별 행(계산 당시 사본). change: NEW 신규 · CARRIED 계속 · DISPOSED 전년 대비 처분', '''
+filing_id | ->tax_filing | NN | 신고
+asset_id | ->asset | | 자산
+asset_tag | vc(25) | NN | 자산태그
+description | vc(50) | NN | 자산명
+category_name | vc(60) | | 카테고리
+life_class | vc(10) | | 내용연수 구분
+acquisition_date | date | | 취득일
+acquisition_year | int | | 취득 연도
+original_cost | num(15,2) | | 원가(SAP 취득가, 없으면 ALM 구매가). 비면 원가 모름
+cost_source | vc(10) | | SAP / ALM
+age | int | | 경과연수
+factor | num(7,4) | | 계수
+market_value | num(15,2) | | 공정가치
+site_code | vc(10) | | 사이트
+room_code | vc(10) | | 룸
+change | vc(10) | NN | NEW / CARRIED / DISPOSED
+disposal_date | date | | 처분일(DISPOSED)
+''', indexes=[('filing_id',)], screens='ALM-260')
 t('common','code','공통 코드','고객이 바꾸는 코드값(폐기 사유, 실사 비고 등)', '''
 code_group | vc(30) | NN | 코드 그룹
 code | vc(30) | NN | 코드
@@ -795,7 +872,7 @@ occurred_at | ts | NN =now | 발생 일시
 
 
 # 감사 트리거 제외(대량·기술성 데이터. 자체가 이력이거나 IF 로그로 추적됨). log 모드 테이블은 모두 제외
-AUDIT_EXCLUDE = ['discovery_run', 'discovery_item', 'software_install', 'label_print_job',
+AUDIT_EXCLUDE = ['discovery_run', 'discovery_item', 'software_install', 'label_print_job', 'tax_filing_line',
                  'number_sequence', 'notification']
 
 # 앱 계정(alm_app)에서 UPDATE·DELETE를 뺄 로그 테이블(추가만). sap_if_run은 종료 시각 갱신이 있어 DELETE만 뺌

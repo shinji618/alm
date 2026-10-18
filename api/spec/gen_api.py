@@ -86,8 +86,11 @@ def build_openapi():
             if c == '204':
                 op['responses'][c] = {'description': '성공(본문 없음)'}
             elif c in ('200', '201', '202', '207'):
-                op['responses'][c] = {'description': {'200': '성공', '201': '생성', '202': '접수(비동기 처리)', '207': '일부 성공(건별 결과 확인)'}[c],
-                                      'content': {'application/json': {'schema': {'$ref': f"#/components/schemas/{e['resp']}"}}}}
+                desc = {'200': '성공', '201': '생성', '202': '접수(비동기 처리)', '207': '일부 성공(건별 결과 확인)'}[c]
+                if e['resp'] in BINARY:   # 파일 응답(엑셀 등)
+                    op['responses'][c] = {'description': desc + '(파일)', 'content': {BINARY[e['resp']]: {'schema': {'type': 'string', 'contentMediaType': BINARY[e['resp']]}}}}
+                else:
+                    op['responses'][c] = {'description': desc, 'content': {'application/json': {'schema': {'$ref': f"#/components/schemas/{e['resp']}"}}}}
             elif c == '302':
                 op['responses'][c] = {'description': '리다이렉트', 'headers': {'Location': {'schema': {'type': 'string'}, 'description': '이동할 URL'}}}
             elif c == '304':
@@ -148,6 +151,8 @@ def refs_of(name, seen=None):
                 refs_of(m, seen)
     return seen
 
+BINARY = {'@xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}
+
 def md_endpoint(e, num):
     out = [f"### {num} {e['method']} {e['path']}", '', f"{e['summary']}. {e['ref']}.", '',
            '| 항목 | 값 |', '| --- | --- |',
@@ -160,6 +165,9 @@ def md_endpoint(e, num):
     shown = []
     for nm, label in ((e['req'], '요청'), (e['resp'], '응답')):
         if not nm: continue
+        if nm in BINARY:
+            out += [f'**{label}**', '', f'- 파일 `{BINARY[nm]}` (Content-Disposition: attachment)', '']
+            continue
         out += [f'**{label}**', '']
         for s in refs_of(nm):
             if s in ('ItemResult', 'BatchResult') and nm == 'BatchResult' and s != nm: pass

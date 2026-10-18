@@ -3,7 +3,7 @@ from spec_api import E, ERRORS
 
 AREAS = [('공통', '앱 셸·전역 검색·첨부·내보내기'), ('대시보드', 'ALM-010'), ('자산', 'ALM-110~112'), ('Discovery', 'ALM-120'),
          ('CMDB', 'ALM-130'), ('라이선스', 'ALM-140'), ('계약', 'ALM-220'), ('구매', 'ALM-210'), ('요청·승인', 'ALM-230'),
-         ('실사', 'ALM-240'), ('라벨', 'ALM-250'), ('SAP 연계', 'ALM-310'), ('관리', '사용자·마스터·코드·설정·감사'), ('인증', '로그인·토큰 갱신·로그아웃')]
+         ('실사', 'ALM-240'), ('라벨', 'ALM-250'), ('재산세', 'ALM-260'), ('SAP 연계', 'ALM-310'), ('관리', '사용자·마스터·코드·설정·감사'), ('인증', '로그인·토큰 갱신·로그아웃')]
 web = [e for e in E if e['group'] == 'web']
 assert sum(1 for e in web if e.get('area') not in dict(AREAS)) == 0
 gen_api.SHOWN.clear()

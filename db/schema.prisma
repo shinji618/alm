@@ -94,6 +94,11 @@ model Tenant {
   fieldMappings FieldMapping[] @relation("field_mapping_tenant_id")
   sapConnections SapConnection[] @relation("sap_connection_tenant_id")
   sapRunRequests SapRunRequest[] @relation("sap_run_request_tenant_id")
+  taxJurisdictions TaxJurisdiction[] @relation("tax_jurisdiction_tenant_id")
+  taxFactors TaxFactor[] @relation("tax_factor_tenant_id")
+  taxClassMaps TaxClassMap[] @relation("tax_class_map_tenant_id")
+  taxFilings TaxFiling[] @relation("tax_filing_tenant_id")
+  taxFilingLines TaxFilingLine[] @relation("tax_filing_line_tenant_id")
   codes Code[] @relation("code_tenant_id")
   settings Setting[] @relation("setting_tenant_id")
   numberSequences NumberSequence[] @relation("number_sequence_tenant_id")
@@ -188,6 +193,8 @@ model AppUser {
   sapPostings SapPosting[] @relation("sap_posting_approved_by")
   reconDiffs ReconDiff[] @relation("recon_diff_resolved_by")
   sapRunRequests SapRunRequest[] @relation("sap_run_request_requested_by")
+  taxFilingsGenerated TaxFiling[] @relation("tax_filing_generated_by")
+  taxFilingsFiled TaxFiling[] @relation("tax_filing_filed_by")
   notifications Notification[] @relation("notification_recipient_id")
   @@unique([tenantId, email])
   @@unique([tenantId, idpSubject])
@@ -272,6 +279,7 @@ model Company {
   countCampaigns CountCampaign[] @relation("count_campaign_company_id")
   sapPostings SapPosting[] @relation("sap_posting_company_id")
   sapConnections SapConnection[] @relation("sap_connection_company_id")
+  taxFilings TaxFiling[] @relation("tax_filing_company_id")
   @@unique([tenantId, companyCode])
   @@map("company")
 }
@@ -446,6 +454,9 @@ model Site {
   timeZone String? @map("time_zone") @db.VarChar(40)
   /// 사용 여부
   isActive Boolean @default(true) @map("is_active")
+  /// 재산세 관할(카운티). 비면 재산세 신고에서 빠짐
+  taxJurisdictionId String? @map("tax_jurisdiction_id") @db.Uuid
+  taxJurisdiction TaxJurisdiction? @relation("site_tax_jurisdiction_id", fields: [taxJurisdictionId], references: [id])
   /// 생성 일시
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   /// 생성자
@@ -548,6 +559,7 @@ model Category {
   assets Asset[] @relation("asset_category_id")
   purchaseRequestItems PurchaseRequestItem[] @relation("purchase_request_item_category_id")
   countUnregistereds CountUnregistered[] @relation("count_unregistered_category_id")
+  taxClassMaps TaxClassMap[] @relation("tax_class_map_category_id")
   @@unique([tenantId, categoryCode])
   @@map("category")
 }
@@ -738,6 +750,7 @@ model Asset {
   labelPrintJobs LabelPrintJob[] @relation("label_print_job_asset_id")
   sapPostings SapPosting[] @relation("sap_posting_asset_id")
   reconDiffs ReconDiff[] @relation("recon_diff_asset_id")
+  taxFilingLines TaxFilingLine[] @relation("tax_filing_line_asset_id")
   @@unique([tenantId, assetTag])
   @@unique([tenantId, companyId, sapAssetNo, sapSubNo])
   @@index([tenantId, status])
@@ -2486,6 +2499,245 @@ model SapRunRequest {
   @@map("sap_run_request")
 }
 
+/// 재산세 관할 — 사업용 동산 재산세(Business Personal Property) 신고 관할 = 주·카운티. 기준일·기한·평가율·세율·면제·감가표
+model TaxJurisdiction {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("tax_jurisdiction_tenant_id", fields: [tenantId], references: [id])
+  /// 주 (예: GA)
+  state String @db.VarChar(2)
+  /// 카운티(또는 감정 구역)
+  county String @db.VarChar(60)
+  /// 표시 이름 (예: Fulton County Board of Assessors)
+  name String @db.VarChar(100)
+  /// 사업용 동산 과세 여부(IL·NJ는 대부분 과세 안 함)
+  taxable Boolean @default(true)
+  /// 신고서 양식 (예: PT-50P, ADV-40, 50-144, BOE-571-L)
+  formCode String? @map("form_code") @db.VarChar(20)
+  /// 기준일(평가일) 월
+  lienMonth Int @default(1) @map("lien_month")
+  /// 기준일 일
+  lienDay Int @default(1) @map("lien_day")
+  /// 신고 기한 월
+  dueMonth Int? @map("due_month")
+  /// 신고 기한 일
+  dueDay Int? @map("due_day")
+  /// 평가율(공정가치 대비, GA 0.4·AL 0.2·TX·CA 1)
+  assessmentRatio Decimal @default(1) @map("assessment_ratio") @db.Decimal(7, 4)
+  /// 세율(평가액 $1,000당, 밀리지). $100당 세율은 ×10
+  millage Decimal @default(0) @db.Decimal(9, 4)
+  /// 면제 방식: THRESHOLD = 공정가치 합계가 금액 이하면 전액 면제, DEDUCT = 금액만큼 차감
+  exemptionMode TaxExemptionMode @default(NONE) @map("exemption_mode")
+  /// 면제 금액(공정가치 기준)
+  exemptionAmount Decimal @default(0) @map("exemption_amount") @db.Decimal(15, 2)
+  /// 감가 계수표 (GA_DOR, AL_ADOR, CA_BOE581, GENERIC_SL)
+  factorSet String @map("factor_set") @db.VarChar(20)
+  /// 메모(제출처 주소·온라인 신고 사이트 등)
+  notes String?
+  /// 사용 여부
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  sites Site[] @relation("site_tax_jurisdiction_id")
+  taxFilings TaxFiling[] @relation("tax_filing_jurisdiction_id")
+  @@unique([tenantId, state, county])
+  @@map("tax_jurisdiction")
+}
+
+/// 재산세 감가 계수 — 계수표 값: 기준일 연도 × 내용연수 구분 × 경과연수(기준일 연도 − 취득 연도) → 공정가치 = 원가 × 계수
+model TaxFactor {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("tax_factor_tenant_id", fields: [tenantId], references: [id])
+  /// 계수표
+  factorSet String @map("factor_set") @db.VarChar(20)
+  /// 적용 기준일 연도
+  tableYear Int @map("table_year")
+  /// 내용연수 구분 (예: GA I~IV, AL 5·8·10, CA COMP·L10)
+  lifeClass String @map("life_class") @db.VarChar(10)
+  /// 경과연수. 표의 마지막 경과연수보다 오래되면 마지막 값(하한)
+  age Int
+  /// 계수(0~1.5, CA는 원가지수 포함)
+  factor Decimal @db.Decimal(7, 4)
+  /// 출처(문서·URL)
+  source String? @db.VarChar(200)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([tenantId, factorSet, tableYear, lifeClass, age])
+  @@map("tax_factor")
+}
+
+/// 재산세 분류 매핑 — 카테고리 → 계수표의 내용연수 구분. 없으면 카테고리 내용연수로 자동 구분
+model TaxClassMap {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("tax_class_map_tenant_id", fields: [tenantId], references: [id])
+  /// 계수표
+  factorSet String @map("factor_set") @db.VarChar(20)
+  /// 카테고리
+  categoryId String @map("category_id") @db.Uuid
+  category Category @relation("tax_class_map_category_id", fields: [categoryId], references: [id])
+  /// 내용연수 구분
+  lifeClass String @map("life_class") @db.VarChar(10)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([factorSet, categoryId])
+  @@map("tax_class_map")
+}
+
+/// 재산세 신고 — 회사 × 관할 × 기준일 연도 신고 1건. 신고(FILED) 뒤에는 고정(과거 기록)
+model TaxFiling {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("tax_filing_tenant_id", fields: [tenantId], references: [id])
+  /// 회사코드
+  companyId String @map("company_id") @db.Uuid
+  company Company @relation("tax_filing_company_id", fields: [companyId], references: [id])
+  /// 관할
+  jurisdictionId String @map("jurisdiction_id") @db.Uuid
+  jurisdiction TaxJurisdiction @relation("tax_filing_jurisdiction_id", fields: [jurisdictionId], references: [id])
+  /// 기준일 연도
+  taxYear Int @map("tax_year")
+  /// 기준일
+  lienDate DateTime @map("lien_date") @db.Date
+  /// 신고 기한
+  dueDate DateTime? @map("due_date") @db.Date
+  /// 상태
+  status TaxFilingStatus @default(DRAFT)
+  /// 대상 자산 수
+  assetCount Int @default(0) @map("asset_count")
+  /// 원가 합계
+  totalCost Decimal @default(0) @map("total_cost") @db.Decimal(15, 2)
+  /// 공정가치 합계(원가 × 계수)
+  totalMarketValue Decimal @default(0) @map("total_market_value") @db.Decimal(15, 2)
+  /// 면제액
+  exemption Decimal @default(0) @db.Decimal(15, 2)
+  /// 평가액((공정가치 − 면제) × 평가율)
+  assessedValue Decimal @default(0) @map("assessed_value") @db.Decimal(15, 2)
+  /// 예상 세액(평가액 × 세율 ÷ 1,000)
+  estimatedTax Decimal @default(0) @map("estimated_tax") @db.Decimal(15, 2)
+  /// 계산 당시 관할 설정·계수표 사본
+  params Json
+  /// 계산 경고(원가 없음, 위치 없음 등)
+  warnings Json?
+  /// 계산 일시
+  generatedAt DateTime @default(now()) @map("generated_at") @db.Timestamptz(6)
+  /// 계산한 사용자
+  generatedBy String? @map("generated_by") @db.Uuid
+  generated AppUser? @relation("tax_filing_generated_by", fields: [generatedBy], references: [id])
+  /// 신고일
+  filedAt DateTime? @map("filed_at") @db.Date
+  /// 신고 처리자
+  filedBy String? @map("filed_by") @db.Uuid
+  filed AppUser? @relation("tax_filing_filed_by", fields: [filedBy], references: [id])
+  /// 접수 번호·확인 번호
+  filingRef String? @map("filing_ref") @db.VarChar(60)
+  /// 고지 평가액
+  actualAssessed Decimal? @map("actual_assessed") @db.Decimal(15, 2)
+  /// 고지 세액
+  actualTax Decimal? @map("actual_tax") @db.Decimal(15, 2)
+  /// 메모
+  notes String?
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  taxFilingLines TaxFilingLine[] @relation("tax_filing_line_filing_id")
+  @@unique([companyId, jurisdictionId, taxYear])
+  @@index([tenantId, taxYear])
+  @@map("tax_filing")
+}
+
+/// 재산세 신고 자산 — 신고 1건의 자산별 행(계산 당시 사본). change: NEW 신규 · CARRIED 계속 · DISPOSED 전년 대비 처분
+model TaxFilingLine {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("tax_filing_line_tenant_id", fields: [tenantId], references: [id])
+  /// 신고
+  filingId String @map("filing_id") @db.Uuid
+  filing TaxFiling @relation("tax_filing_line_filing_id", fields: [filingId], references: [id])
+  /// 자산
+  assetId String? @map("asset_id") @db.Uuid
+  asset Asset? @relation("tax_filing_line_asset_id", fields: [assetId], references: [id])
+  /// 자산태그
+  assetTag String @map("asset_tag") @db.VarChar(25)
+  /// 자산명
+  description String @db.VarChar(50)
+  /// 카테고리
+  categoryName String? @map("category_name") @db.VarChar(60)
+  /// 내용연수 구분
+  lifeClass String? @map("life_class") @db.VarChar(10)
+  /// 취득일
+  acquisitionDate DateTime? @map("acquisition_date") @db.Date
+  /// 취득 연도
+  acquisitionYear Int? @map("acquisition_year")
+  /// 원가(SAP 취득가, 없으면 ALM 구매가). 비면 원가 모름
+  originalCost Decimal? @map("original_cost") @db.Decimal(15, 2)
+  /// SAP / ALM
+  costSource String? @map("cost_source") @db.VarChar(10)
+  /// 경과연수
+  age Int?
+  /// 계수
+  factor Decimal? @db.Decimal(7, 4)
+  /// 공정가치
+  marketValue Decimal? @map("market_value") @db.Decimal(15, 2)
+  /// 사이트
+  siteCode String? @map("site_code") @db.VarChar(10)
+  /// 룸
+  roomCode String? @map("room_code") @db.VarChar(10)
+  /// NEW / CARRIED / DISPOSED
+  change String @db.VarChar(10)
+  /// 처분일(DISPOSED)
+  disposalDate DateTime? @map("disposal_date") @db.Date
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@index([filingId])
+  @@map("tax_filing_line")
+}
+
 /// 공통 코드 — 고객이 바꾸는 코드값(폐기 사유, 실사 비고 등)
 model Code {
   id String @id @default(uuid(7)) @db.Uuid
@@ -3133,4 +3385,20 @@ enum IdpType {
   SAML
   OIDC
   @@map("idp_type")
+}
+
+/// 재산세 신고 상태
+enum TaxFilingStatus {
+  DRAFT
+  FILED
+  ASSESSED
+  @@map("tax_filing_status")
+}
+
+/// 재산세 면제 방식
+enum TaxExemptionMode {
+  NONE
+  THRESHOLD
+  DEDUCT
+  @@map("tax_exemption_mode")
 }

@@ -8444,6 +8444,871 @@ paths:
       security:
       - webAuth:
         - web
+  /tax/reference:
+    get:
+      operationId: getTaxReference
+      summary: 주별 기본값·참고 계수표
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: -
+
+
+        - GA·AL·TX·CA·IL·NJ 기본값(2026-10 조사). 관할을 만들 때 채우는 값이며 신고 전에 관할 공식 자료로 확인한다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxReference'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
+      security:
+      - webAuth:
+        - web
+  /tax/jurisdictions:
+    get:
+      operationId: listTaxJurisdictions
+      summary: 관할 목록
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: tax_jurisdiction, site
+
+
+        - 연결된 사이트 포함.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxJurisdictionList'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
+      security:
+      - webAuth:
+        - web
+    post:
+      operationId: createTaxJurisdiction
+      summary: 관할 등록
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: tax_jurisdiction
+
+
+        - 같은 주·카운티 409.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '201':
+          description: 생성
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxJurisdiction'
+        '400':
+          $ref: '#/components/responses/E400'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.manage
+      x-scope:
+        ASSET_ACCOUNTANT: ALL
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaxJurisdictionInput'
+  /tax/jurisdictions/{id}:
+    patch:
+      operationId: patchTaxJurisdiction
+      summary: 관할 수정
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: tax_jurisdiction
+
+
+        - 보낸 필드만 바꾼다. 이미 만든 신고는 계산 당시 값(params)을 유지하고 다시 계산할 때 반영된다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxJurisdiction'
+        '400':
+          $ref: '#/components/responses/E400'
+        '404':
+          $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.manage
+      x-scope:
+        ASSET_ACCOUNTANT: ALL
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaxJurisdictionInput'
+  /tax/jurisdictions/{id}/sites:
+    put:
+      operationId: setTaxJurisdictionSites
+      summary: 관할의 사이트 지정
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: site
+
+
+        - 사이트는 관할 하나에만 속한다(site.tax_jurisdiction_id).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxJurisdiction'
+        '400':
+          $ref: '#/components/responses/E400'
+        '404':
+          $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.manage
+      x-scope:
+        ASSET_ACCOUNTANT: ALL
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaxJurisdictionSites'
+  /tax/factors:
+    get:
+      operationId: listTaxFactors
+      summary: 계수표 조회
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: tax_factor
+
+
+        - tableYear를 비우면 가장 최근 표.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: factorSet
+        in: query
+        required: true
+        description: Factor set
+        schema:
+          type: string
+      - name: tableYear
+        in: query
+        required: false
+        description: 표 연도
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxFactorTable'
+        '400':
+          $ref: '#/components/responses/E400'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
+      security:
+      - webAuth:
+        - web
+    put:
+      operationId: replaceTaxFactors
+      summary: 계수표 저장
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: tax_factor
+
+
+        - 같은 종류·연도 표를 통째로 바꾼다. 같은 구분·경과연수가 두 번이면 400.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxFactorTable'
+        '400':
+          $ref: '#/components/responses/E400'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.manage
+      x-scope:
+        ASSET_ACCOUNTANT: ALL
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaxFactorInput'
+  /tax/factors:load-reference:
+    post:
+      operationId: loadTaxReferenceFactors
+      summary: 참고표 불러오기
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: tax_factor
+
+
+        - 조사한 참고표를 테넌트 표로 복사(같은 연도는 바꿈). 미확인 표는 출처가 [verify]로 시작하고 계산 경고가 붙는다.
+
+        - GENERIC_SL은 참고표가 없어 409(정액 추정).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxFactorTable'
+        '400':
+          $ref: '#/components/responses/E400'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.manage
+      x-scope:
+        ASSET_ACCOUNTANT: ALL
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaxFactorLoad'
+  /tax/class-map:
+    get:
+      operationId: listTaxClassMap
+      summary: 카테고리별 내용연수 구분
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: category, tax_class_map
+
+
+        - 지정이 없으면 카테고리(없으면 자산클래스) 내용연수로 기본 구분을 정한다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: factorSet
+        in: query
+        required: true
+        description: Factor set
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxClassMap'
+        '400':
+          $ref: '#/components/responses/E400'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
+      security:
+      - webAuth:
+        - web
+    put:
+      operationId: replaceTaxClassMap
+      summary: 구분 매핑 저장
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: tax_class_map
+
+
+        - 보낸 카테고리만 바꾼다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxClassMap'
+        '400':
+          $ref: '#/components/responses/E400'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.manage
+      x-scope:
+        ASSET_ACCOUNTANT: ALL
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaxClassMapInput'
+  /tax/filings:
+    get:
+      operationId: listTaxFilings
+      summary: 신고 목록(과거 기록)
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: tax_filing, tax_jurisdiction, company
+
+
+        - 최근 연도부터. 최대 500건.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: taxYear
+        in: query
+        required: false
+        description: 연도
+        schema:
+          type: integer
+      - name: state
+        in: query
+        required: false
+        description: 주
+        schema:
+          type: string
+      - name: companyId
+        in: query
+        required: false
+        description: 회사
+        schema:
+          type: string
+          format: uuid
+      - name: jurisdictionId
+        in: query
+        required: false
+        description: 관할
+        schema:
+          type: string
+          format: uuid
+      - name: status
+        in: query
+        required: false
+        description: 상태(쉼표 구분)
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxFilingList'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
+      security:
+      - webAuth:
+        - web
+    post:
+      operationId: createTaxFiling
+      summary: 신고 자료 만들기
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: tax_filing, tax_filing_line, asset, v_asset_value_latest
+
+
+        - 대상: 관할 사이트의 회사 자산 중 기준일에 보유(취득일 ≤ 기준일, 기준일 전에 폐기·처분된 것 제외, 발주 중 제외).
+
+        - 원가: SAP 사용 회사의 SAP 자산은 SAP 취득가(APC), 아니면 ALM 구매가. 둘 다 없으면 원가 모름.
+
+        - 공정가치 = 원가 × 계수(기준 연도 이하 가장 최근 표, 경과연수가 표를 넘으면 마지막 값). 평가액 = (공정가치 − 면제) × 평가율. 예상 세액 = 평가액 × 밀리지 ÷ 1,000.
+
+        - 전년 신고와 비교해 NEW·CARRIED·DISPOSED. 같은 회사·관할·연도가 있으면 409.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '201':
+          description: 생성
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxFilingDetail'
+        '400':
+          $ref: '#/components/responses/E400'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.manage
+      x-scope:
+        ASSET_ACCOUNTANT: ALL
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaxFilingCreate'
+  /tax/filings/{id}:
+    get:
+      operationId: getTaxFiling
+      summary: 신고 상세
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: tax_filing, tax_filing_line
+
+
+        - 취득연도별 요약·전년 대비·전년 신고 포함.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxFilingDetail'
+        '404':
+          $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
+      security:
+      - webAuth:
+        - web
+    patch:
+      operationId: patchTaxFiling
+      summary: 고지 결과·메모 기록
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: tax_filing
+
+
+        - 고지 평가액·세액을 넣으면 ASSESSED. DRAFT에서는 409.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxFilingDetail'
+        '400':
+          $ref: '#/components/responses/E400'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.manage
+      x-scope:
+        ASSET_ACCOUNTANT: ALL
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaxFilingPatch'
+    delete:
+      operationId: deleteTaxFiling
+      summary: 신고 자료 삭제
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: tax_filing, tax_filing_line
+
+
+        - DRAFT만. 신고한 건은 과거 기록이라 지울 수 없다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: 성공(본문 없음)
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.manage
+      x-scope:
+        ASSET_ACCOUNTANT: ALL
+      x-condition: DRAFT만
+      security:
+      - webAuth:
+        - web
+  /tax/filings/{id}/lines:
+    get:
+      operationId: listTaxFilingLines
+      summary: 신고 자산 행
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: tax_filing_line
+
+
+        - 기본 100행, 최대 500.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      - name: change
+        in: query
+        required: false
+        description: NEW·CARRIED·DISPOSED(쉼표 구분)
+        schema:
+          type: string
+      - name: q
+        in: query
+        required: false
+        description: 태그·설명
+        schema:
+          type: string
+      - name: page
+        in: query
+        required: false
+        description: 페이지
+        schema:
+          type: integer
+      - name: pageSize
+        in: query
+        required: false
+        description: 페이지 크기
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxFilingLineList'
+        '404':
+          $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
+      security:
+      - webAuth:
+        - web
+  /tax/filings/{id}:regenerate:
+    post:
+      operationId: regenerateTaxFiling
+      summary: 다시 계산
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: tax_filing, tax_filing_line
+
+
+        - DRAFT만. 현재 자산·관할·계수표로 행을 다시 만든다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxFilingDetail'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.manage
+      x-scope:
+        ASSET_ACCOUNTANT: ALL
+      x-condition: DRAFT만
+      security:
+      - webAuth:
+        - web
+  /tax/filings/{id}:file:
+    post:
+      operationId: fileTaxFiling
+      summary: 신고 완료
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: tax_filing
+
+
+        - DRAFT → FILED. 이후 행은 고정(과거 기록).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxFilingDetail'
+        '400':
+          $ref: '#/components/responses/E400'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.manage
+      x-scope:
+        ASSET_ACCOUNTANT: ALL
+      x-condition: DRAFT → FILED
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaxFilingFile'
+  /tax/filings/{id}:reopen:
+    post:
+      operationId: reopenTaxFiling
+      summary: 신고 취소(정정)
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: tax_filing
+
+
+        - FILED → DRAFT. 고지 결과가 있으면 409.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxFilingDetail'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.manage
+      x-scope:
+        ASSET_ACCOUNTANT: ALL
+      x-condition: FILED → DRAFT
+      security:
+      - webAuth:
+        - web
+  /tax/filings/{id}/export:
+    get:
+      operationId: exportTaxFiling
+      summary: 신고 자료 엑셀
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: tax_filing, tax_filing_line
+
+
+        - 시트: Summary · By year acquired(신고서 취득연도별 표) · Asset listing · Unknown cost · Additions · Disposals. 파일명 BPP_{연도}_{주}_{카운티}_{회사}.xlsx.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공(파일)
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                contentMediaType: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+        '404':
+          $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
+      security:
+      - webAuth:
+        - web
 components:
   securitySchemes:
     webAuth:
@@ -16410,3 +17275,884 @@ components:
           description: 행
       required:
       - items
+    TaxStatePreset:
+      type: object
+      description: 주별 기본값(참고)
+      properties:
+        state:
+          type: string
+          maxLength: 2
+          description: 주
+        name:
+          type: string
+          description: 주 이름
+        taxable:
+          type: boolean
+          description: 사업용 동산 과세 여부(IL·NJ는 false)
+        formCode:
+          type: string
+          description: 신고서 양식
+        lienMonth:
+          type: integer
+          description: 기준일 월
+        lienDay:
+          type: integer
+          description: 기준일 일
+        dueMonth:
+          type: integer
+          description: 기한 월
+        dueDay:
+          type: integer
+          description: 기한 일
+        assessmentRatio:
+          type: number
+          description: 평가율
+        exemptionMode:
+          type: string
+          enum:
+          - NONE
+          - THRESHOLD
+          - DEDUCT
+          description: 면제 방식
+        exemptionAmount:
+          type: number
+          description: 면제 금액
+        factorSet:
+          type: string
+          enum:
+          - GA_DOR
+          - AL_ADOR
+          - CA_BOE581
+          - GENERIC_SL
+          description: 계수표 종류
+        typicalMillage:
+          type: number
+          description: 대표 밀리지(추정용)
+        note:
+          type: string
+          description: 신고 안내
+      required:
+      - state
+      - name
+      - taxable
+      - lienMonth
+      - lienDay
+      - assessmentRatio
+      - exemptionMode
+      - exemptionAmount
+      - factorSet
+      - note
+    TaxReferenceTable:
+      type: object
+      description: 참고 계수표 요약
+      properties:
+        factorSet:
+          type: string
+          enum:
+          - GA_DOR
+          - AL_ADOR
+          - CA_BOE581
+          - GENERIC_SL
+          description: 계수표 종류
+        tableYear:
+          type: integer
+          description: 표 연도
+        source:
+          type: string
+          description: 출처
+        verified:
+          type: boolean
+          description: 공식 표와 대조했는지
+        classes:
+          type: array
+          items:
+            type: string
+          description: 내용연수 구분
+      required:
+      - factorSet
+      - tableYear
+      - source
+      - verified
+      - classes
+    TaxReference:
+      type: object
+      description: 재산세 참고값
+      properties:
+        presets:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxStatePreset'
+          description: 주별 기본값
+        factorSets:
+          type: array
+          items:
+            type: string
+          description: 계수표 종류
+        referenceTables:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxReferenceTable'
+          description: 불러올 수 있는 참고표
+      required:
+      - presets
+      - factorSets
+      - referenceTables
+    TaxSiteRef:
+      type: object
+      description: 관할에 속한 사이트
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 사이트
+        siteCode:
+          type: string
+          description: 코드
+        name:
+          type: string
+          description: 이름
+      required:
+      - id
+      - siteCode
+      - name
+    TaxJurisdiction:
+      type: object
+      description: 재산세 관할(주·카운티)
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: id
+        version:
+          type: integer
+          description: 버전
+        state:
+          type: string
+          maxLength: 2
+          description: 주
+        county:
+          type: string
+          maxLength: 60
+          description: 카운티(TX는 감정 구역)
+        name:
+          type: string
+          maxLength: 100
+          description: 표시 이름
+        taxable:
+          type: boolean
+          description: 과세 여부
+        formCode:
+          type: string
+          maxLength: 20
+          description: 신고서 양식
+        lienMonth:
+          type: integer
+          description: 기준일 월
+        lienDay:
+          type: integer
+          description: 기준일 일
+        dueMonth:
+          type: integer
+          description: 기한 월
+        dueDay:
+          type: integer
+          description: 기한 일
+        assessmentRatio:
+          type: number
+          description: 평가율(0~1)
+        millage:
+          type: number
+          description: 세율(평가액 $1,000당)
+        exemptionMode:
+          type: string
+          enum:
+          - NONE
+          - THRESHOLD
+          - DEDUCT
+          description: '면제 방식(THRESHOLD: 합계가 금액 이하면 전액, DEDUCT: 금액만큼 공제)'
+        exemptionAmount:
+          type: number
+          description: 면제 금액
+        factorSet:
+          type: string
+          enum:
+          - GA_DOR
+          - AL_ADOR
+          - CA_BOE581
+          - GENERIC_SL
+          description: 계수표 종류
+        notes:
+          type: string
+          description: 메모
+        isActive:
+          type: boolean
+          description: 사용
+        sites:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxSiteRef'
+          description: 연결된 사이트
+      required:
+      - id
+      - version
+      - state
+      - county
+      - name
+      - taxable
+      - lienMonth
+      - lienDay
+      - assessmentRatio
+      - millage
+      - exemptionMode
+      - exemptionAmount
+      - factorSet
+      - isActive
+    TaxJurisdictionList:
+      type: object
+      description: 관할 목록
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxJurisdiction'
+          description: 행
+      required:
+      - items
+    TaxJurisdictionInput:
+      type: object
+      description: 관할 등록·수정(수정은 보낸 필드만)
+      properties:
+        state:
+          type: string
+          maxLength: 2
+          description: 주
+        county:
+          type: string
+          maxLength: 60
+          description: 카운티
+        name:
+          type: string
+          maxLength: 100
+          description: 이름
+        taxable:
+          type: boolean
+          description: 과세 여부(기본 true)
+        formCode:
+          type: string
+          maxLength: 20
+          description: 양식
+        lienMonth:
+          type: integer
+          description: 기준일 월
+        lienDay:
+          type: integer
+          description: 기준일 일
+        dueMonth:
+          type: integer
+          description: 기한 월
+        dueDay:
+          type: integer
+          description: 기한 일
+        assessmentRatio:
+          type: number
+          description: 평가율(기본 1)
+        millage:
+          type: number
+          description: 밀리지(기본 0)
+        exemptionMode:
+          type: string
+          enum:
+          - NONE
+          - THRESHOLD
+          - DEDUCT
+          description: 면제 방식
+        exemptionAmount:
+          type: number
+          description: 면제 금액
+        factorSet:
+          type: string
+          enum:
+          - GA_DOR
+          - AL_ADOR
+          - CA_BOE581
+          - GENERIC_SL
+          description: 계수표 종류
+        notes:
+          type: string
+          maxLength: 2000
+          description: 메모
+        isActive:
+          type: boolean
+          description: 사용
+      required:
+      - state
+      - county
+      - name
+      - lienMonth
+      - lienDay
+      - factorSet
+    TaxJurisdictionSites:
+      type: object
+      description: 관할의 사이트 지정
+      properties:
+        siteIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: 이 관할에 속한 사이트 전체(빠진 사이트는 연결 해제, 다른 관할 사이트는 옮겨 옴)
+      required:
+      - siteIds
+    TaxFactorRow:
+      type: object
+      description: 계수표 행
+      properties:
+        lifeClass:
+          type: string
+          maxLength: 10
+          description: 내용연수 구분
+        age:
+          type: integer
+          description: 경과연수
+        factor:
+          type: number
+          description: 계수(원가 대비 공정가치 비율)
+      required:
+      - lifeClass
+      - age
+      - factor
+    TaxFactorTable:
+      type: object
+      description: 계수표
+      properties:
+        factorSet:
+          type: string
+          enum:
+          - GA_DOR
+          - AL_ADOR
+          - CA_BOE581
+          - GENERIC_SL
+          description: 종류
+        tableYears:
+          type: array
+          items:
+            type: integer
+          description: 저장된 표 연도
+        tableYear:
+          type: integer
+          description: 이 표의 연도
+        source:
+          type: string
+          description: 출처([verify]로 시작하면 미확인 참고값)
+        ageStart:
+          type: integer
+          description: 첫 경과연수(GA·CA 1, AL 0)
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxFactorRow'
+          description: 행
+      required:
+      - factorSet
+      - tableYears
+      - ageStart
+      - rows
+    TaxFactorInput:
+      type: object
+      description: 계수표 저장(같은 종류·연도 표를 통째로 바꿈)
+      properties:
+        factorSet:
+          type: string
+          enum:
+          - GA_DOR
+          - AL_ADOR
+          - CA_BOE581
+          - GENERIC_SL
+          description: 종류
+        tableYear:
+          type: integer
+          description: 연도
+        source:
+          type: string
+          maxLength: 200
+          description: 출처
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxFactorRow'
+          description: 행(최대 2,000)
+      required:
+      - factorSet
+      - tableYear
+      - rows
+    TaxFactorLoad:
+      type: object
+      description: 참고표 불러오기
+      properties:
+        factorSet:
+          type: string
+          enum:
+          - GA_DOR
+          - AL_ADOR
+          - CA_BOE581
+          - GENERIC_SL
+          description: 종류
+      required:
+      - factorSet
+    TaxClassMapItem:
+      type: object
+      description: 카테고리 → 내용연수 구분
+      properties:
+        categoryId:
+          type: string
+          format: uuid
+          description: 카테고리
+        categoryCode:
+          type: string
+          description: 코드
+        name:
+          type: string
+          description: 이름
+        usefulLifeYears:
+          type: integer
+          description: 카테고리 내용연수
+        lifeClass:
+          type: string
+          description: 지정한 구분(없으면 기본값 사용)
+        defaultClass:
+          type: string
+          description: 내용연수로 정한 기본 구분
+      required:
+      - categoryId
+      - name
+      - defaultClass
+    TaxClassMap:
+      type: object
+      description: 구분 매핑
+      properties:
+        factorSet:
+          type: string
+          description: 종류
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxClassMapItem'
+          description: 행
+      required:
+      - factorSet
+      - items
+    TaxClassMapEntry:
+      type: object
+      description: 구분 매핑 저장 항목
+      properties:
+        categoryId:
+          type: string
+          format: uuid
+          description: 카테고리
+        lifeClass:
+          type: string
+          maxLength: 10
+          description: 구분(비우면 지정 해제)
+      required:
+      - categoryId
+    TaxClassMapInput:
+      type: object
+      description: 구분 매핑 저장
+      properties:
+        factorSet:
+          type: string
+          enum:
+          - GA_DOR
+          - AL_ADOR
+          - CA_BOE581
+          - GENERIC_SL
+          description: 종류
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxClassMapEntry'
+          description: 바꿀 카테고리
+      required:
+      - factorSet
+      - items
+    TaxFilingSummary:
+      type: object
+      description: 재산세 신고(과거 기록 목록 행)
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: id
+        version:
+          type: integer
+          description: 버전
+        companyId:
+          type: string
+          format: uuid
+          description: 회사
+        companyCode:
+          type: string
+          description: 회사코드
+        jurisdictionId:
+          type: string
+          format: uuid
+          description: 관할
+        state:
+          type: string
+          description: 주
+        county:
+          type: string
+          description: 카운티
+        jurisdictionName:
+          type: string
+          description: 관할 이름
+        formCode:
+          type: string
+          description: 양식
+        taxYear:
+          type: integer
+          description: 과세 연도
+        lienDate:
+          type: string
+          format: date
+          description: 기준일
+        dueDate:
+          type: string
+          format: date
+          description: 기한
+        status:
+          type: string
+          enum:
+          - DRAFT
+          - FILED
+          - ASSESSED
+          description: 작성 중 / 신고 완료 / 고지 기록
+        assetCount:
+          type: integer
+          description: 신고 자산 수
+        totalCost:
+          type: number
+          description: 원가 합계
+        totalMarketValue:
+          type: number
+          description: 공정가치 합계(원가 × 계수)
+        exemption:
+          type: number
+          description: 면제
+        assessedValue:
+          type: number
+          description: 평가액
+        estimatedTax:
+          type: number
+          description: 예상 세액
+        actualAssessed:
+          type: number
+          description: 고지 평가액
+        actualTax:
+          type: number
+          description: 고지 세액
+        filedAt:
+          type: string
+          format: date
+          description: 신고일
+        filingRef:
+          type: string
+          description: 접수 번호
+        generatedAt:
+          type: string
+          format: date-time
+          description: 계산 일시
+      required:
+      - id
+      - version
+      - companyId
+      - companyCode
+      - jurisdictionId
+      - state
+      - county
+      - jurisdictionName
+      - taxYear
+      - lienDate
+      - status
+      - assetCount
+      - totalCost
+      - totalMarketValue
+      - exemption
+      - assessedValue
+      - estimatedTax
+    TaxFilingList:
+      type: object
+      description: 재산세 신고 목록
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxFilingSummary'
+          description: 행(최대 500)
+        years:
+          type: array
+          items:
+            type: integer
+          description: 기록이 있는 연도
+      required:
+      - items
+      - years
+    TaxScheduleRow:
+      type: object
+      description: 취득연도별 요약
+      properties:
+        acquisitionYear:
+          type: integer
+          description: 취득 연도
+        lifeClass:
+          type: string
+          description: 구분
+        count:
+          type: integer
+          description: 자산 수
+        cost:
+          type: number
+          description: 원가
+        marketValue:
+          type: number
+          description: 공정가치
+        factor:
+          type: number
+          description: 계수
+      required:
+      - acquisitionYear
+      - lifeClass
+      - count
+      - cost
+      - marketValue
+    TaxWarning:
+      type: object
+      description: 계산 경고
+      properties:
+        code:
+          type: string
+          description: OLD_FACTOR_TABLE, UNVERIFIED_FACTORS, NO_FACTOR_TABLE, GENERIC_FACTORS, NO_JURISDICTION, NO_FACTOR_CLASS, UNKNOWN_COST, NOT_TAXABLE, EXEMPT
+        message:
+          type: string
+          description: 설명
+        count:
+          type: integer
+          description: 건수
+      required:
+      - code
+      - message
+    TaxFilingDetail:
+      type: object
+      description: 재산세 신고 상세
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: id
+        version:
+          type: integer
+          description: 버전
+        companyCode:
+          type: string
+          description: 회사코드
+        state:
+          type: string
+          description: 주
+        county:
+          type: string
+          description: 카운티
+        taxYear:
+          type: integer
+          description: 과세 연도
+        status:
+          type: string
+          enum:
+          - DRAFT
+          - FILED
+          - ASSESSED
+          description: 상태
+        estimatedTax:
+          type: number
+          description: 예상 세액
+        params:
+          type: object
+          additionalProperties: true
+          description: 계산 당시 관할 값(평가율·밀리지·면제·계수표 연도·출처·전년 신고 연도)
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxWarning'
+          description: 경고
+        notes:
+          type: string
+          description: 메모
+        schedule:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxScheduleRow'
+          description: 취득연도 × 구분 요약
+        changes:
+          type: object
+          additionalProperties: true
+          description: '{NEW, CARRIED, DISPOSED: {count, cost}}'
+        prior:
+          type: object
+          additionalProperties: true
+          description: 전년 신고 요약 {id, taxYear, status, totalCost, totalMarketValue, assessedValue, estimatedTax, actualTax}
+      required:
+      - id
+      - version
+      - companyCode
+      - state
+      - county
+      - taxYear
+      - status
+      - estimatedTax
+      - params
+      - warnings
+      - schedule
+      - changes
+    TaxFilingLine:
+      type: object
+      description: 신고 자산 행(계산 시점 복사본)
+      properties:
+        assetId:
+          type: string
+          format: uuid
+          description: 자산
+        assetTag:
+          type: string
+          description: 자산 태그
+        description:
+          type: string
+          description: 설명
+        categoryName:
+          type: string
+          description: 카테고리
+        lifeClass:
+          type: string
+          description: 구분
+        acquisitionDate:
+          type: string
+          format: date
+          description: 취득일(SAP 자본화일 → 구매일 → 등록일)
+        acquisitionYear:
+          type: integer
+          description: 취득 연도
+        originalCost:
+          type: number
+          description: 원가(없으면 원가 모름)
+        costSource:
+          type: string
+          enum:
+          - SAP
+          - ALM
+          description: 원가 출처
+        age:
+          type: integer
+          description: 경과연수
+        factor:
+          type: number
+          description: 계수
+        marketValue:
+          type: number
+          description: 공정가치
+        siteCode:
+          type: string
+          description: 사이트
+        roomCode:
+          type: string
+          description: 룸
+        change:
+          type: string
+          enum:
+          - NEW
+          - CARRIED
+          - DISPOSED
+          description: 전년 대비
+        disposalDate:
+          type: string
+          format: date
+          description: 처분일(DISPOSED)
+      required:
+      - assetTag
+      - description
+      - change
+    TaxFilingLineList:
+      type: object
+      description: 신고 자산 행
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxFilingLine'
+          description: 행
+        page:
+          type: integer
+          description: 페이지(1부터)
+        pageSize:
+          type: integer
+          description: 페이지 크기
+        total:
+          type: integer
+          description: 전체 건수
+      required:
+      - items
+      - page
+      - pageSize
+      - total
+    TaxFilingCreate:
+      type: object
+      description: 신고 자료 만들기
+      properties:
+        companyId:
+          type: string
+          format: uuid
+          description: 회사
+        jurisdictionId:
+          type: string
+          format: uuid
+          description: 관할
+        taxYear:
+          type: integer
+          description: 과세 연도(기준일 연도)
+      required:
+      - companyId
+      - jurisdictionId
+      - taxYear
+    TaxFilingFile:
+      type: object
+      description: 신고 완료
+      properties:
+        filedAt:
+          type: string
+          format: date
+          description: 신고일
+        filingRef:
+          type: string
+          maxLength: 60
+          description: 접수 번호
+        notes:
+          type: string
+          maxLength: 2000
+          description: 메모
+      required:
+      - filedAt
+    TaxFilingPatch:
+      type: object
+      description: 고지 결과·메모
+      properties:
+        actualAssessed:
+          type: number
+          description: 고지 평가액(신고 후에만)
+        actualTax:
+          type: number
+          description: 고지 세액(신고 후에만)
+        filingRef:
+          type: string
+          maxLength: 60
+          description: 접수 번호
+        notes:
+          type: string
+          maxLength: 2000
+          description: 메모

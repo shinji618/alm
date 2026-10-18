@@ -61,12 +61,35 @@ export async function request<T>(path: string, o: RequestOptions = {}): Promise<
   return { data: b as T, headers: r.headers, status: r.status };
 }
 
+/** 파일 내려받기(엑셀 등): Bearer 토큰으로 받아 브라우저 저장. 파일명은 Content-Disposition */
+export async function download(path: string, fallbackName = 'download'): Promise<string> {
+  if (!token) await refresh();
+  const send = () => fetch(`${BASE}${path}`, { credentials: 'same-origin', headers: token ? { authorization: `Bearer ${token}` } : {} });
+  let r = await send();
+  if (r.status === 401) { await refresh(); if (token) r = await send(); }
+  if (!r.ok) {
+    let b: Record<string, unknown> | undefined;
+    try { b = (await r.json()) as Record<string, unknown>; } catch { b = undefined; }
+    if (r.status === 401) onUnauthenticated();
+    throw new ApiError(r.status, String(b?.code ?? `HTTP${r.status}`), String(b?.message ?? r.statusText));
+  }
+  const name = /filename="?([^";]+)"?/.exec(r.headers.get('content-disposition') ?? '')?.[1] ?? fallbackName;
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return name;
+}
+
 export const api = {
   get: async <T>(path: string, signal?: AbortSignal) => (await request<T>(path, { signal })).data,
   post: async <T>(path: string, body: unknown = {}, ifMatch?: number | string) =>
     (await request<T>(path, { method: 'POST', body, headers: ifMatch === undefined ? undefined : { 'if-match': `"${ifMatch}"` } })).data,
   patch: async <T>(path: string, body: unknown, ifMatch?: number | string) =>
     (await request<T>(path, { method: 'PATCH', body, headers: ifMatch === undefined ? undefined : { 'if-match': `"${ifMatch}"` } })).data,
+  put: async <T>(path: string, body: unknown) => (await request<T>(path, { method: 'PUT', body })).data,
   del: async (path: string) => { await request<unknown>(path, { method: 'DELETE' }); },
 };
 

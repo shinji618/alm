@@ -40,7 +40,7 @@ test('권한: 암묵 EMPLOYEE·감사인 배타·ALL 우선', () => {
   assert.equal(permissionFor('getMe', cat), 'auth');
   assert.equal(permissionFor('authLogin', cat), null);
   assert.equal(permissionFor('nope', cat), undefined);
-  assert.equal(cat.permissions.length, 39);
+  assert.equal(cat.permissions.length, 41);
 });
 
 test('권한 카탈로그가 openapi의 모든 operationId(웹·PDA·SAP)를 덮는다', () => {
