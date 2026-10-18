@@ -258,8 +258,16 @@ ALTER TABLE tax_filing ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p_tax_filing_tenant ON tax_filing USING (tenant_id = current_setting('app.tenant_id')::uuid);
 ALTER TABLE tax_filing_line ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p_tax_filing_line_tenant ON tax_filing_line USING (tenant_id = current_setting('app.tenant_id')::uuid);
+-- 감사 트리거: audit_row()는 alm_audit_owner 소유이고 PUBLIC 실행 권한이 없다. RDS(비 슈퍼유저 소유자)에서는 트리거를 만드는 동안만
+-- 소유자 세션에 EXECUTE를 주고 바로 회수한다(러너 withAuditOwner가 이 트랜잭션 동안 SET ROLE 권한을 준다)
+SET LOCAL ROLE alm_audit_owner;
+GRANT EXECUTE ON FUNCTION audit_row() TO SESSION_USER;
+RESET ROLE;
 CREATE TRIGGER tr_tax_jurisdiction_audit AFTER INSERT OR UPDATE OR DELETE ON tax_jurisdiction FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_tax_factor_audit AFTER INSERT OR UPDATE OR DELETE ON tax_factor FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_tax_class_map_audit AFTER INSERT OR UPDATE OR DELETE ON tax_class_map FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_tax_filing_audit AFTER INSERT OR UPDATE OR DELETE ON tax_filing FOR EACH ROW EXECUTE FUNCTION audit_row();
+SET LOCAL ROLE alm_audit_owner;
+REVOKE EXECUTE ON FUNCTION audit_row() FROM SESSION_USER;
+RESET ROLE;
 COMMIT;
