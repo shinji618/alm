@@ -8845,6 +8845,76 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/TaxClassMapInput'
+  /tax/property-types:
+    get:
+      operationId: listTaxPropertyTypes
+      summary: 재산세 구분(자산클래스·카테고리)
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: asset_class, category
+
+
+        - 구분: 카테고리 지정 → 자산클래스 지정 → 클래스 이름 추정 → EQUIPMENT 순으로 정한다.
+
+        - LEASED_IN(임차 자산, 소유자가 신고)·REAL_PROPERTY·INTANGIBLE·EXCLUDED는 신고에서 빠지고, VEHICLE·CIP는 관할 설정(includeVehicles·includeCip)을 따른다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxPropertyTypes'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
+      security:
+      - webAuth:
+        - web
+    put:
+      operationId: replaceTaxPropertyTypes
+      summary: 재산세 구분 저장
+      tags:
+      - WEB
+      description: 'ALM-260 · 테이블: asset_class, category
+
+
+        - 보낸 자산클래스·카테고리만 바꾼다. null이면 지정 해제. IF-MD-01 수신은 이 값을 덮지 않는다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxPropertyTypes'
+        '400':
+          $ref: '#/components/responses/E400'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: tax.manage
+      x-scope:
+        ASSET_ACCOUNTANT: ALL
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaxPropertyTypesInput'
   /tax/filings:
     get:
       operationId: listTaxFilings
@@ -10599,11 +10669,11 @@ components:
         plant:
           type: string
           maxLength: 4
-          description: ANLZ-WERKS
+          description: ANLZ-WERKS. 룸·위치로 사이트를 못 찾으면 이 플랜트의 사이트(하나일 때)
         location:
           type: string
           maxLength: 10
-          description: ANLZ-STORT = ALM 룸 코드
+          description: ANLZ-STORT = ALM 룸 코드. 룸이 없으면 site.sap_location이 같은 사이트
         room:
           type: string
           maxLength: 8
@@ -17339,6 +17409,12 @@ components:
         note:
           type: string
           description: 신고 안내
+        includeVehicles:
+          type: boolean
+          description: 차량 포함 기본값
+        includeCip:
+          type: boolean
+          description: 건설중자산 포함 기본값
       required:
       - state
       - name
@@ -17350,6 +17426,8 @@ components:
       - exemptionAmount
       - factorSet
       - note
+      - includeVehicles
+      - includeCip
     TaxReferenceTable:
       type: object
       description: 참고 계수표 요약
@@ -17401,10 +17479,16 @@ components:
           items:
             $ref: '#/components/schemas/TaxReferenceTable'
           description: 불러올 수 있는 참고표
+        propertyTypes:
+          type: array
+          items:
+            type: string
+          description: 재산세 구분
       required:
       - presets
       - factorSets
       - referenceTables
+      - propertyTypes
     TaxSiteRef:
       type: object
       description: 관할에 속한 사이트
@@ -17489,6 +17573,12 @@ components:
           - CA_BOE581
           - GENERIC_SL
           description: 계수표 종류
+        includeVehicles:
+          type: boolean
+          description: 차량(VEHICLE) 포함(TX)
+        includeCip:
+          type: boolean
+          description: 건설중자산(CIP) 원가 포함
         notes:
           type: string
           description: 메모
@@ -17514,6 +17604,8 @@ components:
       - exemptionMode
       - exemptionAmount
       - factorSet
+      - includeVehicles
+      - includeCip
       - isActive
     TaxJurisdictionList:
       type: object
@@ -17585,6 +17677,12 @@ components:
           - CA_BOE581
           - GENERIC_SL
           description: 계수표 종류
+        includeVehicles:
+          type: boolean
+          description: '차량 포함(기본: 주별 값)'
+        includeCip:
+          type: boolean
+          description: '건설중자산 포함(기본: 주별 값)'
         notes:
           type: string
           maxLength: 2000
@@ -17909,6 +18007,18 @@ components:
       type: object
       description: 취득연도별 요약
       properties:
+        propertyType:
+          type: string
+          enum:
+          - EQUIPMENT
+          - LEASEHOLD
+          - VEHICLE
+          - CIP
+          - LEASED_IN
+          - REAL_PROPERTY
+          - INTANGIBLE
+          - EXCLUDED
+          description: 재산세 구분
         acquisitionYear:
           type: integer
           description: 취득 연도
@@ -17928,6 +18038,7 @@ components:
           type: number
           description: 계수
       required:
+      - propertyType
       - acquisitionYear
       - lifeClass
       - count
@@ -17994,11 +18105,16 @@ components:
         notes:
           type: string
           description: 메모
+        byType:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxTypeTotal'
+          description: 재산세 구분별 합계
         schedule:
           type: array
           items:
             $ref: '#/components/schemas/TaxScheduleRow'
-          description: 취득연도 × 구분 요약
+          description: 재산세 구분 × 취득연도 × 내용연수 구분 요약
         changes:
           type: object
           additionalProperties: true
@@ -18018,6 +18134,7 @@ components:
       - estimatedTax
       - params
       - warnings
+      - byType
       - schedule
       - changes
     TaxFilingLine:
@@ -18040,6 +18157,18 @@ components:
         lifeClass:
           type: string
           description: 구분
+        propertyType:
+          type: string
+          enum:
+          - EQUIPMENT
+          - LEASEHOLD
+          - VEHICLE
+          - CIP
+          - LEASED_IN
+          - REAL_PROPERTY
+          - INTANGIBLE
+          - EXCLUDED
+          description: 재산세 구분
         acquisitionDate:
           type: string
           format: date
@@ -18085,6 +18214,7 @@ components:
       required:
       - assetTag
       - description
+      - propertyType
       - change
     TaxFilingLineList:
       type: object
@@ -18109,6 +18239,177 @@ components:
       - page
       - pageSize
       - total
+    TaxTypeTotal:
+      type: object
+      description: 재산세 구분별 합계
+      properties:
+        propertyType:
+          type: string
+          enum:
+          - EQUIPMENT
+          - LEASEHOLD
+          - VEHICLE
+          - CIP
+          - LEASED_IN
+          - REAL_PROPERTY
+          - INTANGIBLE
+          - EXCLUDED
+          description: 구분
+        count:
+          type: integer
+          description: 자산 수
+        cost:
+          type: number
+          description: 원가
+        marketValue:
+          type: number
+          description: 공정가치
+      required:
+      - propertyType
+      - count
+      - cost
+      - marketValue
+    TaxPropertyClass:
+      type: object
+      description: 자산클래스의 재산세 구분
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 자산클래스
+        classCode:
+          type: string
+          description: ANLKL
+        name:
+          type: string
+          description: 이름
+        propertyType:
+          type: string
+          enum:
+          - EQUIPMENT
+          - LEASEHOLD
+          - VEHICLE
+          - CIP
+          - LEASED_IN
+          - REAL_PROPERTY
+          - INTANGIBLE
+          - EXCLUDED
+          description: 지정한 구분(비면 추정값 사용)
+        suggested:
+          type: string
+          enum:
+          - EQUIPMENT
+          - LEASEHOLD
+          - VEHICLE
+          - CIP
+          - LEASED_IN
+          - REAL_PROPERTY
+          - INTANGIBLE
+          - EXCLUDED
+          description: 클래스 이름으로 추정한 구분
+      required:
+      - id
+      - classCode
+      - name
+      - suggested
+    TaxPropertyCategory:
+      type: object
+      description: 카테고리의 재산세 구분
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 카테고리
+        categoryCode:
+          type: string
+          description: 코드
+        name:
+          type: string
+          description: 이름
+        propertyType:
+          type: string
+          enum:
+          - EQUIPMENT
+          - LEASEHOLD
+          - VEHICLE
+          - CIP
+          - LEASED_IN
+          - REAL_PROPERTY
+          - INTANGIBLE
+          - EXCLUDED
+          description: 지정한 구분(자산클래스보다 우선)
+        classCode:
+          type: string
+          description: 기본 자산클래스
+        inherited:
+          type: string
+          enum:
+          - EQUIPMENT
+          - LEASEHOLD
+          - VEHICLE
+          - CIP
+          - LEASED_IN
+          - REAL_PROPERTY
+          - INTANGIBLE
+          - EXCLUDED
+          description: 기본 자산클래스에서 오는 구분
+      required:
+      - id
+      - categoryCode
+      - name
+    TaxPropertyTypes:
+      type: object
+      description: 재산세 구분 설정
+      properties:
+        assetClasses:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxPropertyClass'
+          description: 자산클래스
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxPropertyCategory'
+          description: 카테고리
+      required:
+      - assetClasses
+      - categories
+    TaxPropertyTypeEntry:
+      type: object
+      description: 재산세 구분 지정
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 자산클래스 또는 카테고리
+        propertyType:
+          type: string
+          enum:
+          - EQUIPMENT
+          - LEASEHOLD
+          - VEHICLE
+          - CIP
+          - LEASED_IN
+          - REAL_PROPERTY
+          - INTANGIBLE
+          - EXCLUDED
+          description: 구분(null이면 지정 해제)
+      required:
+      - id
+    TaxPropertyTypesInput:
+      type: object
+      description: 재산세 구분 저장(보낸 항목만)
+      properties:
+        assetClasses:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxPropertyTypeEntry'
+          description: 자산클래스
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxPropertyTypeEntry'
+          description: 카테고리
     TaxFilingCreate:
       type: object
       description: 신고 자료 만들기

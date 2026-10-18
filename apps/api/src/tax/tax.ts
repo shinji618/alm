@@ -11,7 +11,8 @@ import { AlmError, E } from '../common/errors';
 import { Check, UUID } from '../common/validate';
 import type { Principal } from '../auth/principal';
 import { buildXlsx, type Cell } from '../common/xlsx';
-import { AGE_START, FACTOR_SETS, genericFactor, lifeClassOf, REFERENCE_TABLES, STATE_PRESETS, type FactorSet } from './reference';
+import { AGE_START, FACTOR_SETS, genericFactor, lifeClassOf, NEVER_TAXED, PROPERTY_TYPES, REFERENCE_TABLES, STATE_PRESETS, suggestPropertyType, type FactorSet,
+  type PropertyType } from './reference';
 
 const iso = (d: unknown) => (d instanceof Date ? d.toISOString() : d ? String(d) : undefined);
 const day = (d: unknown) => (d instanceof Date ? d.toISOString().slice(0, 10) : d ? String(d).slice(0, 10) : undefined);
@@ -24,7 +25,7 @@ const notFound = (m = '재산세 신고를 찾을 수 없습니다') => E.notFou
 
 // ---------------- 참고값 ----------------
 export function reference() {
-  return { presets: STATE_PRESETS, factorSets: FACTOR_SETS,
+  return { presets: STATE_PRESETS, factorSets: FACTOR_SETS, propertyTypes: PROPERTY_TYPES,
     referenceTables: REFERENCE_TABLES.map((t) => ({ factorSet: t.factorSet, tableYear: t.tableYear, source: t.source, verified: t.verified, classes: Object.keys(t.rows) })) };
 }
 
@@ -33,7 +34,7 @@ function jurOut(r: Record<string, any>, sites: { id: string; site_code: string; 
   return clean({ id: r.id, version: r.version, state: r.state, county: r.county, name: r.name, taxable: r.taxable, formCode: r.form_code ?? undefined,
     lienMonth: r.lien_month, lienDay: r.lien_day, dueMonth: r.due_month ?? undefined, dueDay: r.due_day ?? undefined,
     assessmentRatio: Number(r.assessment_ratio), millage: Number(r.millage), exemptionMode: r.exemption_mode, exemptionAmount: Number(r.exemption_amount),
-    factorSet: r.factor_set, notes: r.notes ?? undefined, isActive: r.is_active,
+    factorSet: r.factor_set, includeVehicles: r.include_vehicles, includeCip: r.include_cip, notes: r.notes ?? undefined, isActive: r.is_active,
     sites: sites.map((s) => ({ id: s.id, siteCode: s.site_code, name: s.name })) });
 }
 
@@ -63,6 +64,8 @@ function readJur(body: unknown, partial: boolean) {
     exemptionMode: k.oneOf(b, 'exemptionMode', ['NONE', 'THRESHOLD', 'DEDUCT'] as const),
     exemptionAmount: k.num(b, 'exemptionAmount', { min: 0, max: 1e10 }),
     factorSet: k.oneOf(b, 'factorSet', FACTOR_SETS),
+    includeVehicles: k.bool(b, 'includeVehicles'),
+    includeCip: k.bool(b, 'includeCip'),
     notes: k.str(b, 'notes', { max: 2000 }),
     isActive: k.bool(b, 'isActive'),
   };
@@ -78,16 +81,19 @@ export async function createJurisdiction(c: PoolClient, p: Principal, body: unkn
   }
   const id = randomUUID();
   await c.query(`INSERT INTO tax_jurisdiction (id, tenant_id, state, county, name, taxable, form_code, lien_month, lien_day, due_month, due_day, assessment_ratio,
-      millage, exemption_mode, exemption_amount, factor_set, notes, is_active, created_by, updated_by)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $19)`,
+      millage, exemption_mode, exemption_amount, factor_set, notes, is_active, created_by, updated_by, include_vehicles, include_cip)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $19, $20, $21)`,
   [id, p.tenantId, v.state, v.county, v.name, v.taxable ?? true, v.formCode ?? null, v.lienMonth, v.lienDay, v.dueMonth ?? null, v.dueDay ?? null,
-    v.assessmentRatio ?? 1, v.millage ?? 0, v.exemptionMode ?? 'NONE', v.exemptionAmount ?? 0, v.factorSet, v.notes ?? null, v.isActive ?? true, p.userId]);
+    v.assessmentRatio ?? 1, v.millage ?? 0, v.exemptionMode ?? 'NONE', v.exemptionAmount ?? 0, v.factorSet, v.notes ?? null, v.isActive ?? true, p.userId,
+    v.includeVehicles ?? STATE_PRESETS.find((x) => x.state === v.state)?.includeVehicles ?? false,
+    v.includeCip ?? STATE_PRESETS.find((x) => x.state === v.state)?.includeCip ?? true]);
   return jurOut((await c.query('SELECT * FROM tax_jurisdiction WHERE id = $1', [id])).rows[0]);
 }
 
 const JUR_COLS: [string, string][] = [['state', 'state'], ['county', 'county'], ['name', 'name'], ['taxable', 'taxable'], ['formCode', 'form_code'],
   ['lienMonth', 'lien_month'], ['lienDay', 'lien_day'], ['dueMonth', 'due_month'], ['dueDay', 'due_day'], ['assessmentRatio', 'assessment_ratio'],
-  ['millage', 'millage'], ['exemptionMode', 'exemption_mode'], ['exemptionAmount', 'exemption_amount'], ['factorSet', 'factor_set'], ['notes', 'notes'], ['isActive', 'is_active']];
+  ['millage', 'millage'], ['exemptionMode', 'exemption_mode'], ['exemptionAmount', 'exemption_amount'], ['factorSet', 'factor_set'], ['notes', 'notes'], ['isActive', 'is_active'],
+  ['includeVehicles', 'include_vehicles'], ['includeCip', 'include_cip']];
 
 export async function patchJurisdiction(c: PoolClient, p: Principal, id: string, body: unknown) {
   if (!isUuid(id)) throw E.notFound('관할을 찾을 수 없습니다');
@@ -215,9 +221,9 @@ export async function replaceClassMap(c: PoolClient, p: Principal, body: unknown
 // ---------------- 신고 계산 ----------------
 interface Jur { id: string; state: string; county: string; name: string; taxable: boolean; form_code: string | null; lien_month: number; lien_day: number;
   due_month: number | null; due_day: number | null; assessment_ratio: string; millage: string; exemption_mode: 'NONE' | 'THRESHOLD' | 'DEDUCT';
-  exemption_amount: string; factor_set: FactorSet; notes: string | null }
+  exemption_amount: string; factor_set: FactorSet; notes: string | null; include_vehicles: boolean; include_cip: boolean }
 
-interface Line { assetId: string | null; assetTag: string; description: string; categoryName: string | null; lifeClass: string | null; acquisitionDate: string | null;
+interface Line { assetId: string | null; assetTag: string; description: string; categoryName: string | null; lifeClass: string | null; propertyType: PropertyType; acquisitionDate: string | null;
   acquisitionYear: number | null; originalCost: number | null; costSource: 'SAP' | 'ALM' | null; age: number | null; factor: number | null; marketValue: number | null;
   siteCode: string | null; roomCode: string | null; change: 'NEW' | 'CARRIED' | 'DISPOSED'; disposalDate: string | null }
 
@@ -246,6 +252,7 @@ async function compute(c: PoolClient, companyId: string, j: Jur, taxYear: number
     .map((r) => [r.category_id as string, r.life_class as string]));
 
   const rows = (await c.query(`SELECT a.id, a.asset_tag, a.description, a.status, a.category_id, cat.name AS category_name,
+        cat.tax_property_type AS cat_type, ac.tax_property_type AS cls_type, ac.class_code, ac.name AS class_name,
         coalesce(cat.useful_life_years, ac.default_useful_life_years) AS life,
         coalesce(a.sap_cap_date, a.purchase_date, a.created_at::date) AS acq_date,
         CASE WHEN co.sap_enabled AND a.sap_asset_no IS NOT NULL THEN vl.acquisition_value END AS sap_cost, a.purchase_cost,
@@ -256,25 +263,37 @@ async function compute(c: PoolClient, companyId: string, j: Jur, taxYear: number
       LEFT JOIN v_asset_value_latest vl ON vl.asset_id = a.id
      WHERE a.company_id = $1 AND s.tax_jurisdiction_id = $2 AND a.status <> 'ON_ORDER'
      ORDER BY a.asset_tag`, [companyId, j.id])).rows;
-  const noLocation = (await c.query(`SELECT count(*)::int AS n FROM asset a LEFT JOIN site s ON s.id = a.site_id
-     WHERE a.company_id = $1 AND a.status NOT IN ('ON_ORDER', 'RETIRED', 'DISPOSED') AND (a.site_id IS NULL OR s.tax_jurisdiction_id IS NULL)`, [companyId])).rows[0].n as number;
-  if (noLocation) warnings.push({ code: 'NO_JURISDICTION', count: noLocation, message: `사이트가 없거나 관할이 연결되지 않은 자산 ${noLocation}건은 어느 신고에도 들어가지 않았습니다` });
+  const noLoc = (await c.query(`SELECT a.asset_tag FROM asset a LEFT JOIN site s ON s.id = a.site_id
+     WHERE a.company_id = $1 AND a.status NOT IN ('ON_ORDER', 'RETIRED', 'DISPOSED') AND (a.site_id IS NULL OR s.tax_jurisdiction_id IS NULL)
+     ORDER BY a.asset_tag`, [companyId])).rows.map((r) => r.asset_tag as string);
+  const noLocation = noLoc.length;
+  if (noLocation) warnings.push({ code: 'NO_JURISDICTION', count: noLocation, message: `사이트가 없거나 관할이 연결되지 않은 자산 ${noLocation}건은 어느 신고에도 들어가지 않았습니다(${noLoc.slice(0, 10).join(', ')}${noLocation > 10 ? ' 외' : ''}). 자산의 사이트를 지정하거나 사이트를 관할에 연결하세요` });
 
   const lines: Line[] = [];
   const missingClass = new Set<string>();
   let afterLien = 0;
+  const excluded = new Map<PropertyType, number>();
+  const guessed = new Set<string>();
   for (const a of rows) {
     const acq = day(a.acq_date)!;
     if (acq > lien) { if (!['RETIRED', 'DISPOSED'].includes(a.status)) afterLien += 1; continue; }
     const disposal = day(a.disposal_date) ?? null;
     if (['RETIRED', 'DISPOSED'].includes(a.status) && (!disposal || disposal <= lien)) continue;
+    // 재산세 구분: 카테고리 → 자산클래스 → 클래스 이름 추정 → 장비
+    const ptype: PropertyType = a.cat_type ?? a.cls_type ?? suggestPropertyType(a.class_name) ?? 'EQUIPMENT';
+    if (!a.cat_type && !a.cls_type) guessed.add(a.class_code ?? '(클래스 없음)');
+    if (NEVER_TAXED.includes(ptype) || (ptype === 'VEHICLE' && !j.include_vehicles) || (ptype === 'CIP' && !j.include_cip)) {
+      excluded.set(ptype, (excluded.get(ptype) ?? 0) + 1);
+      continue;
+    }
     const sapCost = num(a.sap_cost), almCost = num(a.purchase_cost);
     const cost = sapCost ?? almCost;
     const lifeClass = classMap.get(a.category_id) ?? lifeClassOf(j.factor_set, a.life);
     const acqYear = Number(acq.slice(0, 4));
     const age = Math.max(0, taxYear - acqYear);
     let factor: number | null;
-    if (j.factor_set === 'GENERIC_SL' && !table.size) factor = genericFactor(lifeClass, age);
+    if (ptype === 'CIP') factor = 1;   // 건설중자산은 원가 그대로
+    else if (j.factor_set === 'GENERIC_SL' && !table.size) factor = genericFactor(lifeClass, age);
     else if (!table.size) factor = 1;
     else {
       const arr = table.get(lifeClass);
@@ -284,10 +303,17 @@ async function compute(c: PoolClient, companyId: string, j: Jur, taxYear: number
         factor = i < 0 ? vals[0] : i >= arr.length ? vals[vals.length - 1] : (arr[i] ?? vals[vals.length - 1]);
       }
     }
-    lines.push({ assetId: a.id, assetTag: a.asset_tag, description: a.description, categoryName: a.category_name ?? null, lifeClass, acquisitionDate: acq,
+    lines.push({ assetId: a.id, assetTag: a.asset_tag, description: a.description, categoryName: a.category_name ?? null, lifeClass, propertyType: ptype, acquisitionDate: acq,
       acquisitionYear: acqYear, originalCost: cost, costSource: sapCost !== null ? 'SAP' : almCost !== null ? 'ALM' : null, age, factor,
       marketValue: cost === null || factor === null ? null : r2(cost * factor), siteCode: a.site_code ?? null, roomCode: a.room_code ?? null, change: 'NEW', disposalDate: null });
   }
+  if (excluded.size) {
+    const parts = [...excluded].map(([k, n]) => `${TYPE_LABEL[k]} ${n}건`).join(', ');
+    warnings.push({ code: 'EXCLUDED_TYPES', count: [...excluded.values()].reduce((x, y) => x + y, 0),
+      message: `신고 대상이 아닌 구분이라 뺐습니다: ${parts}. 차량·건설중자산 포함 여부는 관할 설정에서 바꿉니다` });
+  }
+  if (guessed.size) warnings.push({ code: 'PROPERTY_TYPE_GUESSED', count: guessed.size,
+    message: `재산세 구분이 지정되지 않은 자산클래스(${[...guessed].slice(0, 10).join(', ')})는 이름으로 추정했습니다. 계수표 탭의 재산세 구분에서 확인하세요` });
   if (missingClass.size) warnings.push({ code: 'NO_FACTOR_CLASS', message: `계수표에 없는 구분(${[...missingClass].join(', ')})은 계수 1.0으로 계산했습니다` });
   const unknownCost = lines.filter((l) => l.originalCost === null).length;
   if (unknownCost) warnings.push({ code: 'UNKNOWN_COST', count: unknownCost, message: `원가가 없는 자산 ${unknownCost}건은 합계에서 빠졌습니다(신고서의 '원가 모름' 칸에 추정 시가로 적습니다)` });
@@ -296,7 +322,7 @@ async function compute(c: PoolClient, companyId: string, j: Jur, taxYear: number
   const prior = (await c.query(`SELECT id, tax_year FROM tax_filing WHERE company_id = $1 AND jurisdiction_id = $2 AND tax_year < $3 ORDER BY tax_year DESC LIMIT 1`,
     [companyId, j.id, taxYear])).rows[0];
   if (prior) {
-    const prev = (await c.query(`SELECT l.asset_id, l.asset_tag, l.description, l.category_name, l.life_class, l.acquisition_date, l.acquisition_year, l.original_cost,
+    const prev = (await c.query(`SELECT l.asset_id, l.asset_tag, l.description, l.category_name, l.life_class, l.property_type, l.acquisition_date, l.acquisition_year, l.original_cost,
         l.cost_source, l.site_code, l.room_code, coalesce(a.sap_deact_date, (SELECT max(e.occurred_at)::date FROM asset_event e WHERE e.asset_id = l.asset_id
           AND e.event_type IN ('RETIRED', 'DISPOSED'))) AS disposal_date
       FROM tax_filing_line l LEFT JOIN asset a ON a.id = l.asset_id WHERE l.filing_id = $1 AND l.change <> 'DISPOSED'`, [prior.id])).rows;
@@ -305,7 +331,7 @@ async function compute(c: PoolClient, companyId: string, j: Jur, taxYear: number
     for (const l of lines) if (before.has(l.assetId!)) l.change = 'CARRIED';
     for (const x of prev) {
       if (x.asset_id && now.has(x.asset_id)) continue;
-      lines.push({ assetId: x.asset_id, assetTag: x.asset_tag, description: x.description, categoryName: x.category_name, lifeClass: x.life_class,
+      lines.push({ assetId: x.asset_id, assetTag: x.asset_tag, description: x.description, categoryName: x.category_name, lifeClass: x.life_class, propertyType: x.property_type,
         acquisitionDate: day(x.acquisition_date) ?? null, acquisitionYear: x.acquisition_year, originalCost: num(x.original_cost), costSource: x.cost_source,
         age: null, factor: null, marketValue: null, siteCode: x.site_code, roomCode: x.room_code, change: 'DISPOSED', disposalDate: day(x.disposal_date) ?? null });
     }
@@ -328,7 +354,7 @@ async function compute(c: PoolClient, companyId: string, j: Jur, taxYear: number
   const due = j.due_month ? `${taxYear}-${pad(j.due_month)}-${pad(j.due_day ?? 1)}` : null;
   const params = { state: j.state, county: j.county, name: j.name, taxable: j.taxable, formCode: j.form_code, lienMonth: j.lien_month, lienDay: j.lien_day,
     assessmentRatio: Number(j.assessment_ratio), millage: Number(j.millage), exemptionMode: j.exemption_mode, exemptionAmount: exAmt,
-    factorSet: j.factor_set, factorTableYear: tableYear ?? null, factorSource: source ?? null, priorFilingYear: prior?.tax_year ?? null };
+    factorSet: j.factor_set, includeVehicles: j.include_vehicles, includeCip: j.include_cip, factorTableYear: tableYear ?? null, factorSource: source ?? null, priorFilingYear: prior?.tax_year ?? null };
   return { lien, due, lines, totals: { assetCount: active.length, totalCost, mv, exemption: r2(exemption), assessed, tax }, warnings, params };
 }
 
@@ -339,13 +365,13 @@ async function writeFiling(c: PoolClient, p: Principal, id: string, r: Awaited<R
     const chunk = r.lines.slice(i, i + 500);
     const vals: unknown[] = [];
     const ph = chunk.map((l, j) => {
-      const b = j * 19;
+      const b = j * 20;
       vals.push(randomUUID(), p.tenantId, id, l.assetId, l.assetTag, l.description.slice(0, 50), l.categoryName?.slice(0, 60) ?? null, l.lifeClass, l.acquisitionDate,
-        l.acquisitionYear, l.originalCost, l.costSource, l.age, l.factor, l.marketValue, l.siteCode, l.roomCode, l.change, l.disposalDate);
-      return `(${Array.from({ length: 19 }, (_, k) => `$${b + k + 1}`).join(', ')})`;
+        l.acquisitionYear, l.originalCost, l.costSource, l.age, l.factor, l.marketValue, l.siteCode, l.roomCode, l.change, l.disposalDate, l.propertyType);
+      return `(${Array.from({ length: 20 }, (_, k) => `$${b + k + 1}`).join(', ')})`;
     });
     await c.query(`INSERT INTO tax_filing_line (id, tenant_id, filing_id, asset_id, asset_tag, description, category_name, life_class, acquisition_date, acquisition_year,
-        original_cost, cost_source, age, factor, market_value, site_code, room_code, change, disposal_date) VALUES ${ph.join(', ')}`, vals);
+        original_cost, cost_source, age, factor, market_value, site_code, room_code, change, disposal_date, property_type) VALUES ${ph.join(', ')}`, vals);
   }
   const t = r.totals;
   await c.query(`UPDATE tax_filing SET lien_date = $2, due_date = $3, asset_count = $4, total_cost = $5, total_market_value = $6, exemption = $7, assessed_value = $8,
@@ -413,13 +439,17 @@ export async function listFilings(c: PoolClient, q: Record<string, string | unde
 
 export async function getFiling(c: PoolClient, id: string) {
   const f = await load(c, id);
-  const schedule = (await c.query(`SELECT acquisition_year, life_class, count(*)::int AS n, sum(original_cost) AS cost, sum(market_value) AS mv, min(factor) AS factor
-      FROM tax_filing_line WHERE filing_id = $1 AND change <> 'DISPOSED' GROUP BY acquisition_year, life_class ORDER BY acquisition_year DESC, life_class`, [id])).rows;
+  const schedule = (await c.query(`SELECT property_type, acquisition_year, life_class, count(*)::int AS n, sum(original_cost) AS cost, sum(market_value) AS mv, min(factor) AS factor
+      FROM tax_filing_line WHERE filing_id = $1 AND change <> 'DISPOSED' GROUP BY property_type, acquisition_year, life_class
+      ORDER BY property_type, acquisition_year DESC, life_class`, [id])).rows;
+  const byType = (await c.query(`SELECT property_type, count(*)::int AS n, coalesce(sum(original_cost), 0) AS cost, coalesce(sum(market_value), 0) AS mv
+      FROM tax_filing_line WHERE filing_id = $1 AND change <> 'DISPOSED' GROUP BY property_type ORDER BY property_type`, [id])).rows;
   const changes = (await c.query(`SELECT change, count(*)::int AS n, coalesce(sum(original_cost), 0) AS cost FROM tax_filing_line WHERE filing_id = $1 GROUP BY change`, [id])).rows;
   const prior = (await c.query(`SELECT id, tax_year, status, total_cost, total_market_value, assessed_value, estimated_tax, actual_tax FROM tax_filing
      WHERE company_id = $1 AND jurisdiction_id = $2 AND tax_year < $3 ORDER BY tax_year DESC LIMIT 1`, [f.company_id, f.jurisdiction_id, f.tax_year])).rows[0];
   return { ...summaryOut(f), params: f.params, warnings: f.warnings ?? [], notes: f.notes ?? undefined,
-    schedule: schedule.map((s) => ({ acquisitionYear: s.acquisition_year, lifeClass: s.life_class, count: s.n, cost: num(s.cost) ?? 0, marketValue: num(s.mv) ?? 0, factor: num(s.factor) })),
+    byType: byType.map((t) => ({ propertyType: t.property_type, count: t.n, cost: Number(t.cost), marketValue: Number(t.mv) })),
+    schedule: schedule.map((s) => ({ propertyType: s.property_type, acquisitionYear: s.acquisition_year, lifeClass: s.life_class, count: s.n, cost: num(s.cost) ?? 0, marketValue: num(s.mv) ?? 0, factor: num(s.factor) })),
     changes: Object.fromEntries(changes.map((x) => [x.change, { count: x.n, cost: Number(x.cost) }])),
     prior: prior ? clean({ id: prior.id, taxYear: prior.tax_year, status: prior.status, totalCost: Number(prior.total_cost), totalMarketValue: Number(prior.total_market_value),
       assessedValue: Number(prior.assessed_value), estimatedTax: Number(prior.estimated_tax), actualTax: num(prior.actual_tax) ?? undefined }) : undefined };
@@ -439,7 +469,7 @@ export async function listFilingLines(c: PoolClient, id: string, q: Record<strin
 }
 
 const lineOut = (l: Record<string, any>) => clean({ assetId: l.asset_id ?? undefined, assetTag: l.asset_tag, description: l.description, categoryName: l.category_name ?? undefined,
-  lifeClass: l.life_class ?? undefined, acquisitionDate: day(l.acquisition_date), acquisitionYear: l.acquisition_year ?? undefined, originalCost: num(l.original_cost) ?? undefined,
+  lifeClass: l.life_class ?? undefined, propertyType: l.property_type, acquisitionDate: day(l.acquisition_date), acquisitionYear: l.acquisition_year ?? undefined, originalCost: num(l.original_cost) ?? undefined,
   costSource: l.cost_source ?? undefined, age: l.age ?? undefined, factor: num(l.factor) ?? undefined, marketValue: num(l.market_value) ?? undefined,
   siteCode: l.site_code ?? undefined, roomCode: l.room_code ?? undefined, change: l.change, disposalDate: day(l.disposal_date) });
 
@@ -514,20 +544,22 @@ export async function exportFiling(c: PoolClient, id: string): Promise<{ fileNam
     ['Millage (per $1,000 assessed)', pr.millage], ['Estimated tax', f.estimatedTax],
     ['Factor table', `${pr.factorSet}${pr.factorTableYear ? ` ${pr.factorTableYear}` : ''}`], ['Factor source', pr.factorSource ?? ''],
     ['Filed on', f.filedAt ?? ''], ['Filing reference', f.filingRef ?? ''], ['Actual assessed', f.actualAssessed ?? ''], ['Actual tax', f.actualTax ?? ''],
+    ...f.byType.map((t): Cell[] => [`  ${TYPE_LABEL_EN[t.propertyType as PropertyType]} (${t.count})`, t.marketValue]),
     ['', ''], ['Estimate only — confirm values, factor tables and millage with the jurisdiction before filing.', ''],
     ...((f.warnings as { message: string }[]) ?? []).map((w): Cell[] => ['Note', w.message]),
   ];
   const money = 'money' as const, factor = 'factor' as const, int = 'int' as const;
   const sheets = [
     { name: 'Summary', rows: summary, header: 1, widths: [34, 70], formats: [undefined, money] },
-    { name: 'By year acquired', header: 1, widths: [14, 12, 10, 18, 10, 18], formats: [int, undefined, int, money, factor, money],
-      rows: [['Year acquired', 'Class', 'Assets', 'Original cost', 'Factor', 'Market value'],
-        ...f.schedule.map((s): Cell[] => [s.acquisitionYear, s.lifeClass, s.count, s.cost, s.factor, s.marketValue]),
-        ['Total', '', f.assetCount, f.totalCost, null, f.totalMarketValue]] },
-    { name: 'Asset listing', header: 1, widths: [14, 32, 18, 8, 12, 10, 16, 8, 8, 10, 16, 10, 12, 10], formats: [undefined, undefined, undefined, undefined, undefined, int, money, undefined, int, factor, money],
-      rows: [['Asset tag', 'Description', 'Category', 'Class', 'Acquired', 'Year', 'Original cost', 'Source', 'Age', 'Factor', 'Market value', 'Site', 'Room', 'Change'],
-        ...active.map((l): Cell[] => [l.assetTag, l.description, l.categoryName, l.lifeClass, l.acquisitionDate, l.acquisitionYear, l.originalCost, l.costSource, l.age, l.factor,
-          l.marketValue, l.siteCode, l.roomCode, l.change])] },
+    { name: 'By year acquired', header: 1, widths: [24, 14, 12, 10, 18, 10, 18], formats: [undefined, int, undefined, int, money, factor, money],
+      rows: [['Property type', 'Year acquired', 'Class', 'Assets', 'Original cost', 'Factor', 'Market value'],
+        ...f.schedule.map((s): Cell[] => [TYPE_LABEL_EN[s.propertyType as PropertyType], s.acquisitionYear, s.lifeClass, s.count, s.cost, s.factor, s.marketValue]),
+        ['Total', '', '', f.assetCount, f.totalCost, null, f.totalMarketValue]] },
+    { name: 'Asset listing', header: 1, widths: [14, 32, 18, 22, 8, 12, 10, 16, 8, 8, 10, 16, 10, 12, 10],
+      formats: [undefined, undefined, undefined, undefined, undefined, undefined, int, money, undefined, int, factor, money],
+      rows: [['Asset tag', 'Description', 'Category', 'Property type', 'Class', 'Acquired', 'Year', 'Original cost', 'Source', 'Age', 'Factor', 'Market value', 'Site', 'Room', 'Change'],
+        ...active.map((l): Cell[] => [l.assetTag, l.description, l.categoryName, TYPE_LABEL_EN[l.propertyType as PropertyType], l.lifeClass, l.acquisitionDate, l.acquisitionYear,
+          l.originalCost, l.costSource, l.age, l.factor, l.marketValue, l.siteCode, l.roomCode, l.change])] },
     { name: 'Unknown cost', header: 1, widths: [14, 32, 18, 12, 12, 22], formats: [],
       rows: [['Asset tag', 'Description', 'Category', 'Acquired', 'Site', 'Estimated current value'], ...unknown.map((l): Cell[] => [l.assetTag, l.description, l.categoryName, l.acquisitionDate, l.siteCode, ''])] },
     { name: 'Additions', header: 1, widths: [14, 32, 12, 16, 10], formats: [undefined, undefined, undefined, money],
@@ -538,4 +570,39 @@ export async function exportFiling(c: PoolClient, id: string): Promise<{ fileNam
   ];
   const fileName = `BPP_${f.taxYear}_${f.state}_${String(f.county).replace(/[^A-Za-z0-9]+/g, '-')}_${f.companyCode}.xlsx`;
   return { fileName, body: buildXlsx(sheets) };
+}
+
+// ---------------- 재산세 구분(자산클래스·카테고리) ----------------
+const TYPE_LABEL: Record<PropertyType, string> = { EQUIPMENT: '장비·가구·기계', LEASEHOLD: '임차개량', VEHICLE: '차량', CIP: '건설중자산',
+  LEASED_IN: '임차 자산', REAL_PROPERTY: '부동산', INTANGIBLE: '무형', EXCLUDED: '제외' };
+const TYPE_LABEL_EN: Record<PropertyType, string> = { EQUIPMENT: 'Furniture, fixtures, machinery & equipment', LEASEHOLD: 'Leasehold improvements',
+  VEHICLE: 'Vehicles', CIP: 'Construction in progress', LEASED_IN: 'Leased from others', REAL_PROPERTY: 'Real property', INTANGIBLE: 'Intangible', EXCLUDED: 'Excluded' };
+
+export async function listPropertyTypes(c: PoolClient) {
+  const classes = (await c.query(`SELECT id, class_code, name, tax_property_type FROM asset_class WHERE is_active ORDER BY class_code`)).rows;
+  const cats = (await c.query(`SELECT cat.id, cat.category_code, cat.name, cat.tax_property_type, ac.class_code, ac.name AS class_name, ac.tax_property_type AS class_type
+      FROM category cat LEFT JOIN asset_class ac ON ac.id = cat.default_asset_class_id WHERE cat.is_active ORDER BY cat.name`)).rows;
+  return {
+    assetClasses: classes.map((r) => clean({ id: r.id, classCode: r.class_code, name: r.name, propertyType: r.tax_property_type ?? undefined,
+      suggested: suggestPropertyType(r.name) ?? 'EQUIPMENT' })),
+    categories: cats.map((r) => clean({ id: r.id, categoryCode: r.category_code, name: r.name, propertyType: r.tax_property_type ?? undefined,
+      classCode: r.class_code ?? undefined, inherited: r.class_type ?? (r.class_code ? suggestPropertyType(r.class_name) ?? 'EQUIPMENT' : undefined) })),
+  };
+}
+
+/** 보낸 항목만 바꾼다. propertyType이 null이면 지정 해제(클래스 이름 추정·상속으로 돌아감) */
+export async function replacePropertyTypes(c: PoolClient, p: Principal, body: unknown) {
+  const k = new Check(body), b = k.obj();
+  const read = (key: string) => k.arr(b, key, { max: 1000 }).map((x, i) => {
+    const o = k.obj(x, `${key}[${i}]`);
+    const id = k.uuid(o, 'id', { required: true, field: `${key}[${i}].id` });
+    const t = o.propertyType;
+    if (t !== null && t !== undefined && !PROPERTY_TYPES.includes(t as PropertyType)) k.fail(`${key}[${i}].propertyType`, PROPERTY_TYPES.join(', '));
+    return { id: id!, type: (t ?? null) as PropertyType | null };
+  });
+  const classes = read('assetClasses'), cats = read('categories');
+  k.done();
+  for (const x of classes) await c.query(`UPDATE asset_class SET tax_property_type = $2, updated_at = now(), updated_by = $3, version = version + 1 WHERE id = $1`, [x.id, x.type, p.userId]);
+  for (const x of cats) await c.query(`UPDATE category SET tax_property_type = $2, updated_at = now(), updated_by = $3, version = version + 1 WHERE id = $1`, [x.id, x.type, p.userId]);
+  return listPropertyTypes(c);
 }

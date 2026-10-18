@@ -1693,6 +1693,8 @@ exemptionAmount | number | Y | 면제 금액
 factorSet | enum(GA_DOR,AL_ADOR,CA_BOE581,GENERIC_SL) | Y | 계수표 종류
 typicalMillage | number | N | 대표 밀리지(추정용)
 note | string | Y | 신고 안내
+includeVehicles | bool | Y | 차량 포함 기본값
+includeCip | bool | Y | 건설중자산 포함 기본값
 ''')
 schema('TaxReferenceTable', '참고 계수표 요약', '''
 factorSet | enum(GA_DOR,AL_ADOR,CA_BOE581,GENERIC_SL) | Y | 계수표 종류
@@ -1705,6 +1707,7 @@ schema('TaxReference', '재산세 참고값', '''
 presets | [TaxStatePreset] | Y | 주별 기본값
 factorSets | [string] | Y | 계수표 종류
 referenceTables | [TaxReferenceTable] | Y | 불러올 수 있는 참고표
+propertyTypes | [string] | Y | 재산세 구분
 ''')
 schema('TaxSiteRef', '관할에 속한 사이트', '''
 id | uuid | Y | 사이트
@@ -1728,6 +1731,8 @@ millage | number | Y | 세율(평가액 $1,000당)
 exemptionMode | enum(NONE,THRESHOLD,DEDUCT) | Y | 면제 방식(THRESHOLD: 합계가 금액 이하면 전액, DEDUCT: 금액만큼 공제)
 exemptionAmount | number | Y | 면제 금액
 factorSet | enum(GA_DOR,AL_ADOR,CA_BOE581,GENERIC_SL) | Y | 계수표 종류
+includeVehicles | bool | Y | 차량(VEHICLE) 포함(TX)
+includeCip | bool | Y | 건설중자산(CIP) 원가 포함
 notes | string | N | 메모
 isActive | bool | Y | 사용
 sites | [TaxSiteRef] | N | 연결된 사이트
@@ -1750,6 +1755,8 @@ millage | number | N | 밀리지(기본 0)
 exemptionMode | enum(NONE,THRESHOLD,DEDUCT) | N | 면제 방식
 exemptionAmount | number | N | 면제 금액
 factorSet | enum(GA_DOR,AL_ADOR,CA_BOE581,GENERIC_SL) | Y | 계수표 종류
+includeVehicles | bool | N | 차량 포함(기본: 주별 값)
+includeCip | bool | N | 건설중자산 포함(기본: 주별 값)
 notes | string(2000) | N | 메모
 isActive | bool | N | 사용
 ''')
@@ -1829,6 +1836,7 @@ items | [TaxFilingSummary] | Y | 행(최대 500)
 years | [int] | Y | 기록이 있는 연도
 ''')
 schema('TaxScheduleRow', '취득연도별 요약', '''
+propertyType | enum(EQUIPMENT,LEASEHOLD,VEHICLE,CIP,LEASED_IN,REAL_PROPERTY,INTANGIBLE,EXCLUDED) | Y | 재산세 구분
 acquisitionYear | int | Y | 취득 연도
 lifeClass | string | Y | 구분
 count | int | Y | 자산 수
@@ -1853,7 +1861,8 @@ estimatedTax | number | Y | 예상 세액
 params | object | Y | 계산 당시 관할 값(평가율·밀리지·면제·계수표 연도·출처·전년 신고 연도)
 warnings | [TaxWarning] | Y | 경고
 notes | string | N | 메모
-schedule | [TaxScheduleRow] | Y | 취득연도 × 구분 요약
+byType | [TaxTypeTotal] | Y | 재산세 구분별 합계
+schedule | [TaxScheduleRow] | Y | 재산세 구분 × 취득연도 × 내용연수 구분 요약
 changes | object | Y | {NEW, CARRIED, DISPOSED: {count, cost}}
 prior | object | N | 전년 신고 요약 {id, taxYear, status, totalCost, totalMarketValue, assessedValue, estimatedTax, actualTax}
 ''')
@@ -1863,6 +1872,7 @@ assetTag | string | Y | 자산 태그
 description | string | Y | 설명
 categoryName | string | N | 카테고리
 lifeClass | string | N | 구분
+propertyType | enum(EQUIPMENT,LEASEHOLD,VEHICLE,CIP,LEASED_IN,REAL_PROPERTY,INTANGIBLE,EXCLUDED) | Y | 재산세 구분
 acquisitionDate | date | N | 취득일(SAP 자본화일 → 구매일 → 등록일)
 acquisitionYear | int | N | 취득 연도
 originalCost | number | N | 원가(없으면 원가 모름)
@@ -1876,6 +1886,39 @@ change | enum(NEW,CARRIED,DISPOSED) | Y | 전년 대비
 disposalDate | date | N | 처분일(DISPOSED)
 ''')
 lst('TaxFilingLine', '신고 자산 행')
+schema('TaxTypeTotal', '재산세 구분별 합계', '''
+propertyType | enum(EQUIPMENT,LEASEHOLD,VEHICLE,CIP,LEASED_IN,REAL_PROPERTY,INTANGIBLE,EXCLUDED) | Y | 구분
+count | int | Y | 자산 수
+cost | number | Y | 원가
+marketValue | number | Y | 공정가치
+''')
+schema('TaxPropertyClass', '자산클래스의 재산세 구분', '''
+id | uuid | Y | 자산클래스
+classCode | string | Y | ANLKL
+name | string | Y | 이름
+propertyType | enum(EQUIPMENT,LEASEHOLD,VEHICLE,CIP,LEASED_IN,REAL_PROPERTY,INTANGIBLE,EXCLUDED) | N | 지정한 구분(비면 추정값 사용)
+suggested | enum(EQUIPMENT,LEASEHOLD,VEHICLE,CIP,LEASED_IN,REAL_PROPERTY,INTANGIBLE,EXCLUDED) | Y | 클래스 이름으로 추정한 구분
+''')
+schema('TaxPropertyCategory', '카테고리의 재산세 구분', '''
+id | uuid | Y | 카테고리
+categoryCode | string | Y | 코드
+name | string | Y | 이름
+propertyType | enum(EQUIPMENT,LEASEHOLD,VEHICLE,CIP,LEASED_IN,REAL_PROPERTY,INTANGIBLE,EXCLUDED) | N | 지정한 구분(자산클래스보다 우선)
+classCode | string | N | 기본 자산클래스
+inherited | enum(EQUIPMENT,LEASEHOLD,VEHICLE,CIP,LEASED_IN,REAL_PROPERTY,INTANGIBLE,EXCLUDED) | N | 기본 자산클래스에서 오는 구분
+''')
+schema('TaxPropertyTypes', '재산세 구분 설정', '''
+assetClasses | [TaxPropertyClass] | Y | 자산클래스
+categories | [TaxPropertyCategory] | Y | 카테고리
+''')
+schema('TaxPropertyTypeEntry', '재산세 구분 지정', '''
+id | uuid | Y | 자산클래스 또는 카테고리
+propertyType | enum(EQUIPMENT,LEASEHOLD,VEHICLE,CIP,LEASED_IN,REAL_PROPERTY,INTANGIBLE,EXCLUDED) | N | 구분(null이면 지정 해제)
+''')
+schema('TaxPropertyTypesInput', '재산세 구분 저장(보낸 항목만)', '''
+assetClasses | [TaxPropertyTypeEntry] | N | 자산클래스
+categories | [TaxPropertyTypeEntry] | N | 카테고리
+''')
 schema('TaxFilingCreate', '신고 자료 만들기', '''
 companyId | uuid | Y | 회사
 jurisdictionId | uuid | Y | 관할
@@ -1911,6 +1954,11 @@ W('재산세','POST','/tax/factors:load-reference','loadTaxReferenceFactors','�
 W('재산세','GET','/tax/class-map','listTaxClassMap','카테고리별 내용연수 구분',TX,None,'TaxClassMap','200, 400','category, tax_class_map','ALM-260',
   ['지정이 없으면 카테고리(없으면 자산클래스) 내용연수로 기본 구분을 정한다.'],params=[('factorSet','query','string','Y',FS)])
 W('재산세','PUT','/tax/class-map','replaceTaxClassMap','구분 매핑 저장','ASSET_ACCOUNTANT','TaxClassMapInput','TaxClassMap','200, 400','tax_class_map','ALM-260',[ '보낸 카테고리만 바꾼다.'])
+W('재산세','GET','/tax/property-types','listTaxPropertyTypes','재산세 구분(자산클래스·카테고리)',TX,None,'TaxPropertyTypes','200','asset_class, category','ALM-260',
+  ['구분: 카테고리 지정 → 자산클래스 지정 → 클래스 이름 추정 → EQUIPMENT 순으로 정한다.',
+   'LEASED_IN(임차 자산, 소유자가 신고)·REAL_PROPERTY·INTANGIBLE·EXCLUDED는 신고에서 빠지고, VEHICLE·CIP는 관할 설정(includeVehicles·includeCip)을 따른다.'])
+W('재산세','PUT','/tax/property-types','replaceTaxPropertyTypes','재산세 구분 저장','ASSET_ACCOUNTANT','TaxPropertyTypesInput','TaxPropertyTypes','200, 400','asset_class, category','ALM-260',
+  ['보낸 자산클래스·카테고리만 바꾼다. null이면 지정 해제. IF-MD-01 수신은 이 값을 덮지 않는다.'])
 W('재산세','GET','/tax/filings','listTaxFilings','신고 목록(과거 기록)',TX,None,'TaxFilingList','200','tax_filing, tax_jurisdiction, company','ALM-260',[ '최근 연도부터. 최대 500건.'],
   params=[('taxYear','query','int','N','연도'),('state','query','string','N','주'),('companyId','query','uuid','N','회사'),('jurisdictionId','query','uuid','N','관할'),('status','query','string','N','상태(쉼표 구분)')])
 W('재산세','POST','/tax/filings','createTaxFiling','신고 자료 만들기','ASSET_ACCOUNTANT','TaxFilingCreate','TaxFilingDetail','201, 400, 404, 409','tax_filing, tax_filing_line, asset, v_asset_value_latest','ALM-260',

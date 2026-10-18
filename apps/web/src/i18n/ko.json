@@ -845,7 +845,8 @@
       "factors": "계수표",
       "schedule": "취득연도별",
       "lines": "자산 ({{n}})",
-      "changes": "전년 대비"
+      "changes": "전년 대비",
+      "types": "재산세 구분"
     },
     "col": {
       "year": "과세 연도",
@@ -880,7 +881,9 @@
       "site": "사이트·룸",
       "change": "변동",
       "disposed": "처분일",
-      "assessed": "평가액"
+      "assessed": "평가액",
+      "propertyType": "재산세 구분",
+      "assetClass": "자산클래스"
     },
     "status": {
       "DRAFT": "작성 중",
@@ -983,6 +986,26 @@
       "deleted": "삭제했습니다"
     },
     "searchFilings": "회사·카운티·접수 번호 검색",
-    "futureLien": "기준일이 미래라 오늘 보유 자산으로 추정합니다"
+    "futureLien": "기준일이 미래라 오늘 보유 자산으로 추정합니다",
+    "includeVehicles": "차량 포함(TX는 사업용 차량 신고, GA·AL·CA는 차량 등록 때 과세)",
+    "includeCip": "건설중자산 포함(원가 그대로)",
+    "ptype": {
+      "EQUIPMENT": "장비·가구·기계",
+      "LEASEHOLD": "임차개량",
+      "VEHICLE": "차량",
+      "CIP": "건설중자산",
+      "LEASED_IN": "임차 자산(소유자가 신고)",
+      "REAL_PROPERTY": "부동산(토지·건물)",
+      "INTANGIBLE": "무형(소프트웨어·영업권)",
+      "EXCLUDED": "제외"
+    },
+    "ptypeGuess": "추정: {{type}}",
+    "ptypeInherit": "자산클래스: {{type}}",
+    "ptypeNone": "—",
+    "ptypeUnset": "미지정",
+    "ptypeNote": "관할 사이트의 모든 자산을 재산세 구분별로 신고합니다. 카테고리 지정이 자산클래스보다 우선하고, 지정이 없는 클래스는 이름으로 추정합니다. 임차 자산·부동산·무형·제외는 신고하지 않고, 차량·건설중자산은 관할 설정을 따릅니다.",
+    "ptypeClasses": "자산클래스",
+    "ptypeCategories": "카테고리(예외 지정)",
+    "ptypeCategoriesNote": "자산클래스와 구분이 다를 때만 지정합니다."
   }
 }

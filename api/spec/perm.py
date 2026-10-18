@@ -129,7 +129,7 @@ OPS = {
     'resolveUnregistered': 'count.manage', 'closeCampaign': 'count.manage', 'cancelCampaign': 'count.manage', 'postCountResults': 'count.post',
     # property tax
     'getTaxReference': 'tax.read', 'listTaxJurisdictions': 'tax.read', 'listTaxFactors': 'tax.read', 'listTaxClassMap': 'tax.read',
-    'listTaxFilings': 'tax.read', 'getTaxFiling': 'tax.read', 'listTaxFilingLines': 'tax.read', 'exportTaxFiling': 'tax.read',
+    'listTaxFilings': 'tax.read', 'listTaxPropertyTypes': 'tax.read', 'replaceTaxPropertyTypes': 'tax.manage', 'getTaxFiling': 'tax.read', 'listTaxFilingLines': 'tax.read', 'exportTaxFiling': 'tax.read',
     'createTaxJurisdiction': 'tax.manage', 'patchTaxJurisdiction': 'tax.manage', 'setTaxJurisdictionSites': 'tax.manage',
     'replaceTaxFactors': 'tax.manage', 'loadTaxReferenceFactors': 'tax.manage', 'replaceTaxClassMap': 'tax.manage',
     'createTaxFiling': 'tax.manage', 'patchTaxFiling': 'tax.manage', 'deleteTaxFiling': 'tax.manage',

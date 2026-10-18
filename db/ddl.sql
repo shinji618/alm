@@ -46,6 +46,7 @@ CREATE TYPE security_event_type AS ENUM ('LOGIN', 'LOGIN_DENIED', 'LOGOUT', 'ACC
 CREATE TYPE idp_type AS ENUM ('SAML', 'OIDC');  -- IdP 연동 방식
 CREATE TYPE tax_filing_status AS ENUM ('DRAFT', 'FILED', 'ASSESSED');  -- 재산세 신고 상태
 CREATE TYPE tax_exemption_mode AS ENUM ('NONE', 'THRESHOLD', 'DEDUCT');  -- 재산세 면제 방식
+CREATE TYPE tax_property_type AS ENUM ('EQUIPMENT', 'LEASEHOLD', 'VEHICLE', 'CIP', 'LEASED_IN', 'REAL_PROPERTY', 'INTANGIBLE', 'EXCLUDED');  -- 재산세 자산 구분
 
 -- 테넌트: 서비스 고객사. 단일 고객이면 1행
 CREATE TABLE tenant (
@@ -324,6 +325,7 @@ CREATE TABLE asset_class (
   default_useful_life_years integer,
   is_manual boolean NOT NULL DEFAULT false,
   is_active boolean NOT NULL DEFAULT true,
+  tax_property_type tax_property_type,
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -340,6 +342,7 @@ COMMENT ON COLUMN asset_class.is_capitalized IS '자본화 대상. true면 등�
 COMMENT ON COLUMN asset_class.default_useful_life_years IS '내용연수 기본값(년)';
 COMMENT ON COLUMN asset_class.is_manual IS 'ALM에서 직접 등록(SAP 연계를 쓰지 않는 회사용). SAP 수신이 비활성화하지 않고, SAP 신규 등록 요청에 쓸 수 없다. 같은 코드가 SAP에서 오면 SAP 것으로 바뀜';
 COMMENT ON COLUMN asset_class.is_active IS '사용 여부';
+COMMENT ON COLUMN asset_class.tax_property_type IS '재산세 구분(장비·임차개량·차량·건설중·임차자산·부동산·무형·제외). 비면 클래스 이름으로 추정';
 COMMENT ON COLUMN asset_class.created_at IS '생성 일시';
 COMMENT ON COLUMN asset_class.created_by IS '생성자';
 COMMENT ON COLUMN asset_class.updated_at IS '변경 일시';
@@ -431,6 +434,7 @@ CREATE TABLE category (
   useful_life_years integer,
   is_ci boolean NOT NULL DEFAULT false,
   is_active boolean NOT NULL DEFAULT true,
+  tax_property_type tax_property_type,
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -447,6 +451,7 @@ COMMENT ON COLUMN category.default_asset_class_id IS '등록 시 기본 자산�
 COMMENT ON COLUMN category.useful_life_years IS '내용연수 경과 판정 기준(년)';
 COMMENT ON COLUMN category.is_ci IS '등록 시 CMDB CI 자동 생성';
 COMMENT ON COLUMN category.is_active IS '사용 여부';
+COMMENT ON COLUMN category.tax_property_type IS '재산세 구분(자산클래스보다 우선). 비면 자산클래스 구분';
 COMMENT ON COLUMN category.created_at IS '생성 일시';
 COMMENT ON COLUMN category.created_by IS '생성자';
 COMMENT ON COLUMN category.updated_at IS '변경 일시';
@@ -2221,6 +2226,8 @@ CREATE TABLE tax_jurisdiction (
   millage numeric(9,4) NOT NULL DEFAULT 0,
   exemption_mode tax_exemption_mode NOT NULL DEFAULT 'NONE',
   exemption_amount numeric(15,2) NOT NULL DEFAULT 0,
+  include_vehicles boolean NOT NULL DEFAULT false,
+  include_cip boolean NOT NULL DEFAULT true,
   factor_set varchar(20) NOT NULL,
   notes text,
   is_active boolean NOT NULL DEFAULT true,
@@ -2246,6 +2253,8 @@ COMMENT ON COLUMN tax_jurisdiction.assessment_ratio IS '평가율(공정가치 �
 COMMENT ON COLUMN tax_jurisdiction.millage IS '세율(평가액 $1,000당, 밀리지). $100당 세율은 ×10';
 COMMENT ON COLUMN tax_jurisdiction.exemption_mode IS '면제 방식: THRESHOLD = 공정가치 합계가 금액 이하면 전액 면제, DEDUCT = 금액만큼 차감';
 COMMENT ON COLUMN tax_jurisdiction.exemption_amount IS '면제 금액(공정가치 기준)';
+COMMENT ON COLUMN tax_jurisdiction.include_vehicles IS '차량(VEHICLE)을 신고에 포함(TX). GA·AL·CA는 차량 등록 때 따로 과세';
+COMMENT ON COLUMN tax_jurisdiction.include_cip IS '건설중자산(CIP)을 원가 그대로 포함';
 COMMENT ON COLUMN tax_jurisdiction.factor_set IS '감가 계수표 (GA_DOR, AL_ADOR, CA_BOE581, GENERIC_SL)';
 COMMENT ON COLUMN tax_jurisdiction.notes IS '메모(제출처 주소·온라인 신고 사이트 등)';
 COMMENT ON COLUMN tax_jurisdiction.is_active IS '사용 여부';
@@ -2389,6 +2398,7 @@ CREATE TABLE tax_filing_line (
   description varchar(50) NOT NULL,
   category_name varchar(60),
   life_class varchar(10),
+  property_type tax_property_type NOT NULL DEFAULT 'EQUIPMENT',
   acquisition_date date,
   acquisition_year integer,
   original_cost numeric(15,2),
@@ -2414,6 +2424,7 @@ COMMENT ON COLUMN tax_filing_line.asset_tag IS '자산태그';
 COMMENT ON COLUMN tax_filing_line.description IS '자산명';
 COMMENT ON COLUMN tax_filing_line.category_name IS '카테고리';
 COMMENT ON COLUMN tax_filing_line.life_class IS '내용연수 구분';
+COMMENT ON COLUMN tax_filing_line.property_type IS '재산세 구분';
 COMMENT ON COLUMN tax_filing_line.acquisition_date IS '취득일';
 COMMENT ON COLUMN tax_filing_line.acquisition_year IS '취득 연도';
 COMMENT ON COLUMN tax_filing_line.original_cost IS '원가(SAP 취득가, 없으면 ALM 구매가). 비면 원가 모름';

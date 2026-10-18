@@ -11,12 +11,12 @@ import { formatDate, formatUsd } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
 import { useSession } from '@/lib/session';
 import type { Lookups } from '../assets/types';
-import { FACTOR_SETS, FILING_STATUSES, filingTone, type ClassMapItem, type ExemptionMode, type FactorSet, type FactorTable, type FilingDetail, type FilingSummary,
-  type Jurisdiction, type TaxReference } from './types';
+import { FACTOR_SETS, FILING_STATUSES, filingTone, PROPERTY_TYPES, type ClassMapItem, type ExemptionMode, type FactorSet, type FactorTable, type FilingDetail,
+  type FilingSummary, type Jurisdiction, type PropertyType, type PropertyTypes, type TaxReference } from './types';
 import s from '../assets/assets.module.css';
 import c from './tax.module.css';
 
-type Tab = 'filings' | 'jurisdictions' | 'factors';
+type Tab = 'filings' | 'jurisdictions' | 'types' | 'factors';
 const pad2 = (n: number) => String(n).padStart(2, '0');
 const lienOf = (j: Jurisdiction, year: string) => `${year}-${pad2(j.lienMonth)}-${pad2(j.lienDay)}`;
 /** 다음에 낼 신고의 과세 연도: 올해 기한이 지났으면 내년(예: GA 10월이면 2027년 신고 = 2027-01-01 기준 보유 자산) */
@@ -37,9 +37,11 @@ export function TaxHome() {
       <ViewHeader crumb="ALM-260" title={t('nav.propertyTax')} description={t('tax.description')} />
       <Panel padded={false}>
         <Tabs<Tab> label={t('nav.propertyTax')} value={tab} onChange={(v) => setSp(v === 'filings' ? new URLSearchParams() : new URLSearchParams({ tab: v }), { replace: true })}
-          items={[{ value: 'filings', label: t('tax.tab.filings') }, { value: 'jurisdictions', label: t('tax.tab.jurisdictions') }, { value: 'factors', label: t('tax.tab.factors') }]} />
+          items={[{ value: 'filings', label: t('tax.tab.filings') }, { value: 'jurisdictions', label: t('tax.tab.jurisdictions') },
+            { value: 'types', label: t('tax.tab.types') }, { value: 'factors', label: t('tax.tab.factors') }]} />
         {tab === 'filings' && <Filings />}
         {tab === 'jurisdictions' && <Jurisdictions />}
+        {tab === 'types' && <PropertyTypesTab />}
         {tab === 'factors' && <Factors />}
       </Panel>
     </>
@@ -185,7 +187,8 @@ function Jurisdictions() {
 }
 
 interface JForm { state: string; county: string; name: string; taxable: boolean; formCode: string; lienMonth: string; lienDay: string; dueMonth: string; dueDay: string;
-  assessmentRatio: string; millage: string; exemptionMode: ExemptionMode; exemptionAmount: string; factorSet: FactorSet; notes: string; isActive: boolean; siteIds: string[] }
+  assessmentRatio: string; millage: string; exemptionMode: ExemptionMode; exemptionAmount: string; factorSet: FactorSet; notes: string; isActive: boolean; siteIds: string[];
+  includeVehicles: boolean; includeCip: boolean }
 
 function JurisdictionDrawer({ value, reference, onClose, onSaved }: { value?: Jurisdiction; reference: TaxReference; onClose: () => void; onSaved: () => void }) {
   const { t } = useTranslation();
@@ -196,7 +199,7 @@ function JurisdictionDrawer({ value, reference, onClose, onSaved }: { value?: Ju
     formCode: value?.formCode ?? '', lienMonth: str(value?.lienMonth ?? 1), lienDay: str(value?.lienDay ?? 1), dueMonth: str(value?.dueMonth), dueDay: str(value?.dueDay),
     assessmentRatio: str(value?.assessmentRatio ?? 1), millage: str(value?.millage ?? 0), exemptionMode: value?.exemptionMode ?? 'NONE',
     exemptionAmount: str(value?.exemptionAmount ?? 0), factorSet: value?.factorSet ?? 'GENERIC_SL', notes: value?.notes ?? '', isActive: value?.isActive ?? true,
-    siteIds: value?.sites?.map((x) => x.id) ?? [] }));
+    siteIds: value?.sites?.map((x) => x.id) ?? [], includeVehicles: value?.includeVehicles ?? false, includeCip: value?.includeCip ?? true }));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const preset = reference.presets.find((p) => p.state === f.state.toUpperCase());
@@ -205,7 +208,7 @@ function JurisdictionDrawer({ value, reference, onClose, onSaved }: { value?: Ju
     const p = reference.presets.find((x) => x.state === st);
     setF((v) => (p ? { ...v, state: st, taxable: p.taxable, formCode: p.formCode ?? '', lienMonth: str(p.lienMonth), lienDay: str(p.lienDay), dueMonth: str(p.dueMonth),
       dueDay: str(p.dueDay), assessmentRatio: str(p.assessmentRatio), millage: str(p.typicalMillage ?? 0), exemptionMode: p.exemptionMode,
-      exemptionAmount: str(p.exemptionAmount), factorSet: p.factorSet, name: v.name || (v.county ? `${v.county} County, ${st}` : '') } : { ...v, state: st }));
+      exemptionAmount: str(p.exemptionAmount), factorSet: p.factorSet, includeVehicles: p.includeVehicles, includeCip: p.includeCip, name: v.name || (v.county ? `${v.county} County, ${st}` : '') } : { ...v, state: st }));
   };
   const toggleSite = (id: string) => setF((v) => ({ ...v, siteIds: v.siteIds.includes(id) ? v.siteIds.filter((x) => x !== id) : [...v.siteIds, id] }));
   const save = async () => {
@@ -218,7 +221,8 @@ function JurisdictionDrawer({ value, reference, onClose, onSaved }: { value?: Ju
     const num = (x: string) => (x.trim() === '' ? undefined : Number(x));
     const body = { state: f.state.toUpperCase(), county: f.county.trim(), name: f.name.trim(), taxable: f.taxable, formCode: f.formCode.trim() || undefined,
       lienMonth: num(f.lienMonth), lienDay: num(f.lienDay), dueMonth: num(f.dueMonth), dueDay: num(f.dueDay), assessmentRatio: num(f.assessmentRatio),
-      millage: num(f.millage), exemptionMode: f.exemptionMode, exemptionAmount: num(f.exemptionAmount), factorSet: f.factorSet, notes: f.notes.trim() || undefined, isActive: f.isActive };
+      millage: num(f.millage), exemptionMode: f.exemptionMode, exemptionAmount: num(f.exemptionAmount), factorSet: f.factorSet, notes: f.notes.trim() || undefined, isActive: f.isActive,
+      includeVehicles: f.includeVehicles, includeCip: f.includeCip };
     setSaving(true);
     try {
       const j = value ? await api.patch<Jurisdiction>(`/tax/jurisdictions/${value.id}`, body) : await api.post<Jurisdiction>('/tax/jurisdictions', body);
@@ -253,6 +257,8 @@ function JurisdictionDrawer({ value, reference, onClose, onSaved }: { value?: Ju
         <TextField label={t('tax.exemptionAmount')} type="number" min={0} value={f.exemptionAmount} onChange={set('exemptionAmount')} disabled={f.exemptionMode === 'NONE'} />
         <SelectField label={t('tax.col.factorSet')} value={f.factorSet} onChange={set('factorSet')} options={FACTOR_SETS.map((x) => ({ value: x, label: t(`tax.factorSet.${x}`) }))} />
         <CheckboxField label={t('tax.taxable')} checked={f.taxable} onChange={(e) => setF((v) => ({ ...v, taxable: e.target.checked }))} />
+        <CheckboxField label={t('tax.includeVehicles')} checked={f.includeVehicles} onChange={(e) => setF((v) => ({ ...v, includeVehicles: e.target.checked }))} />
+        <CheckboxField label={t('tax.includeCip')} checked={f.includeCip} onChange={(e) => setF((v) => ({ ...v, includeCip: e.target.checked }))} />
         <CheckboxField label={t('tax.active')} checked={f.isActive} onChange={(e) => setF((v) => ({ ...v, isActive: e.target.checked }))} />
         <fieldset className={c.sites} aria-label={t('tax.col.sites')}>
           <legend className="small">{t('tax.col.sites')}</legend>
@@ -366,6 +372,58 @@ function Factors() {
       <Panel title={t('tax.classMap')} subtitle={t('tax.classMapNote')} padded={false}>
         <DataTable rows={cm.data?.items ?? []} columns={cmColumns} rowId={(y) => y.categoryId} loading={cm.loading} empty={<EmptyState message={t('common.noResults')} />} />
       </Panel>
+    </>
+  );
+}
+
+// ---------------- 재산세 구분(자산클래스·카테고리) ----------------
+//   구분: 카테고리 지정 → 자산클래스 지정 → 클래스 이름 추정. 임차 자산·부동산·무형·제외는 신고에서 빠지고, 차량·건설중은 관할 설정을 따른다
+function PropertyTypesTab() {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const { can } = useSession();
+  const manage = can('tax.manage');
+  const r = useAsync((sig) => api.get<PropertyTypes>('/tax/property-types', sig), []);
+  const save = async (kind: 'assetClasses' | 'categories', id: string, v: string) => {
+    try {
+      await api.put('/tax/property-types', { [kind]: [{ id, propertyType: v || null }] });
+      toast.show(t('common.saved'), 'success');
+      r.reload();
+    } catch (e) { toast.show(e instanceof Error ? e.message : String(e), 'error'); }
+  };
+  const label = (x?: PropertyType) => (x ? t(`tax.ptype.${x}`) : '—');
+  const pick = (kind: 'assetClasses' | 'categories', id: string, value: PropertyType | undefined, fallback: string, name: string) => (manage ? (
+    <select aria-label={`${t('tax.col.propertyType')} ${name}`} value={value ?? ''} onChange={(e) => void save(kind, id, e.target.value)}>
+      <option value="">{fallback}</option>
+      {PROPERTY_TYPES.map((o) => <option key={o} value={o}>{t(`tax.ptype.${o}`)}</option>)}
+    </select>
+  ) : <span>{value ? label(value) : fallback}</span>);
+  const classCols: Column<PropertyTypes['assetClasses'][number]>[] = [
+    { key: 'classCode', label: t('tax.col.assetClass'), render: (x) => <span className="mono">{x.classCode}</span> },
+    { key: 'name', label: t('tax.col.name') },
+    { key: 'propertyType', label: t('tax.col.propertyType'),
+      render: (x) => pick('assetClasses', x.id, x.propertyType, t('tax.ptypeGuess', { type: label(x.suggested) }), x.classCode) },
+    { key: 'status', label: '', render: (x) => (x.propertyType ? null : <StatusPill tone="warn">{t('tax.ptypeUnset')}</StatusPill>) },
+  ];
+  const catCols: Column<PropertyTypes['categories'][number]>[] = [
+    { key: 'name', label: t('tax.col.category') },
+    { key: 'classCode', label: t('tax.col.assetClass'), render: (x) => <span className="mono">{x.classCode ?? '—'}</span> },
+    { key: 'propertyType', label: t('tax.col.propertyType'),
+      render: (x) => pick('categories', x.id, x.propertyType, x.inherited ? t('tax.ptypeInherit', { type: label(x.inherited) }) : t('tax.ptypeNone'), x.name) },
+  ];
+  return (
+    <>
+      <p className="small faint" style={{ padding: '10px 12px 0' }}>{t('tax.ptypeNote')}</p>
+      {r.error ? <div className={s.notice} role="alert">{t('common.error', { message: r.error.message })}</div> : (
+        <>
+          <Panel title={t('tax.ptypeClasses')} padded={false}>
+            <DataTable rows={r.data?.assetClasses ?? []} columns={classCols} rowId={(x) => x.id} loading={r.loading} empty={<EmptyState message={t('common.noResults')} />} />
+          </Panel>
+          <Panel title={t('tax.ptypeCategories')} subtitle={t('tax.ptypeCategoriesNote')} padded={false}>
+            <DataTable rows={r.data?.categories ?? []} columns={catCols} rowId={(x) => x.id} loading={r.loading} empty={<EmptyState message={t('common.noResults')} />} />
+          </Panel>
+        </>
+      )}
     </>
   );
 }

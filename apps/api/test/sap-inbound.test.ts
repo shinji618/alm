@@ -156,6 +156,14 @@ test('IF-AA-01: 새로 만들기·태그로 연결·변경 이력·비활성·E1
   assert.deepEqual((await q(`SELECT e.event_type FROM asset_event e JOIN asset a ON a.id = e.asset_id WHERE a.asset_tag = 'BSG-0001' ORDER BY e.created_at, e.event_type`))
     .map((e) => e.event_type), ['SAP_SYNCED', 'SAP_SYNCED', 'RETIRED']);
 
+  // 사이트가 없는 SAP 자산: 룸이 없어도 site.sap_location이 같은 사이트로 채운다(ALM에서 정한 사이트는 덮지 않음)
+  await q(`INSERT INTO site (id, tenant_id, site_code, name, sap_location) VALUES (gen_random_uuid(), $1, 'SAV', 'Savannah', 'R1')`, [tenantId]);
+  const loc = await post('/sap/assets:upsert', { batchId: 'AA-3', records: [asset('100001', { location: 'R1' })] });
+  assert.deepEqual(loc.body.results, []);
+  assert.equal((await q(`SELECT s.site_code FROM asset a JOIN site s ON s.id = a.site_id WHERE a.asset_tag = 'S100001'`))[0].site_code, 'SAV');
+  assert.deepEqual((await post('/sap/assets:upsert', { batchId: 'AA-4', records: [asset('100001', { location: 'R1' })] })).body.results,
+    [{ key: '1000/100001/0000', status: 'SKIPPED' }], '사이트가 있으면 다시 바꾸지 않음');
+
   // 코스트센터가 들어오면 E104 건 자동 재처리(한 번만)
   await md('COST_CENTER', [{ controllingArea: 'A000', costCenter: 'CC100', name: 'IT Ops', companyCode: '1000', profitCenter: 'PC1' },
     { controllingArea: 'A000', costCenter: 'CC300', name: 'Plant', companyCode: '1000' }]);

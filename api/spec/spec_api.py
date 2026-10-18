@@ -282,8 +282,8 @@ lastCountDate | date | N | ANLA-IVDAT
 inventoryNote | string(15) | N | ANLA-INVZU
 costCenter | string(10) | Y | ANLZ-KOSTL
 profitCenter | string(10) | N | ANLZ-PRCTR
-plant | string(4) | N | ANLZ-WERKS
-location | string(10) | N | ANLZ-STORT = ALM 룸 코드
+plant | string(4) | N | ANLZ-WERKS. 룸·위치로 사이트를 못 찾으면 이 플랜트의 사이트(하나일 때)
+location | string(10) | N | ANLZ-STORT = ALM 룸 코드. 룸이 없으면 site.sap_location이 같은 사이트
 room | string(8) | N | ANLZ-RAUMNR
 changedAt | datetime | Y | 변경 시각(델타 기준)
 ''')

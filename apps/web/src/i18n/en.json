@@ -845,7 +845,8 @@
       "factors": "Factor tables",
       "schedule": "By year acquired",
       "lines": "Assets ({{n}})",
-      "changes": "Changes vs prior year"
+      "changes": "Changes vs prior year",
+      "types": "Property types"
     },
     "col": {
       "year": "Tax year",
@@ -880,7 +881,9 @@
       "site": "Site / room",
       "change": "Change",
       "disposed": "Disposed",
-      "assessed": "Assessed value"
+      "assessed": "Assessed value",
+      "propertyType": "Property type",
+      "assetClass": "Asset class"
     },
     "status": {
       "DRAFT": "Draft",
@@ -983,6 +986,26 @@
       "deleted": "Deleted"
     },
     "searchFilings": "Search company, county or reference",
-    "futureLien": "The lien date is in the future: estimated from assets held today"
+    "futureLien": "The lien date is in the future: estimated from assets held today",
+    "includeVehicles": "Include vehicles (TX renders business vehicles; GA/AL/CA tax them at registration)",
+    "includeCip": "Include construction in progress (at cost)",
+    "ptype": {
+      "EQUIPMENT": "Furniture, fixtures, machinery & equipment",
+      "LEASEHOLD": "Leasehold improvements",
+      "VEHICLE": "Vehicles",
+      "CIP": "Construction in progress",
+      "LEASED_IN": "Leased from others (owner reports)",
+      "REAL_PROPERTY": "Real property (land, buildings)",
+      "INTANGIBLE": "Intangible (software, goodwill)",
+      "EXCLUDED": "Excluded"
+    },
+    "ptypeGuess": "Guess: {{type}}",
+    "ptypeInherit": "From asset class: {{type}}",
+    "ptypeNone": "—",
+    "ptypeUnset": "Not set",
+    "ptypeNote": "Every asset at a jurisdiction's sites is reported by property type. Category beats asset class; unset classes are guessed from the class name. Leased-from-others, real property, intangible and excluded are never reported; vehicles and CIP follow the jurisdiction setting.",
+    "ptypeClasses": "Asset classes",
+    "ptypeCategories": "Categories (override)",
+    "ptypeCategoriesNote": "Set only when a category differs from its asset class."
   }
 }

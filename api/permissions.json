@@ -477,6 +477,8 @@
   "listTaxFactors": "tax.read",
   "listTaxClassMap": "tax.read",
   "listTaxFilings": "tax.read",
+  "listTaxPropertyTypes": "tax.read",
+  "replaceTaxPropertyTypes": "tax.manage",
   "getTaxFiling": "tax.read",
   "listTaxFilingLines": "tax.read",
   "exportTaxFiling": "tax.read",

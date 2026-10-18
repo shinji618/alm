@@ -48,6 +48,7 @@ ENUMS = {
  'IdpType': ('IdP 연동 방식', ['SAML','OIDC']),
  'TaxFilingStatus': ('재산세 신고 상태', ['DRAFT','FILED','ASSESSED']),
  'TaxExemptionMode': ('재산세 면제 방식', ['NONE','THRESHOLD','DEDUCT']),
+ 'TaxPropertyType': ('재산세 자산 구분', ['EQUIPMENT','LEASEHOLD','VEHICLE','CIP','LEASED_IN','REAL_PROPERTY','INTANGIBLE','EXCLUDED']),
 }
 
 DOMAINS = [
@@ -140,6 +141,7 @@ is_capitalized | bool | NN =true | 자본화 대상. true면 등록 시 SAP 생�
 default_useful_life_years | int | | 내용연수 기본값(년)
 is_manual | bool | NN =false | ALM에서 직접 등록(SAP 연계를 쓰지 않는 회사용). SAP 수신이 비활성화하지 않고, SAP 신규 등록 요청에 쓸 수 없다. 같은 코드가 SAP에서 오면 SAP 것으로 바뀜
 is_active | bool | NN =true | 사용 여부
+tax_property_type | E:TaxPropertyType | | 재산세 구분(장비·임차개량·차량·건설중·임차자산·부동산·무형·제외). 비면 클래스 이름으로 추정
 ''', uniques=[('tenant_id','class_code')], screens='ALM-112, 관리')
 t('org','site','사이트','ALM 사이트(건물·거점). SAP 위치(T499S)와 연결', '''
 site_code | vc(10) | NN | 사이트 코드 (예: ATL1)
@@ -169,6 +171,7 @@ default_asset_class_id | ->asset_class | | 등록 시 기본 자산클래스
 useful_life_years | int | | 내용연수 경과 판정 기준(년)
 is_ci | bool | NN =false | 등록 시 CMDB CI 자동 생성
 is_active | bool | NN =true | 사용 여부
+tax_property_type | E:TaxPropertyType | | 재산세 구분(자산클래스보다 우선). 비면 자산클래스 구분
 ''', uniques=[('tenant_id','category_code')], screens='ALM-110, 112')
 t('org','model','모델','제조사·모델 마스터', '''
 category_id | ->category | NN | 카테고리
@@ -738,6 +741,8 @@ assessment_ratio | num(7,4) | NN =1 | 평가율(공정가치 대비, GA 0.4·AL 
 millage | num(9,4) | NN =0 | 세율(평가액 $1,000당, 밀리지). $100당 세율은 ×10
 exemption_mode | E:TaxExemptionMode | NN =NONE | 면제 방식: THRESHOLD = 공정가치 합계가 금액 이하면 전액 면제, DEDUCT = 금액만큼 차감
 exemption_amount | num(15,2) | NN =0 | 면제 금액(공정가치 기준)
+include_vehicles | bool | NN =false | 차량(VEHICLE)을 신고에 포함(TX). GA·AL·CA는 차량 등록 때 따로 과세
+include_cip | bool | NN =true | 건설중자산(CIP)을 원가 그대로 포함
 factor_set | vc(20) | NN | 감가 계수표 (GA_DOR, AL_ADOR, CA_BOE581, GENERIC_SL)
 notes | text | | 메모(제출처 주소·온라인 신고 사이트 등)
 is_active | bool | NN =true | 사용 여부
@@ -786,6 +791,7 @@ asset_tag | vc(25) | NN | 자산태그
 description | vc(50) | NN | 자산명
 category_name | vc(60) | | 카테고리
 life_class | vc(10) | | 내용연수 구분
+property_type | E:TaxPropertyType | NN =EQUIPMENT | 재산세 구분
 acquisition_date | date | | 취득일
 acquisition_year | int | | 취득 연도
 original_cost | num(15,2) | | 원가(SAP 취득가, 없으면 ALM 구매가). 비면 원가 모름

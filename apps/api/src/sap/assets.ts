@@ -21,7 +21,7 @@ const keyOf = (r: Record<string, unknown>) => `${r.companyCode ?? '?'}/${r.asset
 
 interface AssetIn {
   companyCode: string; assetNo: string; subNo: string; assetClass: string; description: string; serialNo?: string; inventoryNo?: string;
-  capDate?: string; deactDate?: string; lastCountDate?: string; inventoryNote?: string; costCenter: string; location?: string; changedAt: string;
+  capDate?: string; deactDate?: string; lastCountDate?: string; inventoryNote?: string; costCenter: string; location?: string; changedAt: string; plant?: string;
 }
 
 function readAsset(r: Record<string, unknown>): AssetIn {
@@ -31,9 +31,9 @@ function readAsset(r: Record<string, unknown>): AssetIn {
     assetClass: f.str('assetClass', 8, true)!, description: f.str('description', 50, true)!, serialNo: f.str('serialNo', 18),
     inventoryNo: f.str('inventoryNo', 25), capDate: f.date('capDate'), deactDate: f.date('deactDate'), lastCountDate: f.date('lastCountDate'),
     inventoryNote: f.str('inventoryNote', 15), costCenter: f.str('costCenter', 10, true)!, location: f.str('location', 10),
-    changedAt: f.ts('changedAt', true)!,
+    changedAt: f.ts('changedAt', true)!, plant: f.str('plant', 4),
   };
-  f.str('profitCenter', 10); f.str('plant', 4); f.str('room', 8);
+  f.str('profitCenter', 10); f.str('room', 8);
   return a;
 }
 
@@ -54,7 +54,7 @@ async function upsertOne(c: PoolClient, conn: SapConn, a: AssetIn): Promise<'OK'
   const want: Fields = { asset_class_id: cls, description: a.description, sap_cap_date: a.capDate ?? null, sap_deact_date: a.deactDate ?? null,
     cost_center_id: cc, last_count_date: a.lastCountDate ?? null, last_count_note: a.inventoryNote ?? null, is_capitalized: !!a.capDate };
 
-  const cols = 'id, status, asset_class_id, description, sap_cap_date::text, sap_deact_date::text, cost_center_id, last_count_date::text, last_count_note, is_capitalized, sap_asset_no';
+  const cols = 'id, status, site_id, asset_class_id, description, sap_cap_date::text, sap_deact_date::text, cost_center_id, last_count_date::text, last_count_note, is_capitalized, sap_asset_no';
   let cur = (await c.query(`SELECT ${cols} FROM asset WHERE company_id = $1 AND sap_asset_no = $2 AND sap_sub_no = $3`, [conn.companyId, a.assetNo, a.subNo])).rows[0];
   let linked = false;
   if (!cur && a.inventoryNo) {
@@ -67,12 +67,12 @@ async function upsertOne(c: PoolClient, conn: SapConn, a: AssetIn): Promise<'OK'
   if (!cur) {
     const id = randomUUID();
     const category = await categoryFor(c, conn.tenantId, cls);
-    const room = a.location ? (await c.query('SELECT id, site_id FROM room WHERE room_code = $1 AND is_active', [a.location])).rows[0] : undefined;
+    const { room, siteId } = await placeFor(c, conn, a);
     const tag = a.inventoryNo ?? await freeTag(c, `S${a.assetNo.replace(/^0+/, '')}${a.subNo === '0000' ? '' : `-${a.subNo.replace(/^0+/, '')}`}`);
     await c.query(`INSERT INTO asset (id, tenant_id, asset_tag, description, category_id, serial_no, status, source, company_id, site_id, room_id, cost_center_id,
         asset_class_id, is_capitalized, sap_asset_no, sap_sub_no, sap_cap_date, sap_deact_date, last_count_date, last_count_note, sap_synced_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, 'SAP', $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, now())`,
-      [id, conn.tenantId, tag, a.description, category, a.serialNo ?? null, a.deactDate ? 'RETIRED' : 'IN_USE', conn.companyId, room?.site_id ?? null,
+      [id, conn.tenantId, tag, a.description, category, a.serialNo ?? null, a.deactDate ? 'RETIRED' : 'IN_USE', conn.companyId, siteId,
         room?.id ?? null, cc, cls, want.is_capitalized, a.assetNo, a.subNo, want.sap_cap_date, want.sap_deact_date, want.last_count_date, want.last_count_note]);
     await event(c, conn, id, 'CREATED', { source: 'SAP', sapAsset: `${a.companyCode}/${a.assetNo}/${a.subNo}`, assetTag: tag, needsCount: true }, a.changedAt);
     return 'OK';
@@ -89,16 +89,37 @@ async function upsertOne(c: PoolClient, conn: SapConn, a: AssetIn): Promise<'OK'
   for (const [name, before, after] of pairs) if ((before ?? null) !== (after ?? null)) changes.set(name, { before: before ?? null, after });
   if (linked) changes.set('sap_asset_no', { before: null, after: `${a.assetNo}/${a.subNo}` });
   if (retire) changes.set('status', { before: cur.status, after: 'RETIRED' });
+  // ALM에 사이트가 없는 자산만 SAP 위치·플랜트로 채운다(ALM에서 정한 사이트는 덮지 않음)
+  const place = cur.site_id ? undefined : await placeFor(c, conn, a);
+  if (place?.siteId) changes.set('site_id', { before: null, after: place.siteId });
   if (!changes.size) return 'SKIPPED';
   await c.query(`UPDATE asset SET asset_class_id = $2, description = $3, sap_cap_date = $4, sap_deact_date = $5, cost_center_id = $6,
       last_count_date = $7, last_count_note = $8, is_capitalized = $9, sap_asset_no = $10, sap_sub_no = $11,
-      status = CASE WHEN $12 THEN 'RETIRED'::asset_status ELSE status END, sap_synced_at = now(), updated_at = now(), version = version + 1
+      status = CASE WHEN $12 THEN 'RETIRED'::asset_status ELSE status END,
+      site_id = coalesce(site_id, $13), room_id = CASE WHEN site_id IS NULL AND $13::uuid IS NOT NULL THEN coalesce(room_id, $14) ELSE room_id END,
+      sap_synced_at = now(), updated_at = now(), version = version + 1
     WHERE id = $1`,
     [cur.id, cls, a.description, want.sap_cap_date, want.sap_deact_date, cc, want.last_count_date, want.last_count_note, want.is_capitalized,
-      a.assetNo, a.subNo, !!retire]);
+      a.assetNo, a.subNo, !!retire, place?.siteId ?? null, place?.room?.id ?? null]);
   await event(c, conn, cur.id, 'SAP_SYNCED', Object.fromEntries(changes), a.changedAt);
   if (retire) await event(c, conn, cur.id, 'RETIRED', { reason: 'SAP 비활성일(DEAKT)', deactDate: a.deactDate }, a.changedAt);
   return 'OK';
+}
+
+/** SAP 위치(STORT) → ALM 룸(room_code) → 사이트. 룸이 없으면 사이트의 SAP 위치(sap_location), 그다음 플랜트(사이트가 하나일 때만) */
+async function placeFor(c: PoolClient, conn: SapConn, a: AssetIn): Promise<{ room?: { id: string; site_id: string }; siteId: string | null }> {
+  if (a.location) {
+    const room = (await c.query('SELECT id, site_id FROM room WHERE room_code = $1 AND is_active', [a.location])).rows[0];
+    if (room) return { room, siteId: room.site_id };
+    const s = (await c.query('SELECT id FROM site WHERE sap_location = $1 AND is_active', [a.location])).rows;
+    if (s.length === 1) return { siteId: s[0].id };
+  }
+  if (a.plant) {
+    const s = (await c.query(`SELECT s.id FROM site s JOIN plant p ON p.id = s.plant_id WHERE p.company_id = $1 AND p.plant_code = $2 AND s.is_active`,
+      [conn.companyId, a.plant])).rows;
+    if (s.length === 1) return { siteId: s[0].id };
+  }
+  return { siteId: null };
 }
 
 async function event(c: PoolClient, conn: SapConn, assetId: string, type: string, changes: unknown, changedAt: string) {

@@ -17,7 +17,8 @@ const detail = (o: Partial<FilingDetail> = {}): FilingDetail => ({ ...summary({ 
   dueDate: '2026-04-01', assetCount: 3, totalCost: 12000, totalMarketValue: 9140, assessedValue: 3656, estimatedTax: 109.68 }),
   params: { assessmentRatio: 0.4, millage: 30, exemptionMode: 'NONE', exemptionAmount: 0, factorSet: 'GA_DOR', factorTableYear: 2024, factorSource: 'GA DOR', priorFilingYear: 2025, taxable: true },
   warnings: [{ code: 'UNKNOWN_COST', count: 1, message: '1 asset has no cost' }],
-  schedule: [{ acquisitionYear: 2025, lifeClass: 'I', count: 1, cost: 2000, marketValue: 1740, factor: 0.87 }, { acquisitionYear: 2024, lifeClass: 'I', count: 1, cost: 10000, marketValue: 7400, factor: 0.74 }],
+  byType: [{ propertyType: 'EQUIPMENT', count: 2, cost: 12000, marketValue: 9140 }],
+  schedule: [{ propertyType: 'EQUIPMENT', acquisitionYear: 2025, lifeClass: 'I', count: 1, cost: 2000, marketValue: 1740, factor: 0.87 }, { propertyType: 'EQUIPMENT', acquisitionYear: 2024, lifeClass: 'I', count: 1, cost: 10000, marketValue: 7400, factor: 0.74 }],
   changes: { NEW: { count: 1, cost: 2000 }, CARRIED: { count: 2, cost: 10000 }, DISPOSED: { count: 1, cost: 500 } },
   prior: { id: 'f25', taxYear: 2025, status: 'ASSESSED', totalCost: 120000, totalMarketValue: 80000, assessedValue: 32000, estimatedTax: 960, actualTax: 985.5 }, ...o });
 
@@ -83,7 +84,7 @@ describe('property tax (ALM-260)', () => {
         headers: { 'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'content-disposition': 'attachment; filename="BPP_2026_GA_Fulton_1000.xlsx"' } }) };
       if (url.endsWith('/tax/filings/f26:file') && init.method === 'POST') { status = 'FILED'; return { body: detail({ status }) }; }
       if (url.endsWith('/tax/filings/f26')) return { body: detail({ status, filedAt: status === 'DRAFT' ? undefined : '2026-03-20' }) };
-      if (url.includes('/tax/filings/f26/lines')) return { body: { items: [{ assetTag: 'AT-000009', description: 'Old printer', change: 'DISPOSED', originalCost: 500, disposalDate: '2025-06-01' }], page: 1, pageSize: 100, total: 1 } };
+      if (url.includes('/tax/filings/f26/lines')) return { body: { items: [{ assetTag: 'AT-000009', description: 'Old printer', propertyType: 'EQUIPMENT', change: 'DISPOSED', originalCost: 500, disposalDate: '2025-06-01' }], page: 1, pageSize: 100, total: 1 } };
       return undefined;
     });
     render(<App initialMe={acct} />);
@@ -106,6 +107,23 @@ describe('property tax (ALM-260)', () => {
     await user.click(screen.getByRole('tab', { name: 'Changes vs prior year' }));
     await user.click(screen.getByRole('button', { name: /Disposals/ }));
     expect(await screen.findByText('AT-000009')).toBeInTheDocument();
+  }, 20000);
+
+  it('sets the property type of an asset class', async () => {
+    window.history.pushState({}, '', '/tax?tab=types');
+    const calls = mockFetch((url, init) => {
+      if (url.endsWith('/tax/property-types')) {
+        return { body: { assetClasses: [{ id: 'c1', classCode: '00003100', name: 'Vehicles', suggested: 'VEHICLE' }, { id: 'c2', classCode: 'RS1030', name: 'RS1030', suggested: 'EQUIPMENT', propertyType: init.method === 'PUT' ? 'INTANGIBLE' : undefined }],
+          categories: [{ id: 'k1', categoryCode: 'NB', name: 'Notebook', classCode: '00003200', inherited: 'EQUIPMENT' }] } };
+      }
+      return undefined;
+    });
+    render(<App initialMe={acct} />);
+    const user = userEvent.setup();
+    expect(await screen.findByRole('option', { name: 'Guess: Vehicles' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'From asset class: Furniture, fixtures, machinery & equipment' })).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Property type RS1030'), 'INTANGIBLE');
+    await waitFor(() => expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({ assetClasses: [{ id: 'c2', propertyType: 'INTANGIBLE' }] }));
   }, 20000);
 
   it('read-only users see filings without manage actions', async () => {

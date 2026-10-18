@@ -9,27 +9,49 @@
 export interface StatePreset {
   state: string; name: string; taxable: boolean; formCode?: string; lienMonth: number; lienDay: number; dueMonth?: number; dueDay?: number;
   assessmentRatio: number; exemptionMode: 'NONE' | 'THRESHOLD' | 'DEDUCT'; exemptionAmount: number; factorSet: FactorSet; typicalMillage?: number; note: string;
+  includeVehicles: boolean; includeCip: boolean;
+}
+
+// 재산세 자산 구분. 신고에 들어가는지는 관할 설정(차량·건설중)과 함께 정한다
+export const PROPERTY_TYPES = ['EQUIPMENT', 'LEASEHOLD', 'VEHICLE', 'CIP', 'LEASED_IN', 'REAL_PROPERTY', 'INTANGIBLE', 'EXCLUDED'] as const;
+export type PropertyType = (typeof PROPERTY_TYPES)[number];
+/** 관할 설정과 무관하게 BPP 신고에 넣지 않는 구분: 임차 자산(소유자가 신고), 부동산(부동산세), 무형, 제외 */
+export const NEVER_TAXED: PropertyType[] = ['LEASED_IN', 'REAL_PROPERTY', 'INTANGIBLE', 'EXCLUDED'];
+
+/** 자산클래스 이름으로 구분 추정(설정이 없을 때). 모르면 장비(EQUIPMENT) */
+export function suggestPropertyType(name: string | null | undefined): PropertyType | undefined {
+  const n = (name ?? '').toLowerCase();
+  if (!n) return undefined;
+  if (/(real estate|land|building|grundst|gebäude)/.test(n)) return 'REAL_PROPERTY';
+  if (/(vehicle|automobile|truck|fahrzeug|\bcar\b|fleet)/.test(n)) return 'VEHICLE';
+  if (/(under construction|\bauc\b|construction in progress|\bcip\b|anlagen im bau|fiaa_auc)/.test(n)) return 'CIP';
+  if (/(leasehold|tenant improvement)/.test(n)) return 'LEASEHOLD';
+  if (/operating lease/.test(n)) return 'LEASED_IN';
+  if (/(goodwill|software|licen[cs]e|intangible|formation expense|patent|trademark|right of use)/.test(n)) return 'INTANGIBLE';
+  if (/(advance payment|down payment)/.test(n)) return 'EXCLUDED';
+  if (/(machin|fixture|fitting|furniture|hardware|equipment|computer|\bdp\b|low-value|tool|objects of art|capital lease|finance lease)/.test(n)) return 'EQUIPMENT';
+  return undefined;
 }
 
 export const FACTOR_SETS = ['GA_DOR', 'AL_ADOR', 'CA_BOE581', 'GENERIC_SL'] as const;
 export type FactorSet = (typeof FACTOR_SETS)[number];
 
 export const STATE_PRESETS: StatePreset[] = [
-  { state: 'GA', name: 'Georgia', taxable: true, formCode: 'PT-50P', lienMonth: 1, lienDay: 1, dueMonth: 4, dueDay: 1, assessmentRatio: 0.4,
+  { state: 'GA', includeVehicles: false, includeCip: true, name: 'Georgia', taxable: true, formCode: 'PT-50P', lienMonth: 1, lienDay: 1, dueMonth: 4, dueDay: 1, assessmentRatio: 0.4,
     exemptionMode: 'THRESHOLD', exemptionAmount: 20000, factorSet: 'GA_DOR', typicalMillage: 30,
     note: 'File with the county Board of Tax Assessors by April 1 (PT-50P, Schedule A by year acquired). Attach Form 4562. Exempt if total FMV per county is $20,000 or less (return still required).' },
-  { state: 'AL', name: 'Alabama', taxable: true, formCode: 'ADV-40', lienMonth: 10, lienDay: 1, dueMonth: 12, dueDay: 31, assessmentRatio: 0.2,
+  { state: 'AL', includeVehicles: false, includeCip: false, name: 'Alabama', taxable: true, formCode: 'ADV-40', lienMonth: 10, lienDay: 1, dueMonth: 12, dueDay: 31, assessmentRatio: 0.2,
     exemptionMode: 'NONE', exemptionAmount: 0, factorSet: 'AL_ADOR', typicalMillage: 40,
     note: 'File ADV-40 with the county assessing official between Oct 1 and Dec 31 (alproptax.com). $100,000 exemption applies to the state levy only unless the county adopted it. Late filing: 10% penalty.' },
-  { state: 'TX', name: 'Texas', taxable: true, formCode: '50-144', lienMonth: 1, lienDay: 1, dueMonth: 4, dueDay: 15, assessmentRatio: 1,
+  { state: 'TX', includeVehicles: true, includeCip: false, name: 'Texas', taxable: true, formCode: '50-144', lienMonth: 1, lienDay: 1, dueMonth: 4, dueDay: 15, assessmentRatio: 1,
     exemptionMode: 'DEDUCT', exemptionAmount: 125000, factorSet: 'GENERIC_SL', typicalMillage: 21,
     note: 'Render with the county appraisal district by April 15 (May 15 on written request). First $125,000 per location exempt from 2026. Appraisal districts use their own schedules: enter the district schedule as factors for an accurate estimate.' },
-  { state: 'CA', name: 'California', taxable: true, formCode: 'BOE-571-L', lienMonth: 1, lienDay: 1, dueMonth: 4, dueDay: 1, assessmentRatio: 1,
+  { state: 'CA', includeVehicles: false, includeCip: true, name: 'California', taxable: true, formCode: 'BOE-571-L', lienMonth: 1, lienDay: 1, dueMonth: 4, dueDay: 1, assessmentRatio: 1,
     exemptionMode: 'NONE', exemptionAmount: 0, factorSet: 'CA_BOE581', typicalMillage: 11,
     note: 'File BOE-571-L with the county assessor by April 1 (10% penalty after May 7). Required when asked or when taxable personal property is $100,000 or more at cost. Value = cost × AH 581 index × percent good.' },
-  { state: 'IL', name: 'Illinois', taxable: false, lienMonth: 1, lienDay: 1, assessmentRatio: 0, exemptionMode: 'NONE', exemptionAmount: 0, factorSet: 'GENERIC_SL',
+  { state: 'IL', includeVehicles: false, includeCip: false, name: 'Illinois', taxable: false, lienMonth: 1, lienDay: 1, assessmentRatio: 0, exemptionMode: 'NONE', exemptionAmount: 0, factorSet: 'GENERIC_SL',
     note: 'Business personal property is not taxed (replaced by the Personal Property Replacement Income Tax on the income tax return). No return is filed.' },
-  { state: 'NJ', name: 'New Jersey', taxable: false, lienMonth: 1, lienDay: 1, assessmentRatio: 0, exemptionMode: 'NONE', exemptionAmount: 0, factorSet: 'GENERIC_SL',
+  { state: 'NJ', includeVehicles: false, includeCip: false, name: 'New Jersey', taxable: false, lienMonth: 1, lienDay: 1, assessmentRatio: 0, exemptionMode: 'NONE', exemptionAmount: 0, factorSet: 'GENERIC_SL',
     note: 'General business personal property is not taxed. Only certain telephone/telegraph companies file PT-10 by September 1.' },
 ];
 

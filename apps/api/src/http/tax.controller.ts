@@ -56,6 +56,14 @@ export class TaxController {
   @Operation('replaceTaxClassMap')
   replaceClassMap(@Ctx() ctx: AlmContext, @Body() body: unknown) { return this.db.withTx(txOf(ctx), (c) => tx.replaceClassMap(c, ctx.principal!, body)); }
 
+  @Get('property-types')
+  @Operation('listTaxPropertyTypes')
+  propertyTypes(@Ctx() ctx: AlmContext) { return this.db.withTx(txOf(ctx), (c) => tx.listPropertyTypes(c)); }
+
+  @Put('property-types')
+  @Operation('replaceTaxPropertyTypes')
+  replacePropertyTypes(@Ctx() ctx: AlmContext, @Body() body: unknown) { return this.db.withTx(txOf(ctx), (c) => tx.replacePropertyTypes(c, ctx.principal!, body)); }
+
   @Get('filings')
   @Operation('listTaxFilings')
   filings(@Ctx() ctx: AlmContext, @Query() q: Record<string, string>) { return this.db.withTx(txOf(ctx), (c) => tx.listFilings(c, q)); }

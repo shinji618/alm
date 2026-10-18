@@ -109,6 +109,11 @@ export function TaxFilingDetail() {
           { label: t('tax.detail.generatedAt'), value: formatDateTime(x.generatedAt) },
           { label: t('tax.notes'), value: x.notes },
         ]} />
+        {x.byType.length > 0 && (
+          <ul className="small" aria-label={t('tax.col.propertyType')} style={{ paddingLeft: 16 }}>
+            {x.byType.map((b) => <li key={b.propertyType}>{t(`tax.ptype.${b.propertyType}`)} · {b.count} · {formatUsd(b.cost)} → {formatUsd(b.marketValue)}</li>)}
+          </ul>
+        )}
         <p className="small faint">{t('tax.disclaimer')}</p>
       </Panel>
       <Panel padded={false}>
@@ -128,6 +133,7 @@ export function TaxFilingDetail() {
 function Schedule({ x }: { x: FilingDetail }) {
   const { t } = useTranslation();
   const columns: Column<FilingDetail['schedule'][number]>[] = [
+    { key: 'propertyType', label: t('tax.col.propertyType'), render: (y) => t(`tax.ptype.${y.propertyType}`) },
     { key: 'acquisitionYear', label: t('tax.col.acqYear'), render: (y) => <span className="mono">{y.acquisitionYear}</span> },
     { key: 'lifeClass', label: t('tax.col.class'), render: (y) => <span className="mono">{y.lifeClass}</span> },
     { key: 'count', label: t('tax.col.assets'), align: 'right' },
@@ -135,7 +141,7 @@ function Schedule({ x }: { x: FilingDetail }) {
     { key: 'factor', label: t('tax.col.factor'), align: 'right', render: (y) => (y.factor === null ? '—' : y.factor.toFixed(4)) },
     { key: 'marketValue', label: t('tax.col.marketValue'), align: 'right', render: (y) => formatUsd(y.marketValue, 2) },
   ];
-  return <DataTable rows={x.schedule} columns={columns} rowId={(y) => `${y.acquisitionYear}|${y.lifeClass}`} empty={<EmptyState message={t('tax.detail.noAssets')} />} />;
+  return <DataTable rows={x.schedule} columns={columns} rowId={(y) => `${y.propertyType}|${y.acquisitionYear}|${y.lifeClass}`} empty={<EmptyState message={t('tax.detail.noAssets')} />} />;
 }
 
 function Lines({ id, rev, change: fixed }: { id: string; rev: number; change?: LineChange }) {
@@ -148,6 +154,7 @@ function Lines({ id, rev, change: fixed }: { id: string; rev: number; change?: L
     { key: 'assetTag', label: t('asset.col.tag'), render: (y) => <span className="mono">{y.assetTag}</span> },
     { key: 'description', label: t('asset.col.description') },
     { key: 'categoryName', label: t('tax.col.category'), render: (y) => y.categoryName ?? '—' },
+    { key: 'propertyType', label: t('tax.col.propertyType'), render: (y) => t(`tax.ptype.${y.propertyType}`) },
     { key: 'lifeClass', label: t('tax.col.class'), render: (y) => <span className="mono">{y.lifeClass ?? '—'}</span> },
     { key: 'acquisitionDate', label: t('tax.col.acquired'), render: (y) => formatDate(y.acquisitionDate) },
     { key: 'originalCost', label: t('tax.col.cost'), align: 'right', render: (y) => (y.originalCost === undefined ? <StatusPill tone="warn">{t('tax.unknownCost')}</StatusPill> : formatUsd(y.originalCost, 2)) },
