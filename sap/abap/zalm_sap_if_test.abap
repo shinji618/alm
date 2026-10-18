@@ -23,7 +23,7 @@
 *&        IF-AA-04 변경(ASSET_CHANGE, 손익센터가 같은 코스트센터 이관 포함) → BAPI_FIXEDASSET_CHANGE
 *&        IF-AA-06 폐기(ASSET_RETIRE: SCRAP·LOSS) → BAPI_ASSET_RETIREMENT_POST 전체 폐기(P_TTRET 거래유형)
 *&        IF-AA-07 실사 결과(COUNT_RESULT) → BAPI_FIXEDASSET_CHANGE 최종 실사일(IVDAT)·재고 메모(INVZU)
-*&          SAP 값이 이미 같으면 BAPI 없이 POSTED(재실행 안전). 필드 이름은 시스템마다 달라 후보 중 있는 것을 쓴다
+*&          (매개변수 INVENTORY-DATE·NOTE). SAP 값이 이미 같으면 BAPI 없이 POSTED(재실행 안전)
 *&          BKTXT(머리글 텍스트)=요청번호. 같은 BKTXT 전표가 있으면 다시 전기하지 않고 그 전표로 POSTED(재실행 안전)
 *&          매각(SALE, 매출 금액 필드)과 손익센터가 바뀌는 이관(IF-AA-05 ABUMN)은 아직 - 가져가지 않거나 회신하지 않는다
 *&          BAPI는 FUPARAREF로 매개변수를 읽어 동적으로 부른다. 필드가 없으면 호출하지 않고 서명을 출력(회신 안 함)
@@ -1111,28 +1111,20 @@ START-OF-SELECTION.
             WRITE / '  SAP 값이 이미 같음 → POSTED'.
           ELSE.
             DATA(lo_ct) = NEW lcl_bapi( 'BAPI_FIXEDASSET_CHANGE' ).
-            DATA(lv_fdate) = lo_ct->field( iv_param = 'GENERALDATA'
-                                           it_names = VALUE #( ( `LAST_INVENTORY_DATE` ) ( `LAST_INVENT_DATE` ) ( `INVENT_DATE` ) ( `IVDAT` ) ) ).
-            DATA(lv_fnote) = lo_ct->field( iv_param = 'GENERALDATA'
-                                           it_names = VALUE #( ( `INVENTORY_NOTE` ) ( `INVENT_NOTE` ) ( `INV_NOTE` ) ( `INVZU` ) ) ).
-            IF lv_fdate IS INITIAL.
-              WRITE / '  GENERALDATA에 최종 실사일 필드가 없음 - 서명을 출력하고 회신하지 않음(필드 이름을 알려 주세요)'.
+            " 실사 정보는 INVENTORY(BAPI1022_FEGLG011: DATE·NOTE·INCLUDE_IN_LIST) 매개변수(S/4 서명 확인 2026-10-18)
+            IF lo_ct->has( 'INVENTORY' ) = abap_false.
+              WRITE / '  INVENTORY 매개변수가 없음 - 서명을 출력하고 회신하지 않음'.
               lo_ct->signature( ).
               lv_skip = abap_true.
             ELSE.
               lo_ct->set( iv_param = 'COMPANYCODE' iv_value = ls_env-company_code ).
               lo_ct->set( iv_param = 'ASSET' iv_value = ls_env-asset-asset_no ).
               lo_ct->set( iv_param = 'SUBNUMBER' iv_value = ls_env-asset-sub_no ).
-              lo_ct->set( iv_param = 'GENERALDATA' iv_field = lv_fdate iv_value = lv_ivdat ).
-              lo_ct->set( iv_param = 'GENERALDATAX' iv_field = lv_fdate iv_value = abap_true ).
+              lo_ct->set( iv_param = 'INVENTORY' iv_field = 'DATE' iv_value = lv_ivdat ).
+              lo_ct->set( iv_param = 'INVENTORYX' iv_field = 'DATE' iv_value = abap_true ).
               IF lv_invzu IS NOT INITIAL.
-                IF lv_fnote IS INITIAL.
-                  APPEND VALUE #( type = 'W' id = 'ZALM' number = '005'
-                                  text = |Inventory note { ls_pl-inventory_note } not transferred (no BAPI field)| ) TO ls_res-messages.
-                ELSE.
-                  lo_ct->set( iv_param = 'GENERALDATA' iv_field = lv_fnote iv_value = lv_invzu ).
-                  lo_ct->set( iv_param = 'GENERALDATAX' iv_field = lv_fnote iv_value = abap_true ).
-                ENDIF.
+                lo_ct->set( iv_param = 'INVENTORY' iv_field = 'NOTE' iv_value = lv_invzu ).
+                lo_ct->set( iv_param = 'INVENTORYX' iv_field = 'NOTE' iv_value = abap_true ).
               ENDIF.
               IF lo_ct->has( 'TESTRUN' ).
                 lo_ct->set( iv_param = 'TESTRUN' iv_value = p_trun ).
@@ -1147,7 +1139,7 @@ START-OF-SELECTION.
                 IF lo_ct->mv_error IS NOT INITIAL AND ls_ret IS INITIAL.
                   ls_ret = VALUE #( type = 'E' id = 'ZALM' number = '002' message = lo_ct->mv_error ).
                 ENDIF.
-                WRITE / |  BAPI({ lv_fdate }{ COND string( WHEN lv_fnote IS NOT INITIAL THEN `·` && lv_fnote ) }) { ls_ret-type } { ls_ret-id }/{ ls_ret-number } { ls_ret-message }|.
+                WRITE / |  BAPI(INVENTORY) { ls_ret-type } { ls_ret-id }/{ ls_ret-number } { ls_ret-message }|.
                 IF ls_ret-type CA 'EA'.
                   CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
                   ls_res-status = 'FAILED'.
