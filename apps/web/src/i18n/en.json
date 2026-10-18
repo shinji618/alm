@@ -35,7 +35,8 @@
     "finMasters": "Cost centers & classes",
     "deptManagers": "Department managers",
     "propertyTax": "Property tax",
-    "byCategory": "By category"
+    "byCategory": "By category",
+    "categories": "Asset categories"
   },
   "common": {
     "clear": "Clear",
@@ -504,7 +505,9 @@
     "classCodeHint": "1–8 letters, digits, _ . -",
     "lifeHint": "1–50 years",
     "searchCc": "Cost center or name",
-    "searchClass": "Class or name"
+    "searchClass": "Class or name",
+    "classSapOnly": "Asset classes are received from SAP (IF-MD-01) only and cannot be added or changed in ALM.",
+    "manualRetired": "ALM-made (not usable)"
   },
   "sap": {
     "description": "SAP interface status, run logs, posting queue (retry, cancel), reconciliation differences and field mappings. ALM never calls SAP; SAP jobs call the ALM API.",
@@ -1010,5 +1013,28 @@
     "ptypeCategories": "Categories (override)",
     "ptypeCategoriesNote": "Set only when a category differs from its asset class.",
     "includeLeasehold": "Include leasehold improvements (GA: improvements that become part of the building are not personal property; trade fixtures go in Schedule A)"
+  },
+  "cat": {
+    "code": "Code",
+    "name": "Name",
+    "parent": "Parent category",
+    "assetClass": "Default asset class (SAP)",
+    "life": "Replacement life (years)",
+    "isCi": "Create CMDB CI on registration",
+    "taxType": "Property tax type",
+    "fromClass": "From asset class",
+    "assets": "Assets",
+    "status": "Status",
+    "active": "Active",
+    "inactive": "Inactive",
+    "description": "Categories are defined in ALM (menu, models, CMDB, replacement life). Asset classes come from SAP only; pick one as the default for registration.",
+    "add": "Add category",
+    "edit": "Edit category",
+    "search": "Search code or name",
+    "codeHint": "Letters, digits, _ . - (up to 20). Cannot be changed later.",
+    "lifeHint": "1–50 years",
+    "classHint": "Only asset classes received from SAP (IF-MD-01).",
+    "classUnavailable": "not an SAP class — choose another",
+    "usage": "{{assets}} asset(s) and {{models}} model(s) use this category. In use or with active sub-categories it cannot be deactivated."
   }
 }

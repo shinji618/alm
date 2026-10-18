@@ -60,7 +60,7 @@ export async function lookups(c: PoolClient, p: Principal, q: Record<string, str
   }
   if (has('assetClasses')) {
     out.assetClasses = items((await c.query(`SELECT id, class_code, name, is_low_value, is_capitalized, default_useful_life_years, is_manual FROM asset_class
-      WHERE is_active ORDER BY class_code`)).rows,
+      WHERE is_active AND NOT is_manual ORDER BY class_code`)).rows,
     (r) => ({ id: r.id, code: r.class_code, label: r.name, extra: { isLowValue: r.is_low_value, isCapitalized: r.is_capitalized, usefulLifeYears: r.default_useful_life_years, isManual: r.is_manual } }));
   }
   if (has('categories')) {

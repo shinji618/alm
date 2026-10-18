@@ -124,80 +124,30 @@ function CostCenterDrawer({ row, companies, defaultCompany, onClose, onSaved }: 
   );
 }
 
-// ---------------- 자산클래스 ----------------
+// ---------------- 자산클래스(SAP에서 받은 것만, 조회 전용) ----------------
 function AssetClasses() {
   const { t } = useTranslation();
-  const { can } = useSession();
-  const write = can('master.write');
   const list = useAsync((sig) => api.get<{ items: AssetClassRow[] }>('/admin/asset-classes', sig), []);
   const [q, setQ] = useState('');
-  const [editing, setEditing] = useState<AssetClassRow | 'new'>();
   const columns = useMemo<Column<AssetClassRow>[]>(() => [
     { key: 'classCode', label: t('fin.classCode'), render: (x) => <span className="mono">{x.classCode}</span> },
     { key: 'name', label: t('company.name') },
     { key: 'defaultUsefulLifeYears', label: t('asset.fin.usefulLife'), align: 'right' },
     { key: 'isCapitalized', label: t('asset.fin.isCapitalized'), render: (x) => yesNo(t, x.isCapitalized) },
     { key: 'isLowValue', label: t('fin.lowValue'), render: (x) => yesNo(t, x.isLowValue) },
-    { key: 'isManual', label: t('fin.source'), render: (x) => sourcePill(t, x.isManual) },
+    { key: 'isManual', label: t('fin.source'), render: (x) => (x.isManual ? <StatusPill tone="warn">{t('fin.manualRetired')}</StatusPill> : sourcePill(t, false)) },
     { key: 'assetCount', label: t('fin.assets'), align: 'right' },
     { key: 'isActive', label: t('fin.active'), render: (x) => yesNo(t, x.isActive) },
   ], [t]);
   return (
     <>
       <FilterBar search={q} onSearch={setQ} searchPlaceholder={t('fin.searchClass')}>
-        <span className="small muted">{t('fin.classHint')}</span>
-        {write && <Button variant="primary" onClick={() => setEditing('new')}>{t('fin.addAssetClass')}</Button>}
+        <span className="small muted">{t('fin.classSapOnly')}</span>
       </FilterBar>
       {list.error ? <div className={s.notice} role="alert">{t('common.error', { message: list.error.message })}</div> : (
         <DataTable rows={(list.data?.items ?? []).filter((x) => match(q, x.classCode, x.name))} columns={columns} rowId={(x) => x.id} loading={list.loading}
-          onRowClick={write ? (x) => (x.isManual ? setEditing(x) : undefined) : undefined} empty={<EmptyState message={t('common.noResults')} />} />
+          empty={<EmptyState message={t('common.noResults')} />} />
       )}
-      {editing && <AssetClassDrawer row={editing === 'new' ? undefined : editing} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); list.reload(); }} />}
     </>
-  );
-}
-
-function AssetClassDrawer({ row, onClose, onSaved }: { row?: AssetClassRow; onClose: () => void; onSaved: () => void }) {
-  const { t } = useTranslation();
-  const toast = useToast();
-  const [f, setF] = useState({ code: row?.classCode ?? '', name: row?.name ?? '', life: row?.defaultUsefulLifeYears ? String(row.defaultUsefulLifeYears) : '',
-    cap: row?.isCapitalized ?? true, low: row?.isLowValue ?? false, isActive: row?.isActive ?? true });
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
-  const title = row ? `${t('fin.editAssetClass')} · ${row.classCode}` : t('fin.addAssetClass');
-  const submit = async () => {
-    const e: Record<string, string> = {};
-    if (!row && !/^[A-Za-z0-9_.-]{1,8}$/.test(f.code)) e.classCode = t('fin.classCodeHint');
-    if (!f.name.trim()) e.name = t('common.required');
-    if (f.life && !(Number(f.life) >= 1 && Number(f.life) <= 50 && Number.isInteger(Number(f.life)))) e.defaultUsefulLifeYears = t('fin.lifeHint');
-    setErrors(e);
-    if (Object.keys(e).length) return;
-    setSaving(true);
-    const body = { name: f.name.trim(), defaultUsefulLifeYears: f.life ? Number(f.life) : undefined, isCapitalized: f.cap, isLowValue: f.low };
-    try {
-      if (row) await api.patch(`/admin/asset-classes/${row.id}`, { ...body, isActive: f.isActive }, row.version);
-      else await api.post('/admin/asset-classes', { classCode: f.code, ...body });
-      toast.show(t('company.saved'), 'success');
-      onSaved();
-    } catch (err) {
-      if (err instanceof ApiError && err.errors.length) setErrors(err.fieldErrors());
-      toast.show(err instanceof Error ? err.message : String(err), 'error');
-    } finally { setSaving(false); }
-  };
-  return (
-    <Drawer open onClose={onClose} label={title} title={title}>
-      <FormGrid onSubmit={() => void submit()}>
-        {!row && <TextField label={t('fin.classCode')} required maxLength={8} value={f.code} error={errors.classCode} onChange={(x) => setF((v) => ({ ...v, code: x.target.value }))} />}
-        <TextField label={t('company.name')} required maxLength={50} value={f.name} error={errors.name} onChange={(x) => setF((v) => ({ ...v, name: x.target.value }))} />
-        <TextField label={t('asset.fin.usefulLife')} type="number" min="1" max="50" value={f.life} error={errors.defaultUsefulLifeYears} onChange={(x) => setF((v) => ({ ...v, life: x.target.value }))} />
-        <CheckboxField label={t('asset.fin.isCapitalized')} checked={f.cap} onChange={(x) => setF((v) => ({ ...v, cap: x.target.checked }))} />
-        <CheckboxField label={t('fin.lowValue')} checked={f.low} onChange={(x) => setF((v) => ({ ...v, low: x.target.checked }))} />
-        {row && <CheckboxField label={t('fin.active')} checked={f.isActive} onChange={(x) => setF((v) => ({ ...v, isActive: x.target.checked }))} />}
-        <div className={s.formActions}>
-          <Button onClick={onClose}>{t('common.cancel')}</Button>
-          <Button variant="primary" type="submit" disabled={saving}>{t('common.save')}</Button>
-        </div>
-      </FormGrid>
-    </Drawer>
   );
 }

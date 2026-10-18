@@ -35,7 +35,8 @@
     "finMasters": "코스트센터·자산클래스",
     "deptManagers": "부서 관리자",
     "propertyTax": "재산세 신고",
-    "byCategory": "카테고리별"
+    "byCategory": "카테고리별",
+    "categories": "자산 카테고리"
   },
   "common": {
     "clear": "초기화",
@@ -504,7 +505,9 @@
     "classCodeHint": "영문·숫자·_.- 1~8자",
     "lifeHint": "1~50년",
     "searchCc": "코스트센터·이름",
-    "searchClass": "클래스·이름"
+    "searchClass": "클래스·이름",
+    "classSapOnly": "자산클래스는 SAP에서 받은 것(IF-MD-01)만 쓰며 ALM에서 추가·수정할 수 없습니다.",
+    "manualRetired": "ALM 직접 등록(사용 불가)"
   },
   "sap": {
     "description": "SAP 인터페이스 상태, 실행 로그, 전기 큐(재전기·취소), 대사 차이 처리, 필드 매핑을 봅니다. ALM은 SAP을 직접 호출하지 않고 SAP 잡이 ALM API를 부릅니다.",
@@ -1010,5 +1013,28 @@
     "ptypeCategories": "카테고리(예외 지정)",
     "ptypeCategoriesNote": "자산클래스와 구분이 다를 때만 지정합니다.",
     "includeLeasehold": "임차개량 포함(GA는 건물 일부가 되는 개량은 동산이 아님, 영업용 집기는 Schedule A)"
+  },
+  "cat": {
+    "code": "코드",
+    "name": "이름",
+    "parent": "상위 카테고리",
+    "assetClass": "기본 자산클래스(SAP)",
+    "life": "교체 내용연수(년)",
+    "isCi": "등록 시 CMDB CI 생성",
+    "taxType": "재산세 구분",
+    "fromClass": "자산클래스 따름",
+    "assets": "자산",
+    "status": "상태",
+    "active": "사용",
+    "inactive": "사용 안 함",
+    "description": "카테고리는 ALM에서 정의합니다(메뉴·모델·CMDB·교체 내용연수). 자산클래스는 SAP에서 받은 것만 쓰며, 등록 시 기본값으로 하나를 고릅니다.",
+    "add": "카테고리 추가",
+    "edit": "카테고리 수정",
+    "search": "코드·이름 검색",
+    "codeHint": "영문·숫자·_ . - (20자 이내). 나중에 바꿀 수 없습니다.",
+    "lifeHint": "1~50년",
+    "classHint": "SAP에서 받은 자산클래스(IF-MD-01)만 고를 수 있습니다.",
+    "classUnavailable": "SAP 클래스 아님 — 다시 고르세요",
+    "usage": "이 카테고리를 쓰는 자산 {{assets}}건, 모델 {{models}}건. 쓰는 자산이나 활성 하위 카테고리가 있으면 사용 안 함으로 바꿀 수 없습니다."
   }
 }

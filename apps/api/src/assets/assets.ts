@@ -215,8 +215,9 @@ export async function createAsset(c: PoolClient, p: Principal, body: unknown) {
   const classId = v.assetClassId ?? ref.defaultClassId ?? null;
   const cls = classId ? (await c.query('SELECT id, class_code, is_capitalized, is_low_value, is_active, is_manual FROM asset_class WHERE id = $1', [classId])).rows[0] : undefined;
   if (classId && !cls?.is_active) throw E.badRequest('입력 값을 확인하세요: assetClassId 활성 자산클래스가 아닙니다', { errors: [{ field: 'assetClassId', code: 'ALM-E100', message: '없음' }] });
-  if (v.registerInSap && cls?.is_manual) {
-    throw E.badRequest('입력 값을 확인하세요: assetClassId ALM에서 직접 만든 클래스는 SAP에 등록할 수 없습니다', { errors: [{ field: 'assetClassId', code: 'ALM-E100', message: 'SAP 자산클래스가 아님' }] });
+  // 자산클래스는 SAP에서 받은 것만(2026-10-18). 예전에 ALM에서 만든 클래스는 고를 수 없다
+  if (cls?.is_manual) {
+    throw E.badRequest('입력 값을 확인하세요: assetClassId SAP에서 받은 자산클래스만 쓸 수 있습니다', { errors: [{ field: 'assetClassId', code: 'ALM-E100', message: 'SAP 자산클래스가 아님' }] });
   }
   if (v.registerInSap && !cls) {
     throw new AlmError(400, 'ALM-E101', '입력 값을 확인하세요: assetClassId SAP 등록이면 자산클래스가 필요합니다(카테고리 기본값 없음)',

@@ -1528,7 +1528,7 @@ name | string(50) | Y | 이름
 isLowValue | bool | Y | 저가자산
 isCapitalized | bool | Y | 자본화
 defaultUsefulLifeYears | int | N | 내용연수 기본값(년)
-isManual | bool | Y | ALM에서 직접 등록(수정 가능)
+isManual | bool | Y | 예전에 ALM에서 직접 등록(사용 불가)
 isActive | bool | Y | 사용
 assetCount | int | Y | 이 클래스의 자산(폐기·처분 제외)
 version | int | Y | 낙관적 잠금
@@ -1536,12 +1536,34 @@ version | int | Y | 낙관적 잠금
 schema('AssetClassRowList', '자산클래스 목록', '''
 items | [AssetClassRow] | Y | 행
 ''')
-schema('AssetClassInput', '자산클래스 등록·수정(수정은 보낸 필드만)', '''
-classCode | string(8) | N | 등록 시 필수. 영문·숫자·_.-
-name | string(50) | N | 등록 시 필수
-defaultUsefulLifeYears | int | N | 1~50
-isLowValue | bool | N | 기본 false
-isCapitalized | bool | N | 기본 true
+schema('CategoryRow', '자산 카테고리(관리)', '''
+id | uuid | Y | id
+version | int | Y | 버전
+categoryCode | string(20) | Y | 코드(만든 뒤 바꾸지 않음)
+name | string(60) | Y | 이름
+parentId | uuid | N | 상위 카테고리
+parentName | string | N | 상위 이름
+defaultAssetClassId | uuid | N | 기본 자산클래스(SAP 클래스만)
+assetClassCode | string | N | 기본 자산클래스 코드
+assetClassName | string | N | 기본 자산클래스 이름
+usefulLifeYears | int | N | 교체 판단 내용연수(년)
+isCi | bool | Y | 등록 시 CMDB CI 자동 생성
+taxPropertyType | enum(EQUIPMENT,LEASEHOLD,VEHICLE,CIP,LEASED_IN,REAL_PROPERTY,INTANGIBLE,EXCLUDED) | N | 재산세 구분(자산클래스보다 우선)
+isActive | bool | Y | 사용
+assetCount | int | Y | 이 카테고리의 자산(폐기·처분 제외)
+modelCount | int | Y | 활성 모델 수
+''')
+schema('CategoryRowList', '자산 카테고리 목록', '''
+items | [CategoryRow] | Y | 행
+''')
+schema('CategoryInput', '자산 카테고리 등록·수정(수정은 보낸 필드만)', '''
+categoryCode | string(20) | N | 등록 시 필수. 영문·숫자·_.-(대문자로 저장). 수정 불가
+name | string(60) | N | 등록 시 필수
+parentId | uuid | N | 상위 카테고리(null이면 해제)
+defaultAssetClassId | uuid | N | 기본 자산클래스(SAP에서 받은 활성 클래스만, null이면 해제)
+usefulLifeYears | int | N | 1~50(null이면 해제)
+isCi | bool | N | CMDB CI 자동 생성
+taxPropertyType | enum(EQUIPMENT,LEASEHOLD,VEHICLE,CIP,LEASED_IN,REAL_PROPERTY,INTANGIBLE,EXCLUDED) | N | 재산세 구분(null이면 자산클래스 구분)
 isActive | bool | N | 수정 시만
 ''')
 schema('DeptManager', '부서 관리자 지정', '''
@@ -1598,11 +1620,14 @@ W('관리','POST','/admin/cost-centers','createCostCenter','코스트센터 등�
   [ 'SAP 연계를 끈 회사만(SAP 회사는 IF-MD-01, 409 ALM-E322). 관리 영역은 ALM.', '코스트센터 코드는 테넌트에서 유일(409 ALM-E321).'],ok='201')
 W('관리','PATCH','/admin/cost-centers/{id}','patchCostCenter','코스트센터 수정',MA,'CostCenterPatch','CostCenterRow','200, 400, 404, 409','cost_center, audit_log','관리',
   [ 'SAP 연계를 끈 회사만(409 ALM-E322).', '폐기·처분이 아닌 자산이 쓰고 있으면 비활성화 불가(409 ALM-E318).'],params=[ID()])
-W('관리','GET','/admin/asset-classes','listAssetClasses','자산클래스 관리 목록',MA+', ASSET_ACCOUNTANT, AUDITOR',None,'AssetClassRowList','200','asset_class','관리',[ 'SAP 클래스는 읽기 전용(isManual=false).'])
-W('관리','POST','/admin/asset-classes','createAssetClass','자산클래스 등록',MA,'AssetClassInput','AssetClassRow','201, 400, 409','asset_class, audit_log','관리',
-  [ 'SAP 연계를 쓰지 않는 회사용(is_manual). SAP 수신(isLast)은 직접 만든 클래스를 비활성화하지 않는다.', '직접 만든 클래스는 SAP 등록(registerInSap·NEW_ASSET)에 쓸 수 없다(400).', '같은 코드가 있으면 409 ALM-E321. 같은 코드가 나중에 SAP에서 오면 SAP 클래스로 바뀐다.'],ok='201')
-W('관리','PATCH','/admin/asset-classes/{id}','patchAssetClass','자산클래스 수정',MA,'AssetClassInput','AssetClassRow','200, 400, 404, 409','asset_class, audit_log','관리',
-  [ '직접 만든 클래스만(SAP 클래스는 409 ALM-E322). classCode는 바꾸지 않는다.', '자산·카테고리가 쓰고 있으면 비활성화 불가(409 ALM-E318).'],params=[ID()])
+W('관리','GET','/admin/asset-classes','listAssetClasses','자산클래스 목록(조회)',MA+', ASSET_ACCOUNTANT, AUDITOR',None,'AssetClassRowList','200','asset_class','관리',
+  [ '자산클래스는 SAP에서 받은 것만 쓴다(IF-MD-01, 2026-10-18). ALM에서 만들거나 고치지 않는다.', '예전에 ALM에서 만든 클래스(isManual=true)는 표시만 하고 등록·카테고리에서 고를 수 없다(/lookups에서 빠짐).'])
+W('관리','GET','/admin/categories','listCategories','자산 카테고리 목록',MA+', ASSET_ACCOUNTANT, AUDITOR',None,'CategoryRowList','200','category, asset_class, asset, model','ADM-050',
+  [ '카테고리는 ALM에서 정의한다(메뉴·조회·모델·CMDB·교체 내용연수).', 'q는 코드·이름, active=true면 활성만.'],params=[('q','query','string','N','검색'),('active','query','bool','N','활성만')])
+W('관리','POST','/admin/categories','createCategory','자산 카테고리 등록',MA,'CategoryInput','CategoryRow','201, 400, 409','category, audit_log','ADM-050',
+  [ '코드 중복 409 ALM-E321. 기본 자산클래스는 SAP에서 받은 활성 클래스만(400).', '상위 카테고리는 활성이어야 하고 순환할 수 없다.'],ok='201')
+W('관리','PATCH','/admin/categories/{id}','patchCategory','자산 카테고리 수정',MA,'CategoryInput','CategoryRow','200, 400, 404, 409','category, audit_log','ADM-050',
+  [ '보낸 필드만. 코드는 바꿀 수 없다(400).', '쓰는 자산(폐기·처분 제외)이나 활성 하위 카테고리가 있으면 비활성화 불가(409 ALM-E318).'],params=[ID()])
 W('관리','GET','/admin/settings','listSettings',  '설정',SA,None,'SettingList','200','setting','관리',[ '-'])
 W('관리','PUT','/admin/settings/{key}','putSetting','설정 저장',SA,'SettingRow','SettingRow','200, 400','setting, audit_log','관리',[ '키별 값 형식 검사(SettingRow.value 설명). 모르는 키는 400 ALM-E100.'],params=[('key','path','string(60)','Y','키')])
 W('관리','GET','/admin/audit-logs','listAuditLogs','감사 로그 조회','SYS_ADMIN, ASSET_ACCOUNTANT',None,'AuditRowList','200','audit_log','관리',[ '10년 보관. 13개월 지난 기간은 보관 저장소에서 비동기 조회(내보내기로 안내).'],

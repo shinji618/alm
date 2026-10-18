@@ -7881,13 +7881,15 @@ paths:
   /admin/asset-classes:
     get:
       operationId: listAssetClasses
-      summary: 자산클래스 관리 목록
+      summary: 자산클래스 목록(조회)
       tags:
       - WEB
       description: '관리 · 테이블: asset_class
 
 
-        - SAP 클래스는 읽기 전용(isManual=false).'
+        - 자산클래스는 SAP에서 받은 것만 쓴다(IF-MD-01, 2026-10-18). ALM에서 만들거나 고치지 않는다.
+
+        - 예전에 ALM에서 만든 클래스(isManual=true)는 표시만 하고 등록·카테고리에서 고를 수 없다(/lookups에서 빠짐).'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       responses:
@@ -7910,19 +7912,63 @@ paths:
       security:
       - webAuth:
         - web
-    post:
-      operationId: createAssetClass
-      summary: 자산클래스 등록
+  /admin/categories:
+    get:
+      operationId: listCategories
+      summary: 자산 카테고리 목록
       tags:
       - WEB
-      description: '관리 · 테이블: asset_class, audit_log
+      description: 'ADM-050 · 테이블: category, asset_class, asset, model
 
 
-        - SAP 연계를 쓰지 않는 회사용(is_manual). SAP 수신(isLast)은 직접 만든 클래스를 비활성화하지 않는다.
+        - 카테고리는 ALM에서 정의한다(메뉴·조회·모델·CMDB·교체 내용연수).
 
-        - 직접 만든 클래스는 SAP 등록(registerInSap·NEW_ASSET)에 쓸 수 없다(400).
+        - q는 코드·이름, active=true면 활성만.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: q
+        in: query
+        required: false
+        description: 검색
+        schema:
+          type: string
+      - name: active
+        in: query
+        required: false
+        description: 활성만
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryRowList'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: master.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
+      security:
+      - webAuth:
+        - web
+    post:
+      operationId: createCategory
+      summary: 자산 카테고리 등록
+      tags:
+      - WEB
+      description: 'ADM-050 · 테이블: category, audit_log
 
-        - 같은 코드가 있으면 409 ALM-E321. 같은 코드가 나중에 SAP에서 오면 SAP 클래스로 바뀐다.'
+
+        - 코드 중복 409 ALM-E321. 기본 자산클래스는 SAP에서 받은 활성 클래스만(400).
+
+        - 상위 카테고리는 활성이어야 하고 순환할 수 없다.'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       responses:
@@ -7931,7 +7977,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AssetClassRow'
+                $ref: '#/components/schemas/CategoryRow'
         '400':
           $ref: '#/components/responses/E400'
         '409':
@@ -7952,19 +7998,19 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AssetClassInput'
-  /admin/asset-classes/{id}:
+              $ref: '#/components/schemas/CategoryInput'
+  /admin/categories/{id}:
     patch:
-      operationId: patchAssetClass
-      summary: 자산클래스 수정
+      operationId: patchCategory
+      summary: 자산 카테고리 수정
       tags:
       - WEB
-      description: '관리 · 테이블: asset_class, audit_log
+      description: 'ADM-050 · 테이블: category, audit_log
 
 
-        - 직접 만든 클래스만(SAP 클래스는 409 ALM-E322). classCode는 바꾸지 않는다.
+        - 보낸 필드만. 코드는 바꿀 수 없다(400).
 
-        - 자산·카테고리가 쓰고 있으면 비활성화 불가(409 ALM-E318).'
+        - 쓰는 자산(폐기·처분 제외)이나 활성 하위 카테고리가 있으면 비활성화 불가(409 ALM-E318).'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       - name: id
@@ -7980,7 +8026,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AssetClassRow'
+                $ref: '#/components/schemas/CategoryRow'
         '400':
           $ref: '#/components/responses/E400'
         '404':
@@ -8003,7 +8049,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AssetClassInput'
+              $ref: '#/components/schemas/CategoryInput'
   /admin/settings:
     get:
       operationId: listSettings
@@ -11961,37 +12007,76 @@ components:
       - count
     CategoryRow:
       type: object
-      description: 카테고리별 현황
+      description: 자산 카테고리(관리)
       properties:
-        categoryId:
+        id:
           type: string
           format: uuid
-          description: 카테고리
+          description: id
+        version:
+          type: integer
+          description: 버전
+        categoryCode:
+          type: string
+          maxLength: 20
+          description: 코드(만든 뒤 바꾸지 않음)
         name:
           type: string
+          maxLength: 60
           description: 이름
-        total:
+        parentId:
+          type: string
+          format: uuid
+          description: 상위 카테고리
+        parentName:
+          type: string
+          description: 상위 이름
+        defaultAssetClassId:
+          type: string
+          format: uuid
+          description: 기본 자산클래스(SAP 클래스만)
+        assetClassCode:
+          type: string
+          description: 기본 자산클래스 코드
+        assetClassName:
+          type: string
+          description: 기본 자산클래스 이름
+        usefulLifeYears:
           type: integer
-          description: 자산 수
-        inUse:
-          type: integer
+          description: 교체 판단 내용연수(년)
+        isCi:
+          type: boolean
+          description: 등록 시 CMDB CI 자동 생성
+        taxPropertyType:
+          type: string
+          enum:
+          - EQUIPMENT
+          - LEASEHOLD
+          - VEHICLE
+          - CIP
+          - LEASED_IN
+          - REAL_PROPERTY
+          - INTANGIBLE
+          - EXCLUDED
+          description: 재산세 구분(자산클래스보다 우선)
+        isActive:
+          type: boolean
           description: 사용
-        inStock:
+        assetCount:
           type: integer
-          description: 재고
-        pastUsefulLife:
+          description: 이 카테고리의 자산(폐기·처분 제외)
+        modelCount:
           type: integer
-          description: 내용연수 경과
-        nbv:
-          type: number
-          description: 장부가액(amount.read 권한)
+          description: 활성 모델 수
       required:
-      - categoryId
+      - id
+      - version
+      - categoryCode
       - name
-      - total
-      - inUse
-      - inStock
-      - pastUsefulLife
+      - isCi
+      - isActive
+      - assetCount
+      - modelCount
     RenewalRow:
       type: object
       description: 갱신 예정
@@ -16973,7 +17058,7 @@ components:
           description: 내용연수 기본값(년)
         isManual:
           type: boolean
-          description: ALM에서 직접 등록(수정 가능)
+          description: 예전에 ALM에서 직접 등록(사용 불가)
         isActive:
           type: boolean
           description: 사용
@@ -17004,27 +17089,55 @@ components:
           description: 행
       required:
       - items
-    AssetClassInput:
+    CategoryRowList:
       type: object
-      description: 자산클래스 등록·수정(수정은 보낸 필드만)
+      description: 자산 카테고리 목록
       properties:
-        classCode:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryRow'
+          description: 행
+      required:
+      - items
+    CategoryInput:
+      type: object
+      description: 자산 카테고리 등록·수정(수정은 보낸 필드만)
+      properties:
+        categoryCode:
           type: string
-          maxLength: 8
-          description: 등록 시 필수. 영문·숫자·_.-
+          maxLength: 20
+          description: 등록 시 필수. 영문·숫자·_.-(대문자로 저장). 수정 불가
         name:
           type: string
-          maxLength: 50
+          maxLength: 60
           description: 등록 시 필수
-        defaultUsefulLifeYears:
+        parentId:
+          type: string
+          format: uuid
+          description: 상위 카테고리(null이면 해제)
+        defaultAssetClassId:
+          type: string
+          format: uuid
+          description: 기본 자산클래스(SAP에서 받은 활성 클래스만, null이면 해제)
+        usefulLifeYears:
           type: integer
-          description: 1~50
-        isLowValue:
+          description: 1~50(null이면 해제)
+        isCi:
           type: boolean
-          description: 기본 false
-        isCapitalized:
-          type: boolean
-          description: 기본 true
+          description: CMDB CI 자동 생성
+        taxPropertyType:
+          type: string
+          enum:
+          - EQUIPMENT
+          - LEASEHOLD
+          - VEHICLE
+          - CIP
+          - LEASED_IN
+          - REAL_PROPERTY
+          - INTANGIBLE
+          - EXCLUDED
+          description: 재산세 구분(null이면 자산클래스 구분)
         isActive:
           type: boolean
           description: 수정 시만

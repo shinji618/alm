@@ -36,3 +36,29 @@ describe('Assets menu by category', () => {
     expect(await screen.findByLabelText(/^Category/)).toHaveValue('fur');
   }, 20000);
 });
+
+describe('Asset categories admin (ADM-050)', () => {
+  it('adds a category with an SAP asset class as default', async () => {
+    window.history.pushState({}, '', '/admin/categories');
+    const posts: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
+      if (url.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'tok' }), { status: 200 });
+      if (url.includes('/lookups')) return new Response(JSON.stringify({ ...LOOKUPS, assetClasses: [{ id: 'c3000', code: '00003000', label: 'Fixtures and fittings' }] }), { status: 200 });
+      if (url.endsWith('/admin/categories') && init.method === 'POST') { posts.push(JSON.parse(String(init.body))); return new Response(JSON.stringify({ id: 'n' }), { status: 201 }); }
+      if (url.includes('/admin/categories')) return new Response(JSON.stringify({ items: [{ id: 'nb', version: 1, categoryCode: 'NB', name: 'Notebook', isCi: true, isActive: true, assetCount: 2, modelCount: 1 }] }), { status: 200 });
+      return new Response(JSON.stringify({ code: 'ALM-E404', message: 'nope' }), { status: 404 });
+    }));
+    render(<App initialMe={{ ...me, permissions: ['asset.read', 'master.read', 'master.write'] }} />);
+    const user = userEvent.setup();
+    expect(await screen.findByText('Notebook', { selector: 'td' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Add category' }));
+    const d = screen.getByRole('dialog');
+    await user.type(within(d).getByLabelText(/^Code/), 'fur');
+    await user.type(within(d).getByLabelText(/^Name/), 'Furniture');
+    await user.selectOptions(await within(d).findByLabelText(/^Default asset class/), 'c3000');
+    await user.type(within(d).getByLabelText(/^Replacement life/), '7');
+    await user.click(within(d).getByRole('button', { name: 'Save' }));
+    await vi.waitFor(() => expect(posts[0]).toEqual({ categoryCode: 'FUR', name: 'Furniture', parentId: null, defaultAssetClassId: 'c3000', usefulLifeYears: 7,
+      isCi: false, taxPropertyType: null }));
+  }, 20000);
+});

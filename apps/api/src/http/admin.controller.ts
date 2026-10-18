@@ -8,6 +8,7 @@ import * as users from '../admin/users';
 import * as cfg from '../admin/config';
 import * as companies from '../admin/companies';
 import * as fin from '../admin/finmasters';
+import * as cats from '../admin/categories';
 import * as dm from '../admin/deptmanagers';
 import { AlmContext, Ctx, Operation, txOf } from './context';
 import { DB, PRINCIPALS } from './tokens';
@@ -127,18 +128,25 @@ export class AdminController {
     return this.db.withTx(txOf(ctx), (c) => fin.listAssetClasses(c));
   }
 
-  @Post('asset-classes')
-  @HttpCode(201)
-  @Operation('createAssetClass')
-  createAssetClass(@Ctx() ctx: AlmContext, @Body() body: unknown) {
-    const p = ctx.principal!;
-    return this.db.withTx(txOf(ctx), (c) => fin.createAssetClass(c, p.tenantId, p.userId, body));
+  // 자산 카테고리(ADM-050): ALM에서 정의
+  @Get('categories')
+  @Operation('listCategories')
+  listCategories(@Ctx() ctx: AlmContext, @Query() q: Record<string, string>) {
+    return this.db.withTx(txOf(ctx), (c) => cats.listCategories(c, q));
   }
 
-  @Patch('asset-classes/:id')
-  @Operation('patchAssetClass')
-  patchAssetClass(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) {
-    return this.db.withTx(txOf(ctx), (c) => fin.patchAssetClass(c, id, ctx.principal!.userId, body));
+  @Post('categories')
+  @HttpCode(201)
+  @Operation('createCategory')
+  createCategory(@Ctx() ctx: AlmContext, @Body() body: unknown) {
+    const p = ctx.principal!;
+    return this.db.withTx(txOf(ctx), (c) => cats.createCategory(c, p.tenantId, p.userId, body));
+  }
+
+  @Patch('categories/:id')
+  @Operation('patchCategory')
+  patchCategory(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) {
+    return this.db.withTx(txOf(ctx), (c) => cats.patchCategory(c, id, ctx.principal!.userId, body));
   }
 
   // 코스트센터별 부서 관리자(ADM-040)

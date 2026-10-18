@@ -324,7 +324,7 @@ test('회사 설정: SAP 연계를 끈 회사(승인 1단계·0단계), SAP 신�
   assert.equal((await q('SELECT status FROM asset WHERE id = $1', [n2]))[0].status, 'DISPOSED');
 });
 
-test('코스트센터·자산클래스 직접 관리: SAP 끈 회사만, 중복·사용 중 비활성 409, 직접 만든 클래스는 SAP 등록 불가', { skip }, async () => {
+test('코스트센터 직접 관리(SAP 끈 회사만)·자산클래스는 SAP 것만·자산 카테고리 관리', { skip }, async () => {
   const [co2] = await q(`SELECT id FROM company WHERE company_code = '2000'`);
   assert.equal((await call('emp', 'GET', '/admin/cost-centers')).status, 403);
   const cc = await call('mgr', 'POST', '/admin/cost-centers', { companyId: co2.id, costCenterCode: 'N200', name: 'NoSAP HR', responsible: 'Kim' });
@@ -340,14 +340,38 @@ test('코스트센터·자산클래스 직접 관리: SAP 끈 회사만, 중복�
   const list = await call('mgr', 'GET', `/admin/cost-centers?companyId=${co2.id}`);
   assert.deepEqual(list.body.items.map((x: { costCenterCode: string; isActive: boolean }) => [x.costCenterCode, x.isActive]), [['N100', false], ['N200', true]]);
 
-  const cls = await call('mgr', 'POST', '/admin/asset-classes', { classCode: 'ALM-IT', name: 'IT equipment', defaultUsefulLifeYears: 4 });
-  assert.equal(cls.status, 201);
-  assert.deepEqual([cls.body.isManual, cls.body.isCapitalized, cls.body.defaultUsefulLifeYears], [true, true, 4]);
-  assert.equal((await call('mgr', 'POST', '/admin/asset-classes', { classCode: '00003200', name: 'dup' })).status, 409);
-  assert.equal((await call('mgr', 'PATCH', `/admin/asset-classes/${ids.cls}`, { name: 'x' })).status, 409, 'SAP 클래스는 수정 불가');
-  assert.equal((await call('mgr', 'PATCH', `/admin/asset-classes/${cls.body.id}`, { defaultUsefulLifeYears: 3 })).body.defaultUsefulLifeYears, 3);
+  // 자산클래스는 SAP에서 받은 것만(2026-10-18): 직접 만들기·고치기 API 없음, 예전 ALM 클래스는 목록에서 빠지고 쓸 수 없음
+  assert.equal((await call('mgr', 'POST', '/admin/asset-classes', { classCode: 'ALM-IT', name: 'IT equipment' })).status, 404);
+  assert.equal((await call('mgr', 'PATCH', `/admin/asset-classes/${ids.cls}`, { name: 'x' })).status, 404);
+  const [old] = await q(`INSERT INTO asset_class (id, tenant_id, class_code, name, is_manual) VALUES (gen_random_uuid(), $1, 'ALM-IT', 'IT equipment', true) RETURNING id`, [tenantId]);
+  const cls = { body: { id: old.id as string } };
   const lk = await call('mgr', 'GET', '/lookups?types=assetClasses');
-  assert.equal(lk.body.assetClasses.find((x: { code: string }) => x.code === 'ALM-IT').extra.isManual, true);
+  assert.ok(!lk.body.assetClasses.some((x: { code: string }) => x.code === 'ALM-IT'), '예전 ALM 클래스는 고를 수 없음');
+  assert.equal((await call('mgr', 'GET', '/admin/asset-classes')).body.items.find((x: { classCode: string }) => x.classCode === 'ALM-IT').isManual, true);
+  const [mdl] = await q(`INSERT INTO model (id, tenant_id, category_id, manufacturer, model_name) VALUES (gen_random_uuid(), $1, $2, 'Dell', 'L7450') RETURNING id`, [tenantId, ids.cat]);
+  const bad = await call('mgr', 'POST', '/assets', { categoryId: ids.cat, modelId: mdl.id, description: 'x', companyId: ids.co, roomId: ids.room1, costCenterId: ids.cc100,
+    assetClassId: old.id, status: 'IN_STOCK' });
+  assert.equal(bad.status, 400); assert.equal(bad.body.errors[0].field, 'assetClassId');
+
+  // 자산 카테고리(ADM-050): ALM에서 정의, 기본 자산클래스는 SAP 클래스만
+  assert.equal((await call('emp', 'GET', '/admin/categories')).status, 403);
+  const fur = await call('mgr', 'POST', '/admin/categories', { categoryCode: 'fur', name: 'Furniture', usefulLifeYears: 7, defaultAssetClassId: ids.cls, taxPropertyType: 'EQUIPMENT' });
+  assert.equal(fur.status, 201, JSON.stringify(fur.body));
+  assert.deepEqual([fur.body.categoryCode, fur.body.assetClassCode, fur.body.usefulLifeYears, fur.body.isActive], ['FUR', '00003200', 7, true]);
+  assert.equal((await call('mgr', 'POST', '/admin/categories', { categoryCode: 'FUR', name: 'dup' })).status, 409);
+  const manual = await call('mgr', 'POST', '/admin/categories', { categoryCode: 'X1', name: 'x', defaultAssetClassId: old.id });
+  assert.equal(manual.status, 400); assert.equal(manual.body.errors[0].field, 'defaultAssetClassId');
+  const desk = await call('mgr', 'POST', '/admin/categories', { categoryCode: 'DESK', name: 'Desk', parentId: fur.body.id });
+  assert.equal(desk.body.parentName, 'Furniture');
+  assert.equal((await call('mgr', 'PATCH', `/admin/categories/${fur.body.id}`, { parentId: desk.body.id })).status, 400, '순환');
+  assert.equal((await call('mgr', 'PATCH', `/admin/categories/${fur.body.id}`, { categoryCode: 'NEW' })).status, 400, '코드 변경 불가');
+  assert.equal((await call('mgr', 'PATCH', `/admin/categories/${fur.body.id}`, { isActive: false })).status, 409, '활성 하위 카테고리');
+  const nb = await call('mgr', 'PATCH', `/admin/categories/${ids.cat}`, { isActive: false });
+  assert.equal(nb.status, 409); assert.equal(nb.body.code, 'ALM-E318');
+  const ren = await call('mgr', 'PATCH', `/admin/categories/${desk.body.id}`, { name: 'Office desk', defaultAssetClassId: null, isActive: false });
+  assert.deepEqual([ren.body.name, ren.body.defaultAssetClassId, ren.body.isActive], ['Office desk', undefined, false]);
+  const all = await call('mgr', 'GET', '/admin/categories?active=true');
+  assert.ok(all.body.items.some((x: { categoryCode: string }) => x.categoryCode === 'FUR') && !all.body.items.some((x: { categoryCode: string }) => x.categoryCode === 'DESK'));
 
   const [a] = await q(`INSERT INTO asset (id, tenant_id, asset_tag, description, category_id, status, source, company_id, site_id, room_id, cost_center_id)
     VALUES (gen_random_uuid(), $1, 'AT-000300', 'SAP co laptop', $2, 'IN_STOCK', 'MANUAL', $3, $4, $5, $6) RETURNING id`, [tenantId, ids.cat, ids.co, ids.site, ids.room1, ids.cc100]);
