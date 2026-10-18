@@ -5,6 +5,8 @@ import { NAV } from './nav';
 import { useSession } from '@/lib/session';
 import { api } from '@/lib/api';
 import { useAsync } from '@/lib/useAsync';
+import { CATEGORIES_CHANGED } from '@/lib/events';
+import { useEffect } from 'react';
 
 interface CategoryItem { id: string; code: string; label: string }
 
@@ -21,6 +23,12 @@ export function NavRail({ open, counts = {}, onNavigate }: { open: boolean; coun
   const showCats = !!me && can('asset.read');
   // 자산 카테고리별 하위 메뉴(조회·등록). 세션이 없으면(Storybook) 부르지 않는다
   const cats = useAsync((sig) => (showCats ? api.get<{ categories?: CategoryItem[] }>('/lookups?types=categories', sig) : Promise.resolve({ categories: [] })), [showCats]);
+  // 관리 화면에서 카테고리를 바꾸면(사용 안 함·삭제·추가) 메뉴를 바로 다시 읽는다
+  useEffect(() => {
+    const on = () => cats.reload();
+    window.addEventListener(CATEGORIES_CHANGED, on);
+    return () => window.removeEventListener(CATEGORIES_CHANGED, on);
+  }, [cats.reload]);
   const curCat = loc.pathname === '/assets' ? new URLSearchParams(loc.search).get('categoryId') ?? '' : '';
   const groups = NAV.map((g) => ({ ...g, items: g.items.filter((it) => (!it.perm || can(it.perm)) && (!it.feature || me?.features?.[it.feature] !== false)) }))
     .filter((g) => g.items.length);

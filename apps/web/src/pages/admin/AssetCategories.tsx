@@ -9,6 +9,7 @@ import { useAsync } from '@/lib/useAsync';
 import { useSession } from '@/lib/session';
 import type { Lookups } from '../assets/types';
 import { PROPERTY_TYPES } from '../tax/types';
+import { notifyCategoriesChanged } from '@/lib/events';
 import s from '../assets/assets.module.css';
 
 export interface CategoryRow {
@@ -48,7 +49,7 @@ export function AssetCategories() {
         )}
       </Panel>
       {editing && <CategoryDrawer row={editing === 'new' ? undefined : editing} all={list.data?.items ?? []}
-        onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); list.reload(); }} />}
+        onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); list.reload(); notifyCategoriesChanged(); }} />}
     </>
   );
 }

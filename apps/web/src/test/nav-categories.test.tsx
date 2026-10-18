@@ -83,3 +83,28 @@ describe('Asset categories delete', () => {
     expect(await within(screen.getByRole('dialog')).findByRole('alert')).toHaveTextContent('자산이 2건 있어 삭제할 수 없습니다');
   }, 20000);
 });
+
+describe('Assets menu refresh', () => {
+  it('drops a category from the menu right after it is deactivated', async () => {
+    window.history.pushState({}, '', '/admin/categories');
+    let active = true;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
+      if (url.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'tok' }), { status: 200 });
+      if (url.includes('/lookups')) return new Response(JSON.stringify({ ...LOOKUPS, categories: active ? LOOKUPS.categories : [LOOKUPS.categories[0]] }), { status: 200 });
+      if (url.endsWith('/admin/categories/fur') && init.method === 'PATCH') { active = false; return new Response(JSON.stringify({ id: 'fur' }), { status: 200 }); }
+      if (url.includes('/admin/categories')) {
+        return new Response(JSON.stringify({ items: [{ id: 'fur', version: 1, categoryCode: 'FUR', name: 'Furniture', isCi: false, isActive: active, assetCount: 0, modelCount: 0 }] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ code: 'ALM-E404', message: 'nope' }), { status: 404 });
+    }));
+    render(<App initialMe={{ ...me, permissions: ['asset.read', 'master.read', 'master.write'] }} />);
+    const user = userEvent.setup();
+    const nav = screen.getByRole('complementary', { name: 'Main navigation' });
+    expect(await within(nav).findByRole('link', { name: 'Furniture' })).toBeInTheDocument();
+    await user.click(await screen.findByText('Furniture', { selector: 'td' }));
+    const d = screen.getByRole('dialog');
+    await user.click(within(d).getByLabelText('Active'));
+    await user.click(within(d).getByRole('button', { name: 'Save' }));
+    await vi.waitFor(() => expect(within(nav).queryByRole('link', { name: 'Furniture' })).not.toBeInTheDocument());
+  }, 20000);
+});
