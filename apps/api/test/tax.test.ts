@@ -221,12 +221,14 @@ test('재산세 구분: 클래스 이름 추정·지정, 차량·부동산·무�
   const q = async (sql: string, args: unknown[]) => (await owner.query(sql, args)).rows[0]?.id as string;
   const cls = (code: string, name: string) => q(`INSERT INTO asset_class (id, tenant_id, class_code, name) VALUES (gen_random_uuid(), $1, $2, $3) RETURNING id`, [tenantId, code, name]);
   const c = { mach: await cls('00002000', 'Machinery'), veh: await cls('00003100', 'Vehicles'), bld: await cls('00001100', 'Buildings'),
-    auc: await cls('00004000', 'Assets under construction'), gw: await cls('00008200', 'Goodwill'), rs: await cls('RS1030', 'RS1030') };
+    auc: await cls('00004000', 'Assets under construction'), gw: await cls('00008200', 'Goodwill'), rs: await cls('RS1030', 'RS1030'),
+    ol: await cls('00006000', 'Leased assets (operating lease)'), lh: await cls('LH01', 'Leasehold improvements') };
   const site = await q(`INSERT INTO site (id, tenant_id, site_code, name) VALUES (gen_random_uuid(), $1, 'SAV', 'Savannah') RETURNING id`, [tenantId]);
   const asset = (tag: string, klass: string, cost: number) => q(`INSERT INTO asset (id, tenant_id, asset_tag, description, category_id, source, company_id, site_id, asset_class_id,
       purchase_date, purchase_cost) VALUES (gen_random_uuid(), $1, $2, $3, $4, 'MANUAL', $5, $6, $7, '2025-03-01', $8) RETURNING id`, [tenantId, tag, `Asset ${tag}`, ids.cat, ids.co, site, klass, cost]);
   await asset('M-1', c.mach, 10000); await asset('V-1', c.veh, 30000); await asset('B-1', c.bld, 500000);
   await asset('C-1', c.auc, 8000); await asset('G-1', c.gw, 1000); await asset('R-1', c.rs, 2000);
+  await asset('L-1', c.ol, 4000); await asset('H-1', c.lh, 50000);
 
   const pt = await call('ac', 'GET', '/tax/property-types');
   const sug = Object.fromEntries(pt.body.assetClasses.map((x: { classCode: string; suggested: string }) => [x.classCode, x.suggested]));
@@ -237,14 +239,18 @@ test('재산세 구분: 클래스 이름 추정·지정, 차량·부동산·무�
 
   const j = await call('ac', 'POST', '/tax/jurisdictions', { state: 'GA', county: 'Chatham', name: 'Chatham County, GA', lienMonth: 1, lienDay: 1,
     assessmentRatio: 0.4, millage: 30, factorSet: 'GA_DOR' });
-  assert.deepEqual([j.body.includeVehicles, j.body.includeCip], [false, true], 'GA 기본값');
+  assert.deepEqual([j.body.includeVehicles, j.body.includeCip, j.body.includeLeasehold], [false, true, false], 'GA 기본값(건물 일부 개량은 동산 아님)');
   await call('ac', 'PUT', `/tax/jurisdictions/${j.body.id}/sites`, { siteIds: [site] });
   const f = await call('ac', 'POST', '/tax/filings', { companyId: ids.co, jurisdictionId: j.body.id, taxYear: 2026 });
   assert.equal(f.status, 201, JSON.stringify(f.body));
   const byType = Object.fromEntries(f.body.byType.map((x: { propertyType: string; count: number; marketValue: number }) => [x.propertyType, [x.count, x.marketValue]]));
   assert.deepEqual(byType, { CIP: [1, 8000], EQUIPMENT: [2, byType.EQUIPMENT[1]] }, '기계·RS1030(추정 장비)·건설중');
   const ex = f.body.warnings.find((w: { code: string }) => w.code === 'EXCLUDED_TYPES');
-  assert.equal(ex.count, 3, '차량·건물·영업권');
+  assert.equal(ex.count, 4, '차량·건물·영업권·임차개량(GA)');
+  assert.equal(f.body.warnings.find((w: { code: string }) => w.code === 'LEASED_LISTED').count, 1, '운용리스 장비는 목록만');
+  assert.equal(f.body.assetCount, 3);
+  const leasedLine = (await call('ac', 'GET', `/tax/filings/${f.body.id}/lines?q=L-1`)).body.items[0];
+  assert.deepEqual([leasedLine.propertyType, leasedLine.marketValue], ['LEASED_IN', undefined]);
   assert.ok(f.body.warnings.some((w: { code: string; message: string }) => w.code === 'PROPERTY_TYPE_GUESSED' && w.message.includes('RS1030')));
 
   // RS1030을 무형으로 지정 → 빠짐, 카테고리를 차량으로 지정하면 클래스보다 우선
@@ -262,6 +268,12 @@ test('재산세 구분: 클래스 이름 추정·지정, 차량·부동산·무�
   await call('ac', 'PUT', `/tax/jurisdictions/${tx.body.id}/sites`, { siteIds: [site] });
   const t = await call('ac', 'POST', '/tax/filings', { companyId: ids.co, jurisdictionId: tx.body.id, taxYear: 2026 });
   assert.ok(t.body.byType.some((x: { propertyType: string }) => x.propertyType === 'VEHICLE'));
+  assert.ok(t.body.byType.some((x: { propertyType: string }) => x.propertyType === 'LEASEHOLD'), 'TX는 임차개량 포함(기본)');
+  assert.ok(!t.body.byType.some((x: { propertyType: string }) => x.propertyType === 'LEASED_IN'));
   const x = await raw('ac', 'GET', `/tax/filings/${t.body.id}/export`);
-  assert.ok(Buffer.from(await x.arrayBuffer()).includes(Buffer.from('Vehicles')));
+  const xb = Buffer.from(await x.arrayBuffer());
+  assert.ok(xb.includes(Buffer.from('Vehicles')));
+  assert.ok(xb.includes(Buffer.from('Owner (lessor) name')) && xb.includes(Buffer.from('L-1')), '임차 장비 시트');
+  const al = await call('ac', 'POST', '/tax/jurisdictions', { state: 'AL', county: 'Jefferson', name: 'Jefferson', lienMonth: 10, lienDay: 1, factorSet: 'AL_ADOR' });
+  assert.deepEqual([al.body.includeCip, al.body.includeVehicles], [true, false], 'AL ADV-40 Part D 건설중 포함');
 });

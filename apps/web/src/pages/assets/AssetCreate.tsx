@@ -1,7 +1,7 @@
 // ALM-112 자산 등록. SAP 고정자산 등록은 등록자가 체크 박스로 정한다(2026-10-12 결정):
 //   자산클래스가 자본화 클래스면 체크를 기본으로 제안하고, 체크하면 구매가가 필수 → 신규 자산 요청(승인 후 IF-AA-03)
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ViewHeader } from '@/components/layout';
 import { Button, CheckboxField, FormGrid, Panel, SelectField, TextField, TextareaField, useToast } from '@/components/ui';
@@ -23,7 +23,9 @@ export function AssetCreate() {
   const nav = useNavigate();
   const toast = useToast();
   const lk = useAsync((sig) => api.get<Lookups>('/lookups?types=companies,sites,rooms,costCenters,assetClasses,categories,models,users', sig), []);
-  const [f, setF] = useState<Form>(EMPTY);
+  const [sp] = useSearchParams();
+  // 메뉴의 카테고리에서 등록하면 그 카테고리로 시작한다
+  const [f, setF] = useState<Form>(() => ({ ...EMPTY, categoryId: sp.get('categoryId') ?? '' }));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [sapTouched, setSapTouched] = useState(false);

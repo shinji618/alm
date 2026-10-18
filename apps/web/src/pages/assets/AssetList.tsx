@@ -1,4 +1,4 @@
-// ALM-110 하드웨어 자산 목록. 검색·필터·정렬·페이지는 주소(쿼리 문자열)에 둬서 새로 고침·뒤로 가기·링크 공유가 된다
+// ALM-110 자산 목록(카테고리별 하위 메뉴). 검색·필터·정렬·페이지는 주소(쿼리 문자열)에 둬서 새로 고침·뒤로 가기·링크 공유가 된다
 import { useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -64,12 +64,16 @@ export function AssetList() {
   const total = list.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const opts = (xs?: { id: string; code: string; label: string }[]) => (xs ?? []).map((x) => ({ value: x.id, label: `${x.code} · ${x.label}` }));
+  // 메뉴의 카테고리 하위 항목으로 들어오면 제목·등록 버튼에 카테고리를 보여 준다
+  const catLabel = lookups.data?.categories?.find((x) => x.id === get('categoryId'))?.label;
   const hasFilter = ['q', 'status', 'stage', 'siteId', 'categoryId', 'quick'].some((k) => sp.get(k));
 
   return (
     <>
-      <ViewHeader crumb="ALM-110" title={t('nav.assets')} description={t('asset.list.description')}
-        actions={can('asset.write') ? <Button variant="primary" onClick={() => nav('/assets/new')}>{t('asset.list.register')}</Button> : undefined} />
+      <ViewHeader crumb="ALM-110" title={catLabel ? `${t('nav.assets')} · ${catLabel}` : t('nav.assets')} description={t('asset.list.description')}
+        actions={can('asset.write') ? (
+          <Button variant="primary" onClick={() => nav(`/assets/new${get('categoryId') ? `?categoryId=${get('categoryId')}` : ''}`)}>
+            {catLabel ? t('asset.list.registerIn', { category: catLabel }) : t('asset.list.register')}</Button>) : undefined} />
       <Panel padded={false}>
         <FilterBar search={get('q')} onSearch={(q) => set({ q })} searchPlaceholder={t('asset.list.search')}
           onClear={hasFilter ? () => setSp(new URLSearchParams(), { replace: true }) : undefined}>

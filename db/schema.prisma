@@ -2539,6 +2539,8 @@ model TaxJurisdiction {
   includeVehicles Boolean @default(false) @map("include_vehicles")
   /// 건설중자산(CIP)을 원가 그대로 포함
   includeCip Boolean @default(true) @map("include_cip")
+  /// 임차개량(LEASEHOLD)을 포함. GA는 건물 일부가 되는 개량을 동산으로 신고하지 않음
+  includeLeasehold Boolean @default(true) @map("include_leasehold")
   /// 감가 계수표 (GA_DOR, AL_ADOR, CA_BOE581, GENERIC_SL)
   factorSet String @map("factor_set") @db.VarChar(20)
   /// 메모(제출처 주소·온라인 신고 사이트 등)

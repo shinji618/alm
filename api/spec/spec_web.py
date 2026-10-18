@@ -1695,6 +1695,7 @@ typicalMillage | number | N | 대표 밀리지(추정용)
 note | string | Y | 신고 안내
 includeVehicles | bool | Y | 차량 포함 기본값
 includeCip | bool | Y | 건설중자산 포함 기본값
+includeLeasehold | bool | Y | 임차개량 포함 기본값
 ''')
 schema('TaxReferenceTable', '참고 계수표 요약', '''
 factorSet | enum(GA_DOR,AL_ADOR,CA_BOE581,GENERIC_SL) | Y | 계수표 종류
@@ -1733,6 +1734,7 @@ exemptionAmount | number | Y | 면제 금액
 factorSet | enum(GA_DOR,AL_ADOR,CA_BOE581,GENERIC_SL) | Y | 계수표 종류
 includeVehicles | bool | Y | 차량(VEHICLE) 포함(TX)
 includeCip | bool | Y | 건설중자산(CIP) 원가 포함
+includeLeasehold | bool | Y | 임차개량(LEASEHOLD) 포함(GA는 건물 일부 개량 제외)
 notes | string | N | 메모
 isActive | bool | Y | 사용
 sites | [TaxSiteRef] | N | 연결된 사이트
@@ -1757,6 +1759,7 @@ exemptionAmount | number | N | 면제 금액
 factorSet | enum(GA_DOR,AL_ADOR,CA_BOE581,GENERIC_SL) | Y | 계수표 종류
 includeVehicles | bool | N | 차량 포함(기본: 주별 값)
 includeCip | bool | N | 건설중자산 포함(기본: 주별 값)
+includeLeasehold | bool | N | 임차개량 포함(기본: 주별 값)
 notes | string(2000) | N | 메모
 isActive | bool | N | 사용
 ''')
@@ -1956,7 +1959,7 @@ W('재산세','GET','/tax/class-map','listTaxClassMap','카테고리별 내용�
 W('재산세','PUT','/tax/class-map','replaceTaxClassMap','구분 매핑 저장','ASSET_ACCOUNTANT','TaxClassMapInput','TaxClassMap','200, 400','tax_class_map','ALM-260',[ '보낸 카테고리만 바꾼다.'])
 W('재산세','GET','/tax/property-types','listTaxPropertyTypes','재산세 구분(자산클래스·카테고리)',TX,None,'TaxPropertyTypes','200','asset_class, category','ALM-260',
   ['구분: 카테고리 지정 → 자산클래스 지정 → 클래스 이름 추정 → EQUIPMENT 순으로 정한다.',
-   'LEASED_IN(임차 자산, 소유자가 신고)·REAL_PROPERTY·INTANGIBLE·EXCLUDED는 신고에서 빠지고, VEHICLE·CIP는 관할 설정(includeVehicles·includeCip)을 따른다.'])
+   'REAL_PROPERTY·INTANGIBLE·EXCLUDED는 신고에서 빠지고, VEHICLE·CIP·LEASEHOLD는 관할 설정(includeVehicles·includeCip·includeLeasehold)을 따른다.', 'LEASED_IN(남에게 빌린 장비)은 세액에서 빼고 신고서의 임차 장비 목록(엑셀 Leased equipment)에 넣는다.'])
 W('재산세','PUT','/tax/property-types','replaceTaxPropertyTypes','재산세 구분 저장','ASSET_ACCOUNTANT','TaxPropertyTypesInput','TaxPropertyTypes','200, 400','asset_class, category','ALM-260',
   ['보낸 자산클래스·카테고리만 바꾼다. null이면 지정 해제. IF-MD-01 수신은 이 값을 덮지 않는다.'])
 W('재산세','GET','/tax/filings','listTaxFilings','신고 목록(과거 기록)',TX,None,'TaxFilingList','200','tax_filing, tax_jurisdiction, company','ALM-260',[ '최근 연도부터. 최대 500건.'],

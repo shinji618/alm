@@ -8,6 +8,8 @@ export interface NavItem {
   perm?: string;
   /** 꺼진 기능이면 숨긴다(/me features) */
   feature?: 'sap';
+  /** 아래에 카테고리별 하위 메뉴(/assets?categoryId=…)를 붙인다 */
+  children?: 'categories';
 }
 export interface NavGroup {
   labelKey: string;
@@ -19,7 +21,7 @@ export const NAV: NavGroup[] = [
   {
     labelKey: 'nav.inventory',
     items: [
-      { path: '/assets', labelKey: 'nav.assets', screenId: 'ALM-110', wbs: '4.2' },
+      { path: '/assets', labelKey: 'nav.assets', screenId: 'ALM-110', wbs: '4.2', children: 'categories' },
       { path: '/discovery', labelKey: 'nav.discovery', screenId: 'ALM-120', wbs: '5.1' },
       { path: '/cmdb', labelKey: 'nav.cmdb', screenId: 'ALM-130', wbs: '5.2' },
       { path: '/software', labelKey: 'nav.software', screenId: 'ALM-140', wbs: '5.3' },

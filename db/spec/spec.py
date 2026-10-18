@@ -743,6 +743,7 @@ exemption_mode | E:TaxExemptionMode | NN =NONE | 면제 방식: THRESHOLD = 공�
 exemption_amount | num(15,2) | NN =0 | 면제 금액(공정가치 기준)
 include_vehicles | bool | NN =false | 차량(VEHICLE)을 신고에 포함(TX). GA·AL·CA는 차량 등록 때 따로 과세
 include_cip | bool | NN =true | 건설중자산(CIP)을 원가 그대로 포함
+include_leasehold | bool | NN =true | 임차개량(LEASEHOLD)을 포함. GA는 건물 일부가 되는 개량을 동산으로 신고하지 않음
 factor_set | vc(20) | NN | 감가 계수표 (GA_DOR, AL_ADOR, CA_BOE581, GENERIC_SL)
 notes | text | | 메모(제출처 주소·온라인 신고 사이트 등)
 is_active | bool | NN =true | 사용 여부

@@ -17,7 +17,7 @@ export const changeTone = { NEW: 'info', CARRIED: 'neutral', DISPOSED: 'warn' } 
 
 export interface StatePreset {
   state: string; name: string; taxable: boolean; formCode?: string; lienMonth: number; lienDay: number; dueMonth?: number; dueDay?: number;
-  assessmentRatio: number; exemptionMode: ExemptionMode; exemptionAmount: number; factorSet: FactorSet; typicalMillage?: number; note: string; includeVehicles: boolean; includeCip: boolean;
+  assessmentRatio: number; exemptionMode: ExemptionMode; exemptionAmount: number; factorSet: FactorSet; typicalMillage?: number; note: string; includeVehicles: boolean; includeCip: boolean; includeLeasehold: boolean;
 }
 export interface TaxReference {
   presets: StatePreset[]; factorSets: FactorSet[];
@@ -26,7 +26,7 @@ export interface TaxReference {
 export interface Jurisdiction {
   id: string; version: number; state: string; county: string; name: string; taxable: boolean; formCode?: string; lienMonth: number; lienDay: number;
   dueMonth?: number; dueDay?: number; assessmentRatio: number; millage: number; exemptionMode: ExemptionMode; exemptionAmount: number; factorSet: FactorSet;
-  includeVehicles: boolean; includeCip: boolean; notes?: string; isActive: boolean; sites?: { id: string; siteCode: string; name: string }[];
+  includeVehicles: boolean; includeCip: boolean; includeLeasehold: boolean; notes?: string; isActive: boolean; sites?: { id: string; siteCode: string; name: string }[];
 }
 export interface FactorTable { factorSet: FactorSet; tableYears: number[]; tableYear?: number; source?: string; ageStart: number; rows: { lifeClass: string; age: number; factor: number }[] }
 export interface ClassMapItem { categoryId: string; categoryCode?: string; name: string; usefulLifeYears?: number; lifeClass?: string; defaultClass: string }

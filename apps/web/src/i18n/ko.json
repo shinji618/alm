@@ -15,11 +15,11 @@
   },
   "nav": {
     "overview": "개요",
-    "inventory": "자산 대장",
+    "inventory": "자산",
     "lifecycle": "라이프사이클",
     "integration": "연계",
     "dashboard": "대시보드",
-    "assets": "하드웨어 자산",
+    "assets": "전체 자산",
     "discovery": "Discovery",
     "cmdb": "CMDB·관계",
     "software": "소프트웨어 라이선스",
@@ -34,7 +34,8 @@
     "companies": "회사·SAP 연계",
     "finMasters": "코스트센터·자산클래스",
     "deptManagers": "부서 관리자",
-    "propertyTax": "재산세 신고"
+    "propertyTax": "재산세 신고",
+    "byCategory": "카테고리별"
   },
   "common": {
     "clear": "초기화",
@@ -102,7 +103,7 @@
       "UNCOUNTED_1Y": "1년간 실사 안 됨"
     },
     "list": {
-      "description": "내 범위의 하드웨어 자산입니다. 행을 누르면 상세가 열립니다.",
+      "description": "내 범위의 자산(하드웨어·가구·장비·차량)입니다. 행을 누르면 상세가 열립니다.",
       "search": "태그, 시리얼, 호스트, IP, 사용자, SAP 번호…",
       "register": "자산 등록",
       "allStatus": "전체 상태",
@@ -110,7 +111,8 @@
       "allSites": "전체 사이트",
       "allCategories": "전체 카테고리",
       "quick": "빠른 필터",
-      "total": "자산 {{total}}건"
+      "total": "자산 {{total}}건",
+      "registerIn": "{{category}} 등록"
     },
     "col": {
       "tag": "태그",
@@ -994,7 +996,7 @@
       "LEASEHOLD": "임차개량",
       "VEHICLE": "차량",
       "CIP": "건설중자산",
-      "LEASED_IN": "임차 자산(소유자가 신고)",
+      "LEASED_IN": "임차 장비(신고서 목록만, 세액 없음)",
       "REAL_PROPERTY": "부동산(토지·건물)",
       "INTANGIBLE": "무형(소프트웨어·영업권)",
       "EXCLUDED": "제외"
@@ -1003,9 +1005,10 @@
     "ptypeInherit": "자산클래스: {{type}}",
     "ptypeNone": "—",
     "ptypeUnset": "미지정",
-    "ptypeNote": "관할 사이트의 모든 자산을 재산세 구분별로 신고합니다. 카테고리 지정이 자산클래스보다 우선하고, 지정이 없는 클래스는 이름으로 추정합니다. 임차 자산·부동산·무형·제외는 신고하지 않고, 차량·건설중자산은 관할 설정을 따릅니다.",
+    "ptypeNote": "관할 사이트의 모든 자산을 재산세 구분별로 신고합니다. 카테고리 지정이 자산클래스보다 우선하고, 지정이 없는 클래스는 이름으로 추정합니다. 부동산·무형·제외는 신고하지 않고, 차량·건설중자산·임차개량은 관할 설정을 따릅니다. 남에게 빌린 장비는 세액 없이 신고서의 임차 장비 목록에 넣습니다. 재고·소모품은 ALM에서 관리하지 않습니다.",
     "ptypeClasses": "자산클래스",
     "ptypeCategories": "카테고리(예외 지정)",
-    "ptypeCategoriesNote": "자산클래스와 구분이 다를 때만 지정합니다."
+    "ptypeCategoriesNote": "자산클래스와 구분이 다를 때만 지정합니다.",
+    "includeLeasehold": "임차개량 포함(GA는 건물 일부가 되는 개량은 동산이 아님, 영업용 집기는 Schedule A)"
   }
 }

@@ -2228,6 +2228,7 @@ CREATE TABLE tax_jurisdiction (
   exemption_amount numeric(15,2) NOT NULL DEFAULT 0,
   include_vehicles boolean NOT NULL DEFAULT false,
   include_cip boolean NOT NULL DEFAULT true,
+  include_leasehold boolean NOT NULL DEFAULT true,
   factor_set varchar(20) NOT NULL,
   notes text,
   is_active boolean NOT NULL DEFAULT true,
@@ -2255,6 +2256,7 @@ COMMENT ON COLUMN tax_jurisdiction.exemption_mode IS '면제 방식: THRESHOLD =
 COMMENT ON COLUMN tax_jurisdiction.exemption_amount IS '면제 금액(공정가치 기준)';
 COMMENT ON COLUMN tax_jurisdiction.include_vehicles IS '차량(VEHICLE)을 신고에 포함(TX). GA·AL·CA는 차량 등록 때 따로 과세';
 COMMENT ON COLUMN tax_jurisdiction.include_cip IS '건설중자산(CIP)을 원가 그대로 포함';
+COMMENT ON COLUMN tax_jurisdiction.include_leasehold IS '임차개량(LEASEHOLD)을 포함. GA는 건물 일부가 되는 개량을 동산으로 신고하지 않음';
 COMMENT ON COLUMN tax_jurisdiction.factor_set IS '감가 계수표 (GA_DOR, AL_ADOR, CA_BOE581, GENERIC_SL)';
 COMMENT ON COLUMN tax_jurisdiction.notes IS '메모(제출처 주소·온라인 신고 사이트 등)';
 COMMENT ON COLUMN tax_jurisdiction.is_active IS '사용 여부';

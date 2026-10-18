@@ -188,7 +188,7 @@ function Jurisdictions() {
 
 interface JForm { state: string; county: string; name: string; taxable: boolean; formCode: string; lienMonth: string; lienDay: string; dueMonth: string; dueDay: string;
   assessmentRatio: string; millage: string; exemptionMode: ExemptionMode; exemptionAmount: string; factorSet: FactorSet; notes: string; isActive: boolean; siteIds: string[];
-  includeVehicles: boolean; includeCip: boolean }
+  includeVehicles: boolean; includeCip: boolean; includeLeasehold: boolean }
 
 function JurisdictionDrawer({ value, reference, onClose, onSaved }: { value?: Jurisdiction; reference: TaxReference; onClose: () => void; onSaved: () => void }) {
   const { t } = useTranslation();
@@ -199,7 +199,8 @@ function JurisdictionDrawer({ value, reference, onClose, onSaved }: { value?: Ju
     formCode: value?.formCode ?? '', lienMonth: str(value?.lienMonth ?? 1), lienDay: str(value?.lienDay ?? 1), dueMonth: str(value?.dueMonth), dueDay: str(value?.dueDay),
     assessmentRatio: str(value?.assessmentRatio ?? 1), millage: str(value?.millage ?? 0), exemptionMode: value?.exemptionMode ?? 'NONE',
     exemptionAmount: str(value?.exemptionAmount ?? 0), factorSet: value?.factorSet ?? 'GENERIC_SL', notes: value?.notes ?? '', isActive: value?.isActive ?? true,
-    siteIds: value?.sites?.map((x) => x.id) ?? [], includeVehicles: value?.includeVehicles ?? false, includeCip: value?.includeCip ?? true }));
+    siteIds: value?.sites?.map((x) => x.id) ?? [], includeVehicles: value?.includeVehicles ?? false, includeCip: value?.includeCip ?? true,
+    includeLeasehold: value?.includeLeasehold ?? true }));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const preset = reference.presets.find((p) => p.state === f.state.toUpperCase());
@@ -208,7 +209,7 @@ function JurisdictionDrawer({ value, reference, onClose, onSaved }: { value?: Ju
     const p = reference.presets.find((x) => x.state === st);
     setF((v) => (p ? { ...v, state: st, taxable: p.taxable, formCode: p.formCode ?? '', lienMonth: str(p.lienMonth), lienDay: str(p.lienDay), dueMonth: str(p.dueMonth),
       dueDay: str(p.dueDay), assessmentRatio: str(p.assessmentRatio), millage: str(p.typicalMillage ?? 0), exemptionMode: p.exemptionMode,
-      exemptionAmount: str(p.exemptionAmount), factorSet: p.factorSet, includeVehicles: p.includeVehicles, includeCip: p.includeCip, name: v.name || (v.county ? `${v.county} County, ${st}` : '') } : { ...v, state: st }));
+      exemptionAmount: str(p.exemptionAmount), factorSet: p.factorSet, includeVehicles: p.includeVehicles, includeCip: p.includeCip, includeLeasehold: p.includeLeasehold, name: v.name || (v.county ? `${v.county} County, ${st}` : '') } : { ...v, state: st }));
   };
   const toggleSite = (id: string) => setF((v) => ({ ...v, siteIds: v.siteIds.includes(id) ? v.siteIds.filter((x) => x !== id) : [...v.siteIds, id] }));
   const save = async () => {
@@ -222,7 +223,7 @@ function JurisdictionDrawer({ value, reference, onClose, onSaved }: { value?: Ju
     const body = { state: f.state.toUpperCase(), county: f.county.trim(), name: f.name.trim(), taxable: f.taxable, formCode: f.formCode.trim() || undefined,
       lienMonth: num(f.lienMonth), lienDay: num(f.lienDay), dueMonth: num(f.dueMonth), dueDay: num(f.dueDay), assessmentRatio: num(f.assessmentRatio),
       millage: num(f.millage), exemptionMode: f.exemptionMode, exemptionAmount: num(f.exemptionAmount), factorSet: f.factorSet, notes: f.notes.trim() || undefined, isActive: f.isActive,
-      includeVehicles: f.includeVehicles, includeCip: f.includeCip };
+      includeVehicles: f.includeVehicles, includeCip: f.includeCip, includeLeasehold: f.includeLeasehold };
     setSaving(true);
     try {
       const j = value ? await api.patch<Jurisdiction>(`/tax/jurisdictions/${value.id}`, body) : await api.post<Jurisdiction>('/tax/jurisdictions', body);
@@ -259,6 +260,7 @@ function JurisdictionDrawer({ value, reference, onClose, onSaved }: { value?: Ju
         <CheckboxField label={t('tax.taxable')} checked={f.taxable} onChange={(e) => setF((v) => ({ ...v, taxable: e.target.checked }))} />
         <CheckboxField label={t('tax.includeVehicles')} checked={f.includeVehicles} onChange={(e) => setF((v) => ({ ...v, includeVehicles: e.target.checked }))} />
         <CheckboxField label={t('tax.includeCip')} checked={f.includeCip} onChange={(e) => setF((v) => ({ ...v, includeCip: e.target.checked }))} />
+        <CheckboxField label={t('tax.includeLeasehold')} checked={f.includeLeasehold} onChange={(e) => setF((v) => ({ ...v, includeLeasehold: e.target.checked }))} />
         <CheckboxField label={t('tax.active')} checked={f.isActive} onChange={(e) => setF((v) => ({ ...v, isActive: e.target.checked }))} />
         <fieldset className={c.sites} aria-label={t('tax.col.sites')}>
           <legend className="small">{t('tax.col.sites')}</legend>
