@@ -648,7 +648,9 @@
     "connections": "SAP connections",
     "connectionHint": "Register connections and rotate secrets with the CloudShell commands in runbook 13.",
     "inactiveConn": "Off",
-    "mappings": "Field mappings"
+    "mappings": "Field mappings",
+    "staleClaim": "The SAP job took this posting and its lock ended at {{at}} without a result. Check in SAP (AW01N/FB03) that nothing was posted before cancelling.",
+    "claimedUntil": "Being processed by the SAP job (locked until {{at}})."
   },
   "dm": {
     "title": "Department managers",

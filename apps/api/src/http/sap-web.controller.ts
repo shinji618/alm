@@ -38,7 +38,7 @@ export class SapWebController {
   @Post('postings/:id\\:cancel')
   @HttpCode(200)
   @Operation('cancelPosting')
-  cancel(@Ctx() ctx: AlmContext, @Param('id') id: string) { return this.db.withTx(txOf(ctx), (c) => m.cancelPosting(c, ctx.principal!, id)); }
+  cancel(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) { return this.db.withTx(txOf(ctx), (c) => m.cancelPosting(c, ctx.principal!, id, body)); }
 
   @Get('run-requests')
   @Operation('listRunRequests')

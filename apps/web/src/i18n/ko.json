@@ -648,7 +648,9 @@
     "connections": "SAP 연결",
     "connectionHint": "연결 등록·비밀 교체는 운영 런북(13)의 CloudShell 명령으로 합니다.",
     "inactiveConn": "사용 안 함",
-    "mappings": "필드 매핑"
+    "mappings": "필드 매핑",
+    "staleClaim": "SAP 잡이 가져간 뒤 {{at}}에 잠금이 끝났지만 결과 회신이 없습니다. 취소하기 전에 SAP(AW01N·FB03)에 전기되지 않았는지 확인하세요.",
+    "claimedUntil": "SAP 잡이 처리 중입니다({{at}}까지 잠금)."
   },
   "dm": {
     "title": "부서 관리자",

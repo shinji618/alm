@@ -1339,7 +1339,9 @@ W('SAP 연계','GET','/integration/sap/postings','listPostings','전기 큐',AC,
 W('SAP 연계','GET','/integration/sap/postings/{id}','getPosting','전기 상세',AC,None,'PostingDetail','200, 404','sap_posting','ALM-310',[ '-'],params=CI)
 W('SAP 연계','POST','/integration/sap/postings/{id}:retry','retryPosting','재전기',AC,'PostingRetry','PostingRow','200, 409','sap_posting, asset_request','ALM-310',
   ['FAILED만. 연결 요청의 현재 값으로 payload를 다시 만들고 READY, attempt는 0부터(F-310-03).', '같은 postingId를 쓰므로 SAP BKTXT·로그 확인으로 중복 전기가 막힌다.', '재시도 초과(ALM-E306) 건은 SAP에 이미 전기됐을 수 있으므로, 화면이 SAP 전표·자산 확인 체크를 받은 뒤에만 재전기한다.'],params=CI,idem='Idempotency-Key')
-W('SAP 연계','POST','/integration/sap/postings/{id}:cancel','cancelPosting','전기 취소',AC,None,'PostingRow','200, 409','sap_posting, asset_request','ALM-310',[ 'READY·FAILED만. 연결 요청은 CANCELLED(대기 단계 SKIPPED).'],params=CI)
+W('SAP 연계','POST','/integration/sap/postings/{id}:cancel','cancelPosting','전기 취소',AC,'PostingRetry','PostingRow','200, 409','sap_posting, asset_request','ALM-310',
+  [ 'READY·FAILED, 그리고 잠금이 끝난 CLAIMED(SAP 회신 없음). 잠금이 끝난 CLAIMED는 confirmSapChecked=true(SAP에 전기되지 않았음을 확인)가 있어야 한다.',
+    '잠금 중인 CLAIMED는 409(SAP 잡이 처리 중). 연결 요청은 CANCELLED(대기 단계 SKIPPED).'],params=CI)
 schema('RunRequestRow', 'SAP 실행 요청(화면)', '''
 id | uuid | Y | id
 interfaceId | string | Y | IF

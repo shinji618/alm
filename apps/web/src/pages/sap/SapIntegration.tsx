@@ -239,12 +239,14 @@ function PostingDrawer({ id, onClose, onChanged }: { id: string; onClose: () => 
     if (kind === 'cancel' && !(await confirm({ title: t('sap.cancelTitle', { no: p.postingId }), message: t('sap.cancelMessage'), danger: true, confirmLabel: t('sap.cancelPosting') }))) return;
     setBusy(true);
     try {
-      await api.post(`/integration/sap/postings/${id}:${kind}`, kind === 'retry' && p.exhausted ? { confirmSapChecked: checked } : {});
+      await api.post(`/integration/sap/postings/${id}:${kind}`, (kind === 'retry' && p.exhausted) || (kind === 'cancel' && stale) ? { confirmSapChecked: checked } : {});
       toast.show(t(kind === 'retry' ? 'sap.retried' : 'sap.cancelled', { no: p.postingId }), 'success');
       d.reload(); onChanged();
     } catch (e) { toast.show(e instanceof Error ? e.message : String(e), 'error'); } finally { setBusy(false); }
   };
   const x = d.data;
+  // SAP 잡이 가져갔지만 잠금이 끝나도록 회신이 없는 건: 확인 체크 후 취소 가능
+  const stale = !!x && x.summary.status === 'CLAIMED' && !!x.summary.leaseUntil && Date.parse(x.summary.leaseUntil) < Date.now();
   return (
     <Drawer open onClose={onClose} label={t('sap.postingDetail')} title={x ? `${x.summary.postingId} · ${t(`sap.postingType.${x.summary.postingType}`)}` : t('common.loading')}>
       {x && (
@@ -262,11 +264,15 @@ function PostingDrawer({ id, onClose, onChanged }: { id: string; onClose: () => 
             <ul className="small" style={{ paddingLeft: 16 }}>{x.summary.messages.map((m, i) => <li key={i}><span className="mono">{m.type} {m.id} {m.number}</span> {m.text}</li>)}</ul>
           )}
           <details><summary className="small">{t('sap.payload')}</summary><pre className="small mono" style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(x.payload, null, 2)}</pre></details>
-          {x.summary.status === 'FAILED' && x.summary.exhausted && can('sap.operate') && (
+          {x.summary.status === 'CLAIMED' && (
+            <p className="small muted">{stale ? t('sap.staleClaim', { at: formatDateTime(x.summary.leaseUntil) }) : t('sap.claimedUntil', { at: formatDateTime(x.summary.leaseUntil) })}</p>
+          )}
+          {((x.summary.status === 'FAILED' && x.summary.exhausted && can('sap.operate')) || (stale && can('sap.finance'))) && (
             <div className={s.notice}><CheckboxField label={t('sap.confirmChecked')} checked={checked} onChange={(e) => setChecked(e.target.checked)} /></div>
           )}
           <div className={s.formActions}>
-            {['READY', 'FAILED'].includes(x.summary.status) && can('sap.finance') && <Button disabled={busy} onClick={() => void act('cancel')}>{t('sap.cancelPosting')}</Button>}
+            {(['READY', 'FAILED'].includes(x.summary.status) || stale) && can('sap.finance') && (
+              <Button disabled={busy || (stale && !checked)} onClick={() => void act('cancel')}>{t('sap.cancelPosting')}</Button>)}
             {x.summary.status === 'FAILED' && can('sap.operate') && (
               <Button variant="primary" disabled={busy || (!!x.summary.exhausted && !checked)} onClick={() => void act('retry')}>{t('sap.retry')}</Button>)}
           </div>

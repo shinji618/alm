@@ -175,9 +175,16 @@ export async function retryPosting(c: PoolClient, p: Principal, id: string, body
 }
 
 // 전기 취소: READY·FAILED만. 연결 요청은 CANCELLED(대기 단계 SKIPPED)
-export async function cancelPosting(c: PoolClient, p: Principal, id: string) {
+// 전기 취소: READY·FAILED, 그리고 잠금이 끝난 CLAIMED(SAP 잡이 가져간 뒤 회신이 없음 — 사람이 SAP에 전기되지 않았음을 확인해야 함)
+export async function cancelPosting(c: PoolClient, p: Principal, id: string, body?: unknown) {
   const r = await loadPosting(c, id, true);
-  if (!['READY', 'FAILED'].includes(r.status)) throw new AlmError(409, 'ALM-E322', `${r.status} 상태는 취소할 수 없습니다(READY·FAILED만)`);
+  const stale = r.status === 'CLAIMED' && r.lease_until && new Date(r.lease_until).getTime() < Date.now();
+  if (r.status === 'CLAIMED' && !stale) throw new AlmError(409, 'ALM-E322', 'SAP 잡이 처리 중입니다(잠금이 끝난 뒤 취소할 수 있습니다)');
+  if (!stale && !['READY', 'FAILED'].includes(r.status)) throw new AlmError(409, 'ALM-E322', `${r.status} 상태는 취소할 수 없습니다(READY·FAILED만)`);
+  const b = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
+  if (stale && b.confirmSapChecked !== true) {
+    throw new AlmError(409, 'ALM-E322', 'SAP 결과 회신이 없는 건입니다. SAP에 이미 전기됐는지(전표·자산) 확인한 뒤 확인 체크와 함께 다시 요청하세요', { needsConfirm: true });
+  }
   await c.query(`UPDATE sap_posting SET status = 'CANCELLED', lease_until = NULL, updated_at = now(), updated_by = $2, version = version + 1 WHERE id = $1`, [id, p.userId]);
   if (r.asset_request_id) {
     await c.query(`UPDATE approval SET decision = 'SKIPPED', updated_at = now(), version = version + 1 WHERE asset_request_id = $1 AND decision = 'PENDING'`, [r.asset_request_id]);

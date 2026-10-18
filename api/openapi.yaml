@@ -6479,7 +6479,9 @@ paths:
       description: 'ALM-310 · 테이블: sap_posting, asset_request
 
 
-        - READY·FAILED만. 연결 요청은 CANCELLED(대기 단계 SKIPPED).'
+        - READY·FAILED, 그리고 잠금이 끝난 CLAIMED(SAP 회신 없음). 잠금이 끝난 CLAIMED는 confirmSapChecked=true(SAP에 전기되지 않았음을 확인)가 있어야 한다.
+
+        - 잠금 중인 CLAIMED는 409(SAP 잡이 처리 중). 연결 요청은 CANCELLED(대기 단계 SKIPPED).'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       - name: id
@@ -6508,6 +6510,12 @@ paths:
       security:
       - webAuth:
         - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostingRetry'
   /integration/sap/run-requests:
     get:
       operationId: listRunRequests

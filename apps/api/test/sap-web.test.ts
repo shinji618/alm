@@ -132,6 +132,16 @@ test('전기 큐: 재전기(요청 값으로 payload 재생성)·시도 초과�
   assert.equal(cx.body.status, 'CANCELLED');
   assert.equal((await q('SELECT status FROM asset_request WHERE id = $1', [b.req]))[0].status, 'CANCELLED');
   assert.equal((await call('adm', 'POST', `/integration/sap/postings/${a.posting}:cancel`)).status, 403, '취소는 sap.finance');
+
+  // SAP 잡이 가져간 뒤 회신이 없는 건: 잠금 중이면 409, 잠금이 끝나면 SAP 확인 체크와 함께 취소
+  const c = await failedRequest('AR-00003', 'ASSET_RETIRE', { reqType: 'RETIRE', retire: 'LOSS' });
+  await q(`UPDATE sap_posting SET status = 'CLAIMED', lease_until = now() + interval '10 minutes' WHERE id = $1`, [c.posting]);
+  assert.equal((await call('acct', 'POST', `/integration/sap/postings/${c.posting}:cancel`, { confirmSapChecked: true })).status, 409, '잠금 중');
+  await q(`UPDATE sap_posting SET lease_until = now() - interval '1 minute' WHERE id = $1`, [c.posting]);
+  const cn = await call('acct', 'POST', `/integration/sap/postings/${c.posting}:cancel`, {});
+  assert.equal(cn.status, 409); assert.equal(cn.body.needsConfirm, true);
+  assert.equal((await call('acct', 'POST', `/integration/sap/postings/${c.posting}:cancel`, { confirmSapChecked: true })).body.status, 'CANCELLED');
+  assert.equal((await q('SELECT status FROM asset_request WHERE id = $1', [c.req]))[0].status, 'CANCELLED');
   await q(`UPDATE sap_posting SET status = 'POSTED' WHERE id = $1`, [a.posting]);
   await q(`UPDATE asset_request SET status = 'POSTED' WHERE id = $1`, [a.req]);
 });
