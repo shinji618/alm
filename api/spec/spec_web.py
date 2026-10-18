@@ -1628,6 +1628,9 @@ W('관리','POST','/admin/categories','createCategory','자산 카테고리 등�
   [ '코드 중복 409 ALM-E321. 기본 자산클래스는 SAP에서 받은 활성 클래스만(400).', '상위 카테고리는 활성이어야 하고 순환할 수 없다.'],ok='201')
 W('관리','PATCH','/admin/categories/{id}','patchCategory','자산 카테고리 수정',MA,'CategoryInput','CategoryRow','200, 400, 404, 409','category, audit_log','ADM-050',
   [ '보낸 필드만. 코드는 바꿀 수 없다(400).', '쓰는 자산(폐기·처분 제외)이나 활성 하위 카테고리가 있으면 비활성화 불가(409 ALM-E318).'],params=[ID()])
+W('관리','DELETE','/admin/categories/{id}','deleteCategory','자산 카테고리 삭제',MA,None,None,'204, 404, 409','category, model, tax_class_map, audit_log','ADM-050',
+  [ '이 카테고리로 등록된 자산(상태 무관)이 있으면 409 ALM-E318(메시지에 건수·자산태그 5건).', '하위 카테고리, 구매요청·실사 미등록 기록이 있어도 409(사용 안 함으로 바꾸도록 안내).',
+    '카테고리의 모델과 재산세 내용연수 구분 매핑은 함께 지운다. 삭제는 감사 로그에 남는다.'],params=[ID()],ok='204')
 W('관리','GET','/admin/settings','listSettings',  '설정',SA,None,'SettingList','200','setting','관리',[ '-'])
 W('관리','PUT','/admin/settings/{key}','putSetting','설정 저장',SA,'SettingRow','SettingRow','200, 400','setting, audit_log','관리',[ '키별 값 형식 검사(SettingRow.value 설명). 모르는 키는 400 ALM-E100.'],params=[('key','path','string(60)','Y','키')])
 W('관리','GET','/admin/audit-logs','listAuditLogs','감사 로그 조회','SYS_ADMIN, ASSET_ACCOUNTANT',None,'AuditRowList','200','audit_log','관리',[ '10년 보관. 13개월 지난 기간은 보관 저장소에서 비동기 조회(내보내기로 안내).'],

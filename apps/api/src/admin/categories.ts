@@ -111,3 +111,24 @@ export async function patchCategory(c: PoolClient, id: string, actorId: string, 
   }
   return row((await c.query(`${SELECT} WHERE cat.id = $1`, [id])).rows[0]);
 }
+
+/** 삭제: 이 카테고리로 등록된 자산(상태 무관)·하위 카테고리·구매요청·실사 미등록 기록이 있으면 409 ALM-E318.
+ *  카테고리의 모델(자산이 쓰지 않는)과 재산세 내용연수 구분 매핑은 함께 지운다 */
+export async function deleteCategory(c: PoolClient, id: string) {
+  if (!uuidOk(id)) throw E.notFound('카테고리를 찾을 수 없습니다');
+  const cur = (await c.query('SELECT id, category_code, name FROM category WHERE id = $1 FOR UPDATE', [id])).rows[0];
+  if (!cur) throw E.notFound('카테고리를 찾을 수 없습니다');
+  const assets = (await c.query(`SELECT asset_tag FROM asset WHERE category_id = $1 ORDER BY asset_tag`, [id])).rows.map((r) => r.asset_tag as string);
+  if (assets.length) {
+    throw new AlmError(409, 'ALM-E318', `${cur.name}(${cur.category_code}) 카테고리로 등록된 자산이 ${assets.length}건 있어 삭제할 수 없습니다`
+      + ` (${assets.slice(0, 5).join(', ')}${assets.length > 5 ? ' 외' : ''}). 자산의 카테고리를 바꾸거나, 삭제 대신 사용 안 함으로 바꾸세요`, { assets: assets.length });
+  }
+  const kids = (await c.query('SELECT category_code FROM category WHERE parent_id = $1 ORDER BY category_code', [id])).rows.map((r) => r.category_code as string);
+  if (kids.length) throw new AlmError(409, 'ALM-E318', `하위 카테고리(${kids.join(', ')})가 있어 삭제할 수 없습니다. 하위 카테고리를 먼저 옮기거나 지우세요`, { children: kids.length });
+  const used = Number((await c.query(`SELECT (SELECT count(*) FROM purchase_request_item WHERE category_id = $1
+      OR model_id IN (SELECT id FROM model WHERE category_id = $1)) + (SELECT count(*) FROM count_unregistered WHERE category_id = $1) AS n`, [id])).rows[0].n);
+  if (used) throw new AlmError(409, 'ALM-E318', `구매요청·실사 미등록 기록 ${used}건에서 쓰고 있어 삭제할 수 없습니다. 삭제 대신 사용 안 함으로 바꾸세요`, { history: used });
+  await c.query('DELETE FROM tax_class_map WHERE category_id = $1', [id]);
+  await c.query('DELETE FROM model WHERE category_id = $1', [id]);
+  await c.query('DELETE FROM category WHERE id = $1', [id]);
+}

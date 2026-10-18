@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ViewHeader } from '@/components/layout';
-import { Button, CheckboxField, DataTable, Drawer, EmptyState, FilterBar, FormGrid, Panel, SelectField, StatusPill, TextField, useToast, type Column } from '@/components/ui';
+import { Button, CheckboxField, DataTable, Drawer, EmptyState, FilterBar, FormGrid, Panel, SelectField, StatusPill, TextField, useConfirm, useToast, type Column } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
 import { useAsync } from '@/lib/useAsync';
 import { useSession } from '@/lib/session';
@@ -56,6 +56,8 @@ export function AssetCategories() {
 function CategoryDrawer({ row, all, onClose, onSaved }: { row?: CategoryRow; all: CategoryRow[]; onClose: () => void; onSaved: () => void }) {
   const { t } = useTranslation();
   const toast = useToast();
+  const confirm = useConfirm();
+  const [delError, setDelError] = useState<string>();
   // 자산클래스는 /lookups(SAP에서 받은 활성 클래스만)
   const lk = useAsync((sig) => api.get<Lookups>('/lookups?types=assetClasses', sig), []);
   const [f, setF] = useState({ code: row?.categoryCode ?? '', name: row?.name ?? '', parentId: row?.parentId ?? '', classId: row?.defaultAssetClassId ?? '',
@@ -86,8 +88,25 @@ function CategoryDrawer({ row, all, onClose, onSaved }: { row?: CategoryRow; all
       toast.show(err instanceof Error ? err.message : String(err), 'error');
     } finally { setSaving(false); }
   };
+  // 삭제: 이 카테고리로 등록된 자산이 있으면 서버가 409(ALM-E318)와 이유를 돌려준다 → 창 안에 그대로 보여 준다
+  const remove = async () => {
+    if (!row) return;
+    if (!(await confirm({ title: t('cat.delete'), message: t('cat.deleteMsg', { name: `${row.categoryCode} · ${row.name}` }), danger: true, confirmLabel: t('cat.delete') }))) return;
+    setDelError(undefined);
+    setSaving(true);
+    try {
+      await api.del(`/admin/categories/${row.id}`);
+      toast.show(t('cat.deleted', { code: row.categoryCode }), 'success');
+      onSaved();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setDelError(msg);
+      toast.show(msg, 'error');
+    } finally { setSaving(false); }
+  };
   return (
     <Drawer open onClose={onClose} label={title} title={title}>
+      {delError && <div className={s.notice} role="alert" style={{ color: 'var(--bad)' }}>{delError}</div>}
       <FormGrid onSubmit={() => void save()}>
         {!row && <TextField label={t('cat.code')} required maxLength={20} value={f.code} error={errors.categoryCode} hint={t('cat.codeHint')} onChange={set('code')} />}
         <TextField label={t('cat.name')} required maxLength={60} value={f.name} error={errors.name} onChange={set('name')} />
@@ -103,6 +122,7 @@ function CategoryDrawer({ row, all, onClose, onSaved }: { row?: CategoryRow; all
         {row && <CheckboxField label={t('cat.active')} checked={f.isActive} onChange={(e) => setF((v) => ({ ...v, isActive: e.target.checked }))} />}
         {row && <p className="small faint" style={{ gridColumn: '1 / -1' }}>{t('cat.usage', { assets: row.assetCount, models: row.modelCount })}</p>}
         <div className={s.formActions}>
+          {row && <Button disabled={saving} onClick={() => void remove()} style={{ marginRight: 'auto' }}>{t('cat.delete')}</Button>}
           <Button onClick={onClose}>{t('common.cancel')}</Button>
           <Button variant="primary" type="submit" disabled={saving}>{t('common.save')}</Button>
         </div>

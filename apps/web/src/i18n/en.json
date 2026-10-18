@@ -1035,6 +1035,9 @@
     "lifeHint": "1–50 years",
     "classHint": "Only asset classes received from SAP (IF-MD-01).",
     "classUnavailable": "not an SAP class — choose another",
-    "usage": "{{assets}} asset(s) and {{models}} model(s) use this category. In use or with active sub-categories it cannot be deactivated."
+    "usage": "{{assets}} asset(s) and {{models}} model(s) use this category. In use or with active sub-categories it cannot be deactivated.",
+    "delete": "Delete",
+    "deleteMsg": "Delete category {{name}}? Its models are deleted too. Categories used by assets cannot be deleted.",
+    "deleted": "Category {{code}} deleted"
   }
 }

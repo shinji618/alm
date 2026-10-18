@@ -149,6 +149,13 @@ export class AdminController {
     return this.db.withTx(txOf(ctx), (c) => cats.patchCategory(c, id, ctx.principal!.userId, body));
   }
 
+  @Delete('categories/:id')
+  @HttpCode(204)
+  @Operation('deleteCategory')
+  async deleteCategory(@Ctx() ctx: AlmContext, @Param('id') id: string) {
+    await this.db.withTx(txOf(ctx), (c) => cats.deleteCategory(c, id));
+  }
+
   // 코스트센터별 부서 관리자(ADM-040)
   @Get('dept-managers')
   @Operation('listDeptManagers')

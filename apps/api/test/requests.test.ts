@@ -370,8 +370,19 @@ test('코스트센터 직접 관리(SAP 끈 회사만)·자산클래스는 SAP �
   assert.equal(nb.status, 409); assert.equal(nb.body.code, 'ALM-E318');
   const ren = await call('mgr', 'PATCH', `/admin/categories/${desk.body.id}`, { name: 'Office desk', defaultAssetClassId: null, isActive: false });
   assert.deepEqual([ren.body.name, ren.body.defaultAssetClassId, ren.body.isActive], ['Office desk', undefined, false]);
+  // 삭제: 자산이 있으면 409(메시지에 자산태그), 하위가 있으면 409, 아니면 모델과 함께 삭제
+  const delNb = await call('mgr', 'DELETE', `/admin/categories/${ids.cat}`);
+  assert.equal(delNb.status, 409); assert.equal(delNb.body.code, 'ALM-E318');
+  assert.match(delNb.body.detail, /자산이 \d+건 있어 삭제할 수 없습니다/);
+  assert.equal((await call('mgr', 'DELETE', `/admin/categories/${fur.body.id}`)).status, 409, '하위 카테고리');
+  assert.equal((await call('emp', 'DELETE', `/admin/categories/${desk.body.id}`)).status, 403);
+  await q(`INSERT INTO model (id, tenant_id, category_id, manufacturer, model_name) VALUES (gen_random_uuid(), $1, $2, 'Herman', 'Desk 1')`, [tenantId, desk.body.id]);
+  assert.equal((await call('mgr', 'DELETE', `/admin/categories/${desk.body.id}`)).status, 204);
+  assert.equal((await q(`SELECT count(*)::int AS n FROM model WHERE category_id = $1`, [desk.body.id]))[0].n, 0, '모델도 삭제');
+  assert.equal((await call('mgr', 'DELETE', `/admin/categories/${desk.body.id}`)).status, 404);
+  assert.equal((await call('mgr', 'DELETE', `/admin/categories/${fur.body.id}`)).status, 204, '하위가 없어지면 삭제');
   const all = await call('mgr', 'GET', '/admin/categories?active=true');
-  assert.ok(all.body.items.some((x: { categoryCode: string }) => x.categoryCode === 'FUR') && !all.body.items.some((x: { categoryCode: string }) => x.categoryCode === 'DESK'));
+  assert.ok(!all.body.items.some((x: { categoryCode: string }) => ['FUR', 'DESK'].includes(x.categoryCode)));
 
   const [a] = await q(`INSERT INTO asset (id, tenant_id, asset_tag, description, category_id, status, source, company_id, site_id, room_id, cost_center_id)
     VALUES (gen_random_uuid(), $1, 'AT-000300', 'SAP co laptop', $2, 'IN_STOCK', 'MANUAL', $3, $4, $5, $6) RETURNING id`, [tenantId, ids.cat, ids.co, ids.site, ids.room1, ids.cc100]);

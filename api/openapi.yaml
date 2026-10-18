@@ -8050,6 +8050,46 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CategoryInput'
+    delete:
+      operationId: deleteCategory
+      summary: 자산 카테고리 삭제
+      tags:
+      - WEB
+      description: 'ADM-050 · 테이블: category, model, tax_class_map, audit_log
+
+
+        - 이 카테고리로 등록된 자산(상태 무관)이 있으면 409 ALM-E318(메시지에 건수·자산태그 5건).
+
+        - 하위 카테고리, 구매요청·실사 미등록 기록이 있어도 409(사용 안 함으로 바꾸도록 안내).
+
+        - 카테고리의 모델과 재산세 내용연수 구분 매핑은 함께 지운다. 삭제는 감사 로그에 남는다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: 성공(본문 없음)
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: master.write
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+      security:
+      - webAuth:
+        - web
   /admin/settings:
     get:
       operationId: listSettings

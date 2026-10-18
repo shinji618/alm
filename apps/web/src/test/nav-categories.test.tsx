@@ -62,3 +62,24 @@ describe('Asset categories admin (ADM-050)', () => {
       isCi: false, taxPropertyType: null }));
   }, 20000);
 });
+
+describe('Asset categories delete', () => {
+  it('shows the server reason when assets use the category', async () => {
+    window.history.pushState({}, '', '/admin/categories');
+    const msg = 'Notebook(NB) 카테고리로 등록된 자산이 2건 있어 삭제할 수 없습니다 (AT-000001, AT-000002). 자산의 카테고리를 바꾸거나, 삭제 대신 사용 안 함으로 바꾸세요';
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
+      if (url.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'tok' }), { status: 200 });
+      if (url.includes('/lookups')) return new Response(JSON.stringify(LOOKUPS), { status: 200 });
+      if (url.endsWith('/admin/categories/nb') && init.method === 'DELETE') return new Response(JSON.stringify({ code: 'ALM-E318', detail: msg, status: 409 }), { status: 409 });
+      if (url.includes('/admin/categories')) return new Response(JSON.stringify({ items: [{ id: 'nb', version: 1, categoryCode: 'NB', name: 'Notebook', isCi: true, isActive: true, assetCount: 2, modelCount: 1 }] }), { status: 200 });
+      return new Response(JSON.stringify({ code: 'ALM-E404', message: 'nope' }), { status: 404 });
+    }));
+    render(<App initialMe={{ ...me, permissions: ['asset.read', 'master.read', 'master.write'] }} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Notebook', { selector: 'td' }));
+    const d = screen.getByRole('dialog');
+    await user.click(within(d).getByRole('button', { name: 'Delete' }));
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }));
+    expect(await within(screen.getByRole('dialog')).findByRole('alert')).toHaveTextContent('자산이 2건 있어 삭제할 수 없습니다');
+  }, 20000);
+});
