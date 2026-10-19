@@ -278,3 +278,16 @@ test('모델 직접 입력(선택): 마스터와 맞으면 연결, 아니면 글
   assert.deepEqual([p2.body.asset.modelId, p2.body.asset.modelName], [undefined, undefined]);
   assert.deepEqual((await owner.query(`SELECT model_id, model_text FROM asset WHERE id = $1`, [id])).rows[0], { model_id: null, model_text: null });
 });
+
+test('자동 채번은 이미 쓰인 AT-번호를 건너뜀(일괄 업로드로 적힌 태그가 채번보다 앞선 경우)', { skip }, async () => {
+  const base = { categoryId: ids.nb, description: 'Seq test', companyId: ids.co, roomId: ids.r1, costCenterId: ids.cc, printLabel: false };
+  const a = await call('am', 'POST', '/assets', base);
+  const n = Number(a.body.asset.assetTag.slice(3));
+  for (const k of [1, 2]) {
+    await owner.query(`INSERT INTO asset (id, tenant_id, asset_tag, description, category_id, source, company_id, site_id, room_id, cost_center_id)
+      VALUES (gen_random_uuid(), $1, $2, 'uploaded', $3, 'MANUAL', $4, $5, $6, $7)`, [tenantId, `AT-${String(n + k).padStart(6, '0')}`, ids.nb, ids.co, ids.s1, ids.r1, ids.cc]);
+  }
+  const b = await call('am', 'POST', '/assets', { ...base, isBundle: true, modelName: 'Samsung 27inch 4k monitor', assetClassId: ids.cls, purchaseCost: 2500, registerInSap: true });
+  assert.equal(b.status, 201, JSON.stringify(b.body));
+  assert.equal(b.body.asset.assetTag, `AT-${String(n + 3).padStart(6, '0')}`);
+});
