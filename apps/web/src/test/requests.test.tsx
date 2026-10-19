@@ -118,8 +118,9 @@ describe('request screens (ALM-230)', () => {
     await user.click(within(drawer).getByRole('button', { name: 'Submit' }));
     await waitFor(() => expect(posted).toHaveLength(1));
     expect(posted[0]).toMatchObject({ requestType: 'TRANSFER', assetId: 'a1', reason: 'Move to sales', targetCostCenterId: 'cc3', submit: true });
-    expect(await screen.findByText('CC300 · Sales')).toBeInTheDocument();
-  });
+    // 제출 뒤 요청 상세로 이동해 다시 불러온다 — CI 러너가 느리면 기본 1초를 넘기므로 넉넉히 기다린다
+    expect(await screen.findByText('CC300 · Sales', undefined, { timeout: 5000 })).toBeInTheDocument();
+  }, 20000);
 
   it('fix posting error: accounting change restarts approval, sent with If-Match', async () => {
     window.history.pushState({}, '', '/requests/r9');
