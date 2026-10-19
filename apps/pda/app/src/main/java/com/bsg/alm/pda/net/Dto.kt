@@ -70,4 +70,16 @@ import kotlinx.serialization.Serializable
 )
 @Serializable data class PresignResponse(val attachmentId: String, val uploadUrl: String, val headers: Map<String, String>, val expiresAt: String)
 
+// PDA-09 자산 조회(바코드 → 상세). limited=true면 범위 밖 자산(태그·상태·사이트만)
+@Serializable data class PdaCountState(val campaignCode: String, val expectedRoomCode: String, val result: String, val countedAt: String? = null)
+@Serializable data class PdaAssetEvent(val eventType: String, val occurredAt: String, val channel: String? = null, val actorName: String? = null)
+@Serializable data class PdaAssetDetail(
+    val assetTag: String, val status: String, val limited: Boolean = false, val stage: String? = null, val description: String? = null, val categoryName: String? = null,
+    val model: String? = null, val serialNo: String? = null, val hostname: String? = null, val companyCode: String? = null, val siteCode: String? = null,
+    val siteName: String? = null, val roomCode: String? = null, val roomName: String? = null, val costCenterCode: String? = null, val costCenterName: String? = null,
+    val assignedUserName: String? = null, val sapAssetNo: String? = null, val capitalizedOn: String? = null, val purchaseDate: String? = null,
+    val warrantyEndDate: String? = null, val acquisitionValue: Double? = null, val netBookValue: Double? = null, val lastCountedAt: String? = null,
+    val lastCountedRoomCode: String? = null, val lastCountCampaign: String? = null, val count: PdaCountState? = null, val events: List<PdaAssetEvent> = emptyList(),
+)
+
 @Serializable data class Problem(val code: String? = null, val detail: String? = null, val message: String? = null, val title: String? = null)

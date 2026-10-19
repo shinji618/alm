@@ -83,6 +83,9 @@ interface CountDao {
     @Query("SELECT * FROM work_item WHERE countItemId IN (:ids)") suspend fun itemsById(ids: List<String>): List<WorkItem>
     @Query("SELECT * FROM work_item WHERE userId = :userId AND campaignId = :campaignId AND upper(assetTag) = upper(:tag) LIMIT 1")
     suspend fun itemByTag(userId: String, campaignId: String, tag: String): WorkItem?
+    /** 자산 조회(PDA-09) 오프라인 대체: 내려받은 작업목록에서 태그로 */
+    @Query("SELECT * FROM work_item WHERE userId = :userId AND upper(assetTag) = upper(:tag) LIMIT 1")
+    suspend fun itemByTagAny(userId: String, tag: String): WorkItem?
     @Query("SELECT * FROM work_item WHERE userId = :userId AND campaignId = :campaignId AND expectedRoomId = :roomId ORDER BY assetTag")
     fun itemsInRoom(userId: String, campaignId: String, roomId: String): Flow<List<WorkItem>>
     @Query("SELECT count(*) FROM work_item WHERE userId = :userId") suspend fun itemCount(userId: String): Int

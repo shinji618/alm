@@ -55,6 +55,11 @@ class Api(private val settings: Settings, private val auth: AuthManager) {
     suspend fun scans(body: ScanBatch): ScanBatchResult = send("POST", "/pda/scans:batch", body)
     suspend fun unregistered(body: UnregisteredBatch): UnregisteredBatchResult = send("POST", "/pda/unregistered:batch", body)
     suspend fun presign(body: PresignRequest): PresignResponse = send("POST", "/pda/attachments:presign", body)
+    /** PDA-09 자산 조회. 태그는 경로 한 칸으로 인코딩(슬래시 등) */
+    suspend fun asset(tag: String): PdaAssetDetail {
+        val u = "${settings.apiBase}/pda/assets".toHttpUrl().newBuilder().addPathSegment(tag).build()
+        return authed(serializer()) { Request.Builder().url(u).get() }
+    }
 
     /** 사진을 S3에 직접 올린다(발급받은 URL·헤더 그대로) */
     suspend fun upload(p: PresignResponse, file: File, contentType: String) = withContext(Dispatchers.IO) {

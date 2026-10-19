@@ -109,6 +109,10 @@ export class PdaController {
     return this.db.withTx(txOf(ctx), (c) => pda.pdaGetTagIndex(c, ctx.principal!, id, q));
   }
 
+  @Get('assets/:assetTag')
+  @Operation('pdaGetAsset')
+  asset(@Ctx() ctx: AlmContext, @Param('assetTag') tag: string) { return this.db.withTx(txOf(ctx), (c) => pda.pdaGetAsset(c, ctx.principal!, tag)); }
+
   @Get('rooms')
   @Operation('pdaListRooms')
   rooms(@Ctx() ctx: AlmContext, @Query() q: Record<string, string>) {

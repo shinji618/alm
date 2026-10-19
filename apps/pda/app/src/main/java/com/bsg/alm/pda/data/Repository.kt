@@ -306,5 +306,9 @@ class Repository(private val ctx: Context, private val settings: Settings, val a
 
     suspend fun discardAllUnsent(): Int = discard(dao.unsentIds(userId))
 
+    /** PDA-09 자산 조회: 서버 상세. 통신이 안 되면 호출한 쪽이 itemByTagAny로 대체 */
+    suspend fun asset(tag: String) = api.asset(tag)
+    suspend fun localAsset(tag: String): WorkItem? = dao.itemByTagAny(userId, tag)
+
     fun photoDir(): File = File(ctx.cacheDir, "photos").apply { mkdirs() }
 }

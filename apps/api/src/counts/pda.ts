@@ -9,6 +9,7 @@ import { AlmError, E } from '../common/errors';
 import { Check, UUID } from '../common/validate';
 import type { Principal } from '../auth/principal';
 import { defaultTemplateId } from '../labels/labels';
+import { assetScope, can, Params } from '../auth/scope';
 
 const iso = (d: unknown) => (d instanceof Date ? d.toISOString() : d ? String(d) : undefined);
 const day = (d: unknown) => (d instanceof Date ? d.toISOString().slice(0, 10) : d ? String(d).slice(0, 10) : undefined);
@@ -337,4 +338,55 @@ export async function pdaPostUnregistered(c: PoolClient, p: Principal, body: unk
     }
   }
   return { results };
+}
+
+// ---------------- PDA-09 자산 조회(바코드 → 상세, 2026-10-19) ----------------
+//   어느 화면에서든 자산태그를 찍으면 상세를 본다. 보이는 범위:
+//     전체 — 사용자의 asset.read 범위 안 자산, 또는 내게 배정된 실사(COUNTING·REVIEW) 캠페인의 대상 자산
+//     제한 — 그 밖의 자산은 태그·상태·사이트만(범위 밖 태그 색인과 같은 수준, limited=true)
+//   금액(취득가·장부가액)은 amount.read가 있을 때만. 없는 태그는 404 ALM-E404
+const sapNo = (no?: string | null, sub?: string | null) => {
+  if (!no) return undefined;
+  const s = (sub ?? '0').replace(/^0+(?=\d)/, '');
+  return `${no.replace(/^0+(?=\d)/, '')}${s === '0' ? '' : `-${s}`}`;
+};
+
+export async function pdaGetAsset(c: PoolClient, p: Principal, tag: string) {
+  const t = (tag ?? '').trim();
+  if (!t || t.length > 30) throw E.notFound('ALM 자산태그가 아닙니다');
+  const a = (await c.query(`SELECT a.*, cat.name AS category_name, m.manufacturer, m.model_name, co.company_code, s.site_code, s.name AS site_name,
+        r.room_code, r.name AS room_name, cc.cost_center_code, cc.name AS cost_center_name, u.display_name AS user_name, st.stage,
+        vl.acquisition_value, vl.net_book_value
+      FROM asset a JOIN category cat ON cat.id = a.category_id JOIN company co ON co.id = a.company_id LEFT JOIN model m ON m.id = a.model_id
+      LEFT JOIN site s ON s.id = a.site_id LEFT JOIN room r ON r.id = a.room_id LEFT JOIN cost_center cc ON cc.id = a.cost_center_id
+      LEFT JOIN app_user u ON u.id = a.assigned_user_id LEFT JOIN v_asset_stage st ON st.asset_id = a.id LEFT JOIN v_asset_value_latest vl ON vl.asset_id = a.id
+     WHERE upper(a.asset_tag) = upper($1)`, [t])).rows[0];
+  if (!a) throw E.notFound('ALM에 없는 자산태그입니다');
+  const ps = new Params([a.id]);
+  const inScope = (await c.query(`SELECT 1 FROM asset a WHERE a.id = $1 AND ${assetScope(p, 'asset.read', ps)}`, ps.values)).rowCount;
+  const mine = (await c.query(`SELECT cc.campaign_code, er.room_code AS expected_room, ci.result, ci.counted_at FROM count_item ci
+      JOIN count_campaign cc ON cc.id = ci.campaign_id AND cc.status IN ('COUNTING', 'REVIEW') JOIN room er ON er.id = ci.expected_room_id
+     WHERE ci.asset_id = $1 AND EXISTS (SELECT 1 FROM count_task t WHERE t.campaign_id = ci.campaign_id AND t.assignee_id = $2)
+     ORDER BY cc.key_date DESC LIMIT 1`, [a.id, p.userId])).rows[0];
+  if (!inScope && !mine) {
+    return { assetTag: a.asset_tag, status: a.status, siteCode: a.site_code ?? undefined, limited: true };
+  }
+  const last = (await c.query(`SELECT ci.counted_at, cc.campaign_code, fr.room_code FROM count_item ci JOIN count_campaign cc ON cc.id = ci.campaign_id
+      LEFT JOIN room fr ON fr.id = coalesce(ci.found_room_id, ci.expected_room_id) WHERE ci.asset_id = $1 AND ci.counted_at IS NOT NULL
+     ORDER BY ci.counted_at DESC LIMIT 1`, [a.id])).rows[0];
+  const events = (await c.query(`SELECT e.event_type, e.occurred_at, e.channel, u.display_name FROM asset_event e LEFT JOIN app_user u ON u.id = e.actor_id
+     WHERE e.asset_id = $1 ORDER BY e.occurred_at DESC, e.created_at DESC LIMIT 5`, [a.id])).rows;
+  const amount = can(p, 'amount.read');
+  return clean({
+    assetTag: a.asset_tag, status: a.status, stage: a.stage ?? undefined, limited: false, description: a.description, categoryName: a.category_name,
+    model: a.model_name ? `${a.manufacturer ?? ''} ${a.model_name}`.trim() : undefined, serialNo: a.serial_no, hostname: a.hostname,
+    companyCode: a.company_code, siteCode: a.site_code, siteName: a.site_name, roomCode: a.room_code, roomName: a.room_name,
+    costCenterCode: a.cost_center_code, costCenterName: a.cost_center_name, assignedUserName: a.user_name,
+    sapAssetNo: sapNo(a.sap_asset_no, a.sap_sub_no), capitalizedOn: day(a.sap_cap_date), purchaseDate: day(a.purchase_date), warrantyEndDate: day(a.warranty_end_date),
+    acquisitionValue: amount && a.acquisition_value !== null ? Number(a.acquisition_value) : undefined,
+    netBookValue: amount && a.net_book_value !== null ? Number(a.net_book_value) : undefined,
+    lastCountedAt: iso(last?.counted_at), lastCountedRoomCode: last?.room_code, lastCountCampaign: last?.campaign_code,
+    count: mine ? clean({ campaignCode: mine.campaign_code, expectedRoomCode: mine.expected_room, result: mine.result, countedAt: iso(mine.counted_at) }) : undefined,
+    events: events.map((e) => clean({ eventType: e.event_type, occurredAt: iso(e.occurred_at), channel: e.channel, actorName: e.display_name })),
+  });
 }

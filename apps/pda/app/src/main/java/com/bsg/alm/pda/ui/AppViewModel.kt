@@ -13,6 +13,7 @@ import com.bsg.alm.pda.data.ScanOutcome
 import com.bsg.alm.pda.data.TaskEntity
 import com.bsg.alm.pda.data.WorkItem
 import com.bsg.alm.pda.net.ApiException
+import com.bsg.alm.pda.net.PdaAssetDetail
 import com.bsg.alm.pda.scan.ScanEvent
 import com.bsg.alm.pda.sync.SyncWorker
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -25,7 +26,18 @@ import kotlinx.coroutines.launch
 
 /** 화면(01 기능정의서 PDA-01~08) */
 enum class Screen(val id: String) {
-    LOGIN("PDA-01"), TASKS("PDA-02"), ROOM("PDA-03"), SCAN("PDA-04"), CONFIRM("PDA-05"), UNREG("PDA-06"), STATUS("PDA-07"), QUEUE("PDA-08"), SETTINGS("SET")
+    LOGIN("PDA-01"), TASKS("PDA-02"), ROOM("PDA-03"), SCAN("PDA-04"), CONFIRM("PDA-05"), UNREG("PDA-06"), STATUS("PDA-07"), QUEUE("PDA-08"), LOOKUP("PDA-09"), SETTINGS("SET")
+}
+
+/** PDA-09 자산 조회 상태 */
+sealed interface Lookup {
+    data object Idle : Lookup
+    data class Loading(val tag: String) : Lookup
+    data class Found(val asset: PdaAssetDetail) : Lookup
+    /** 오프라인: 이 기기에 내려받은 작업목록 사본 */
+    data class Local(val item: WorkItem) : Lookup
+    data class NotFound(val tag: String) : Lookup
+    data class Failed(val tag: String, val message: String) : Lookup
 }
 
 /** 스캔 결과 카드 */
@@ -114,7 +126,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun onScan(e: ScanEvent) = viewModelScope.launch {
         if (screen.value == Screen.LOGIN || screen.value == Screen.SETTINGS) return@launch
         if (screen.value == Screen.UNREG) { unregBarcode.value = e.code; return@launch }
-        val c = campaignId.value ?: run { toast("Open a count task first"); tone(false); return@launch }
+        // 자산 조회 화면, 또는 실사 중이 아닌 화면(작업 목록·전송 대기열)에서 찍으면 자산 상세를 연다(실사 기록 없음)
+        if (screen.value == Screen.LOOKUP || screen.value == Screen.TASKS || screen.value == Screen.QUEUE || campaignId.value == null) {
+            openLookup(e.code); return@launch
+        }
+        val c = campaignId.value ?: return@launch
         val out = runCatching { repo.scan(c, currentTask(), room.value?.roomId, e.code, e.method) }.getOrElse { toast(errorText(it)); return@launch }
         show(out)
         SyncWorker.kick(getApplication())
@@ -154,6 +170,34 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         SyncWorker.kick(getApplication())
         toast("Saved ${item.assetTag}")
         go(Screen.SCAN)
+    }
+
+    // ---------------- PDA-09 자산 조회 ----------------
+    val lookup = MutableStateFlow<Lookup>(Lookup.Idle)
+    /** 조회 화면에서 뒤로 가면 돌아갈 화면 */
+    var lookupBack: Screen = Screen.TASKS
+        private set
+
+    fun openLookup(tag: String? = null) {
+        if (screen.value != Screen.LOOKUP) lookupBack = screen.value.takeIf { it != Screen.LOGIN && it != Screen.SETTINGS } ?: Screen.TASKS
+        go(Screen.LOOKUP)
+        if (!tag.isNullOrBlank()) lookup(tag)
+    }
+
+    fun lookup(raw: String) = viewModelScope.launch {
+        val tag = raw.trim()
+        if (tag.isEmpty()) return@launch
+        lookup.value = Lookup.Loading(tag)
+        val r = runCatching { repo.asset(tag) }
+        lookup.value = r.fold({ Lookup.Found(it) }) { e ->
+            when {
+                e is ApiException && e.status == 404 -> Lookup.NotFound(tag)
+                e is ApiException && e.offline -> repo.localAsset(tag)?.let { Lookup.Local(it) } ?: Lookup.Failed(tag, "No connection, and this tag is not in the work lists on this device.")
+                e is com.bsg.alm.pda.auth.AuthManager.NotSignedIn -> { go(Screen.LOGIN); Lookup.Failed(tag, "Session expired. Sign in again.") }
+                else -> Lookup.Failed(tag, errorText(e))
+            }
+        }
+        tone(lookup.value is Lookup.Found || lookup.value is Lookup.Local)
     }
 
     // ---------------- 미등록 ----------------

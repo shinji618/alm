@@ -124,6 +124,36 @@ schema('PdaCodes', 'PDA 코드값', '''
 categories | [CodeItem] | Y | 미등록 자산 카테고리
 conditions | [CodeItem] | Y | 자산 상태(GOOD, DAMAGED, UNUSED)
 ''')
+schema('PdaAssetDetail', 'PDA 자산 조회(PDA-09)', '''
+assetTag | string | Y | 자산태그
+status | enum(ON_ORDER,IN_STOCK,IN_USE,IN_REPAIR,MISSING,RETIRED,DISPOSED) | Y | 상태
+limited | bool | Y | true면 범위 밖 자산 — 태그·상태·사이트만
+stage | enum(PLAN,PROCURE,DEPLOY,OPERATE,MAINTAIN,RETIRE) | N | 라이프사이클 단계
+description | string | N | 자산명
+categoryName | string | N | 카테고리
+model | string | N | 제조사 모델
+serialNo | string | N | 시리얼
+hostname | string | N | 호스트명
+companyCode | string | N | 회사코드
+siteCode | string | N | 사이트
+siteName | string | N | 사이트 이름
+roomCode | string | N | 등록 룸
+roomName | string | N | 룸 이름
+costCenterCode | string | N | 코스트센터
+costCenterName | string | N | 코스트센터 이름
+assignedUserName | string | N | 사용자
+sapAssetNo | string | N | SAP 자산번호(앞 0 제외, 하위번호)
+capitalizedOn | date | N | SAP 자본화일
+purchaseDate | date | N | 구매일
+warrantyEndDate | date | N | 보증 만료
+acquisitionValue | number | N | 취득가(amount.read)
+netBookValue | number | N | 장부가액(amount.read)
+lastCountedAt | datetime | N | 마지막 실사 일시
+lastCountedRoomCode | string | N | 마지막 실사 룸
+lastCountCampaign | string | N | 마지막 실사 캠페인
+count | object | N | 내게 배정된 진행 중 실사에서의 상태 {campaignCode, expectedRoomCode, result, countedAt}
+events | [object] | N | 최근 이력 5건 {eventType, occurredAt, channel, actorName}
+''')
 schema('CodeItem', '코드', '''
 id | string | Y | 코드 또는 id
 label | string | Y | 이름(사용자 언어)
@@ -498,6 +528,11 @@ ep(P,'GET','/pda/campaigns/{campaignId}/tag-index','pdaGetTagIndex','범위 밖 
    ['작업목록에 없는 태그를 오프라인에서 OUT_OF_SCOPE·RETIRED_ASSET·UNREGISTERED로 가르기 위한 색인.',
     '같은 테넌트의 다른 자산 태그와 상태만(개인정보 없음). 델타·페이지 규칙은 worklist와 같다.'],
    params=[('campaignId','path','uuid','Y','캠페인'),('since','query','string','N','이전 syncToken'),('cursor','query','string','N','페이지 커서')])
+ep(P,'GET','/pda/assets/{assetTag}','pdaGetAsset','자산 조회(바코드 → 상세)','PDA',None,'PdaAssetDetail','200, 401, 404','asset, count_item, asset_event','PDA-09',
+   ['어느 화면에서든 자산태그를 찍어 상세를 본다(실사 기록은 남기지 않음). 태그는 대소문자 무시.',
+    '전체 정보: 사용자의 asset.read 범위 안 자산, 또는 내게 배정된 실사(COUNTING·REVIEW) 캠페인의 대상 자산. 그 밖은 limited=true로 태그·상태·사이트만.',
+    '금액(acquisitionValue·netBookValue)은 amount.read가 있을 때만. 없는 태그는 404 ALM-E404.'],
+   params=[('assetTag','path','string(30)','Y','자산태그(바코드 값)')])
 ep(P,'GET','/pda/rooms','pdaListRooms','룸 목록','PDA',None,'PdaRoomList','200, 401','room, site','PDA-03',
    ['캠페인 범위의 사이트에 있는 활성 룸 전체(다른 룸에서 발견한 자산 기록용).'],
    params=[('campaignId','query','uuid','Y','캠페인')])

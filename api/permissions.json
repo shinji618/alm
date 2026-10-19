@@ -558,6 +558,7 @@
   "pdaListTasks": "count.scan",
   "pdaGetWorklist": "count.scan",
   "pdaGetTagIndex": "count.scan",
+  "pdaGetAsset": "count.scan",
   "pdaListRooms": "count.scan",
   "pdaGetCodes": "count.scan",
   "pdaUpdateTask": "count.scan",

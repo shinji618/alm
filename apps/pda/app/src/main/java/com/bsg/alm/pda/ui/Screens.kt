@@ -233,7 +233,10 @@ fun ScanScreen(vm: AppViewModel, online: Boolean, pending: Int) {
                     Text(l.message)
                     if (l.tag != null && l.kind != "UNREGISTERED" && l.kind != "RETIRED_ASSET" && l.kind != "OUT_OF_SCOPE")
                         Text("Tap for condition & photo", color = Blue, fontSize = 13.sp)
-                    if (l.kind == "UNREGISTERED") TextButton(onClick = { vm.openUnreg(l.tag) }) { Text("Register with photo") }
+                    Row {
+                        if (l.kind == "UNREGISTERED") TextButton(onClick = { vm.openUnreg(l.tag) }) { Text("Register with photo") }
+                        if (l.tag != null) TextButton(onClick = { vm.openLookup(l.tag) }) { Text("Asset details") }
+                    }
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -332,7 +335,9 @@ fun ConfirmScreen(vm: AppViewModel, online: Boolean, pending: Int) {
     var note by remember { mutableStateOf("") }
     val photos = remember { mutableStateListOf<Photo>() }
     Column(Modifier.fillMaxSize()) {
-        Header("PDA-05", item.assetTag, "Confirm asset", online, pending, onBack = { vm.go(Screen.SCAN) })
+        Header("PDA-05", item.assetTag, "Confirm asset", online, pending, onBack = { vm.go(Screen.SCAN) }) {
+            TextButton(onClick = { vm.openLookup(item.assetTag) }) { Text("Details", color = Color.White) }
+        }
         Column(Modifier.padding(12.dp).verticalScroll(rememberScrollState()).weight(1f)) {
             Text(item.description, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             Text(listOfNotNull(item.categoryName, item.model, item.serialNo?.let { "S/N $it" }).joinToString(" · "), color = Muted)

@@ -171,6 +171,25 @@ test('PDA: 내 작업·작업목록(델타·410)·룸·코드·색인', { skip }
   assert.equal((await pda('emp', 'GET', `/pda/campaigns/${ids.camp}/worklist`)).status, 403);
 });
 
+test('PDA-09 자산 조회: 실사 대상은 상세, 범위 밖은 태그·상태·사이트만, 없는 태그 404', { skip }, async () => {
+  await owner.query(`UPDATE asset SET serial_no = 'SN-1', warranty_end_date = '2027-01-31', assigned_user_id = $2 WHERE id = $1`, [ids.a1, ids.emp]);
+  await owner.query(`INSERT INTO asset_event (id, tenant_id, asset_id, event_type, channel, actor_id) VALUES (gen_random_uuid(), $1, $2, 'ASSIGNED', 'UI', $3)`, [tenantId, ids.a1, ids.am]);
+  const a = await pda('c1', 'GET', '/pda/assets/at-000001');
+  assert.equal(a.status, 200, JSON.stringify(a.body));
+  assert.deepEqual([a.body.assetTag, a.body.limited, a.body.description, a.body.serialNo, a.body.siteCode, a.body.roomCode, a.body.assignedUserName, a.body.sapAssetNo, a.body.warrantyEndDate],
+    ['AT-000001', false, 'Laptop AT-000001', 'SN-1', 'ATL', 'ATL-101', 'Employee', '1000001', '2027-01-31']);
+  assert.deepEqual(a.body.count, { campaignCode: 'PI26Q4', expectedRoomCode: 'ATL-101', result: 'PENDING' });
+  assert.equal(a.body.acquisitionValue, undefined, '실사자는 금액 없음');
+  assert.deepEqual(a.body.events.map((e: { eventType: string; actorName: string }) => [e.eventType, e.actorName]), [['ASSIGNED', 'Asset Mgr']]);
+  const other = await pda('c1', 'GET', '/pda/assets/AT-000003');
+  assert.equal(other.body.limited, false, '같은 캠페인의 다른 룸 자산도 상세');
+  const nyc = await pda('c1', 'GET', '/pda/assets/AT-000006');
+  assert.deepEqual(nyc.body, { assetTag: 'AT-000006', status: 'IN_STOCK', siteCode: 'NYC', limited: true });
+  const none = await pda('c1', 'GET', '/pda/assets/NOPE-1');
+  assert.deepEqual([none.status, none.body.code], [404, 'ALM-E404']);
+  assert.equal((await call('am', 'GET', '/pda/assets/AT-000001', undefined, 'pda', DEV)).status, 403, 'COUNTER만');
+});
+
 test('PDA 스캔: 서버 판정 6종·멱등·MISSING 복원·라벨 재출력·사진 연결·범위·작업 완료(E305)', { skip }, async () => {
   const st = await pda('c1', 'PATCH', `/pda/tasks/${ids.t1}`, { action: 'START', at: new Date().toISOString() });
   assert.equal(st.status, 200); assert.equal(st.body.status, 'IN_PROGRESS');

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ColorScheme
@@ -92,11 +93,12 @@ fun Card(onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
 }
 
 @Composable
-fun BottomNav(current: Screen, pending: Int, hasCampaign: Boolean, hasRoom: Boolean, go: (Screen) -> Unit) {
+fun BottomNav(current: Screen, pending: Int, hasCampaign: Boolean, hasRoom: Boolean, go: (Screen) -> Unit, lookup: () -> Unit = { go(Screen.LOOKUP) }) {
     NavigationBar {
         NavigationBarItem(selected = current == Screen.TASKS, onClick = { go(Screen.TASKS) }, icon = { Icon(Icons.Default.Checklist, null) }, label = { Text("Tasks") })
         NavigationBarItem(selected = current == Screen.ROOM, enabled = hasCampaign, onClick = { go(Screen.ROOM) }, icon = { Icon(Icons.Default.MeetingRoom, null) }, label = { Text("Rooms") })
         NavigationBarItem(selected = current == Screen.SCAN, enabled = hasRoom, onClick = { go(Screen.SCAN) }, icon = { Icon(Icons.Default.QrCodeScanner, null) }, label = { Text("Scan") })
+        NavigationBarItem(selected = current == Screen.LOOKUP, onClick = lookup, icon = { Icon(Icons.Default.Search, null) }, label = { Text("Lookup") })
         NavigationBarItem(selected = current == Screen.QUEUE, onClick = { go(Screen.QUEUE) }, label = { Text("Queue") }, icon = {
             BadgedBox(badge = { if (pending > 0) Badge { Text("$pending") } }) { Icon(Icons.Default.CloudUpload, null) }
         })

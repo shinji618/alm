@@ -25,6 +25,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.bsg.alm.pda.ui.AlmTheme
 import com.bsg.alm.pda.ui.AppViewModel
+import com.bsg.alm.pda.ui.AssetLookupScreen
 import com.bsg.alm.pda.ui.BottomNav
 import com.bsg.alm.pda.ui.ConfirmScreen
 import com.bsg.alm.pda.ui.LockScreen
@@ -69,10 +70,10 @@ class MainActivity : AppCompatActivity() {
                 LaunchedEffect(msg) { msg?.let { Toast.makeText(this@MainActivity, it, Toast.LENGTH_LONG).show(); vm.message.value = null } }
                 if (isLocked && screen != Screen.LOGIN) { LockScreen(vm.repo.auth.displayName) { unlock() }; return@AlmTheme }
                 BackHandler(enabled = screen != Screen.TASKS && screen != Screen.LOGIN) {
-                    vm.go(when (screen) { Screen.SCAN -> Screen.ROOM; Screen.CONFIRM, Screen.UNREG, Screen.STATUS -> Screen.SCAN; Screen.SETTINGS -> previous; else -> Screen.TASKS })
+                    vm.go(when (screen) { Screen.SCAN -> Screen.ROOM; Screen.CONFIRM, Screen.UNREG, Screen.STATUS -> Screen.SCAN; Screen.LOOKUP -> vm.lookupBack; Screen.SETTINGS -> previous; else -> Screen.TASKS })
                 }
-                val showNav = screen in setOf(Screen.TASKS, Screen.ROOM, Screen.SCAN, Screen.QUEUE, Screen.STATUS)
-                Scaffold(bottomBar = { if (showNav) BottomNav(screen, pending, campaign != null, room != null) { vm.go(it) } }) { pad ->
+                val showNav = screen in setOf(Screen.TASKS, Screen.ROOM, Screen.SCAN, Screen.QUEUE, Screen.STATUS, Screen.LOOKUP)
+                Scaffold(bottomBar = { if (showNav) BottomNav(screen, pending, campaign != null, room != null, go = { vm.go(it) }, lookup = { vm.openLookup() }) }) { pad ->
                     Column(Modifier.fillMaxSize().padding(pad)) {
                         when (screen) {
                             Screen.LOGIN -> LoginScreen(vm) { email -> startLogin(email) }
@@ -83,6 +84,7 @@ class MainActivity : AppCompatActivity() {
                             Screen.UNREG -> UnregScreen(vm, st.online, pending)
                             Screen.STATUS -> StatusScreen(vm, st.online, pending)
                             Screen.QUEUE -> QueueScreen(vm, st.online, pending)
+                            Screen.LOOKUP -> AssetLookupScreen(vm, st.online, pending)
                             Screen.SETTINGS -> SettingsScreen(vm) { vm.go(if (vm.repo.auth.isSignedIn) previous else Screen.LOGIN) }
                         }
                     }
