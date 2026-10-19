@@ -10,6 +10,7 @@ import { parseSeed } from '../src/ops/seed';
 import { Worker, parseJob } from '../src/worker/worker';
 import { channelOfPath } from '../src/http/auth.guard';
 import { loadConfig } from '../src/config';
+import { upgradeWarning } from '../src/tax/warnings';
 
 const k1 = Buffer.alloc(32, 1), k2 = Buffer.alloc(32, 2);
 const cat = catalog(join(__dirname, '..', '..', '..', '..', 'api', 'permissions.json'));
@@ -112,4 +113,21 @@ test('설정: 이전 작업 정의(CACHE_NAME 없음)로 새 이미지를 돌려
     process.env.CACHE_NAME = 'alm-dev';
     assert.deepEqual(loadConfig('migrate').cache, { endpoint: 'c.cache.amazonaws.com', user: 'u', name: 'alm-dev' });
   } finally { process.env = keep; }
+});
+
+test('재산세 경고: 예전(한국어 문장만 저장) 신고도 읽을 때 code + params + 영어 문장으로', () => {
+  const up = (code: string, message: string, count?: number) => upgradeWarning({ code, message, count });
+  assert.deepEqual(up('OLD_FACTOR_TABLE', '2027년 계수표가 없어 2024년 표를 썼습니다').params, { taxYear: 2027, tableYear: 2024 });
+  const nj = up('NO_JURISDICTION', '사이트가 없거나 관할이 연결되지 않은 자산 2건은 어느 신고에도 들어가지 않았습니다(S1000000, S1000001). 자산의 사이트를 지정하거나 사이트를 관할에 연결하세요', 2);
+  assert.deepEqual([nj.count, nj.params], [2, { count: 2, tags: ['S1000000', 'S1000001'], more: false }]);
+  assert.match(nj.message, /^2 asset\(s\) with no site/);
+  assert.deepEqual(up('PROPERTY_TYPE_GUESSED', '재산세 구분이 지정되지 않은 자산클래스(00003200, (클래스 없음))는 이름으로 추정했습니다. 계수표 탭의 재산세 구분에서 확인하세요', 2).params,
+    { classes: ['00003200', ''], more: false });
+  assert.deepEqual(up('EXCLUDED_TYPES', '신고 대상이 아닌 구분이라 뺐습니다: 차량 1건, 부동산 2건. 차량·건설중자산·임차개량 포함 여부는 관할 설정에서 바꿉니다', 3).params,
+    { types: [{ type: 'VEHICLE', count: 1 }, { type: 'REAL_PROPERTY', count: 2 }] });
+  assert.deepEqual(up('ACQUIRED_AFTER_LIEN', '기준일(2027-01-01) 뒤에 취득한 자산 1건은 이 연도 신고에 들어가지 않습니다(다음 연도 신고 대상). 취득일은 …', 1).params, { count: 1, lienDate: '2027-01-01' });
+  assert.deepEqual(up('EXEMPT', '공정가치 합계가 $20,000 이하라 면제됩니다(신고서는 제출)').params, { amount: 20000 });
+  assert.equal(up('ZERO_MILLAGE', '밀리지(세율)가 0이라 예상 세액이 0입니다. 관할 탭에서 카운티 밀리지를 입력하세요').message.startsWith('Millage'), true);
+  assert.equal(up('NO_ASSETS', 'x').message, 'x', '한글이 아니면 그대로');
+  assert.equal(up('MYSTERY', '알 수 없는 경고').message, '알 수 없는 경고', '모르는 경고는 그대로');
 });

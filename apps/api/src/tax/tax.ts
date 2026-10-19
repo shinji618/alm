@@ -11,7 +11,7 @@ import { AlmError, E } from '../common/errors';
 import { Check, UUID } from '../common/validate';
 import type { Principal } from '../auth/principal';
 import { buildXlsx, type Cell } from '../common/xlsx';
-import { warn, type TaxWarning } from './warnings';
+import { upgradeWarning, warn, type TaxWarning } from './warnings';
 import { AGE_START, FACTOR_SETS, genericFactor, lifeClassOf, NEVER_TAXED, PROPERTY_TYPES, REFERENCE_TABLES, STATE_PRESETS, suggestPropertyType, type FactorSet,
   type PropertyType } from './reference';
 
@@ -450,7 +450,7 @@ export async function getFiling(c: PoolClient, id: string) {
   const changes = (await c.query(`SELECT change, count(*)::int AS n, coalesce(sum(original_cost), 0) AS cost FROM tax_filing_line WHERE filing_id = $1 AND property_type <> 'LEASED_IN' GROUP BY change`, [id])).rows;
   const prior = (await c.query(`SELECT id, tax_year, status, total_cost, total_market_value, assessed_value, estimated_tax, actual_tax FROM tax_filing
      WHERE company_id = $1 AND jurisdiction_id = $2 AND tax_year < $3 ORDER BY tax_year DESC LIMIT 1`, [f.company_id, f.jurisdiction_id, f.tax_year])).rows[0];
-  return { ...summaryOut(f), params: f.params, warnings: f.warnings ?? [], notes: f.notes ?? undefined,
+  return { ...summaryOut(f), params: f.params, warnings: ((f.warnings as TaxWarning[]) ?? []).map(upgradeWarning), notes: f.notes ?? undefined,
     byType: byType.map((t) => ({ propertyType: t.property_type, count: t.n, cost: Number(t.cost), marketValue: Number(t.mv) })),
     schedule: schedule.map((s) => ({ propertyType: s.property_type, acquisitionYear: s.acquisition_year, lifeClass: s.life_class, count: s.n, cost: num(s.cost) ?? 0, marketValue: num(s.mv) ?? 0, factor: num(s.factor) })),
     changes: Object.fromEntries(changes.map((x) => [x.change, { count: x.n, cost: Number(x.cost) }])),
@@ -554,7 +554,7 @@ export async function exportFiling(c: PoolClient, id: string): Promise<{ fileNam
     ['', ''], ['Not in ALM — report separately', 'Inventory and supplies (GA Schedule B, AL supplies, TX Schedules B/C, CA line 1), boats and aircraft'],
     ['Estimate only — confirm values, factor tables and millage with the jurisdiction before filing.', ''],
     // 예전 신고(params 없음)는 저장된 문장, 새 신고는 영어 문장으로
-    ...((f.warnings as TaxWarning[]) ?? []).map((w): Cell[] => ['Note', w.params ? warn(w.code, w.params).message : w.message]),
+    ...((f.warnings as TaxWarning[]) ?? []).map(upgradeWarning).map((w): Cell[] => ['Note', w.params ? warn(w.code, w.params).message : w.message]),
   ];
   const money = 'money' as const, factor = 'factor' as const, int = 'int' as const;
   const sheets = [
