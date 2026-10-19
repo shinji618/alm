@@ -160,7 +160,8 @@
       "assignedAt": "할당 일시",
       "lastCount": "마지막 실사",
       "lastSeen": "Discovery 마지막 확인",
-      "osName": "OS"
+      "osName": "OS",
+      "modelHint": "선택. 직접 입력하거나 이 카테고리의 모델 제안에서 고르세요."
     },
     "sapHint": "체크하면 구매가가 필수입니다. 신규 자산 요청이 승인(부서 관리자 → 자산회계)으로 가고, 최종 승인 뒤 SAP 자산이 만들어집니다.",
     "sapHintClass": "자본화 자산클래스입니다. SAP 등록을 권합니다.",

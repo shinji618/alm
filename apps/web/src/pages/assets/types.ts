@@ -10,7 +10,7 @@ export interface AssetSummary {
 export interface Page<T> { items: T[]; page: number; pageSize: number; total: number }
 export interface RequestRef { id: string; requestNo: string; requestType: string; status: string }
 export interface AssetDetail {
-  id: string; version: number; assetTag: string; description: string; categoryId: string; modelId?: string; serialNo?: string;
+  id: string; version: number; assetTag: string; description: string; categoryId: string; modelId?: string; modelName?: string; serialNo?: string;
   status: AssetStatusCode; stage: StageCode; source: string; siteId?: string; roomId?: string; costCenterId?: string; assignedUserId?: string;
   assignedAt?: string; dueBackDate?: string; hostname?: string; ipAddress?: string; macAddress?: string; osName?: string; warrantyEndDate?: string;
   lastCountDate?: string; lastSeenAt?: string; notes?: string;

@@ -6,6 +6,7 @@
 //     오류 행은 그 행만 되돌린다. 미리보기는 끝에 전체를 되돌리고, 적용은 오류 없는 행만 남긴다(오류 행은 건너뜀)
 //   - Bundle(2026-10-19): isBundle=Y 행은 Bundle로 신규 등록(모델 불필요). bundleTag = 넣을 Bundle 태그(ALM에 있거나 같은 파일의 Bundle 행).
 //     Bundle 행을 먼저 처리한다. 미리보기도 적용과 같이 행을 반영해 보고(같은 파일 Bundle 참조 확인) 마지막에 전부 되돌린다
+//   - 모델(2026-10-19): 선택. 모델 마스터(부품번호·'제조사 모델명')에 있으면 연결, 없으면 적은 글자 그대로(asset.model_text)
 //   권한 asset.write(범위: 역할 행의 회사코드·사이트). 최대 2,000행, 파일 700KB
 import type { PoolClient } from 'pg';
 import { AlmError, E } from '../common/errors';
@@ -20,7 +21,7 @@ import { excelDate, readCsv, readXlsx } from '../common/xlsxRead';
 export const COLUMNS = ['assetTag', 'description', 'categoryCode', 'model', 'serialNo', 'companyCode', 'roomCode', 'costCenterCode', 'status',
   'assignedUserEmail', 'purchaseDate', 'purchaseCost', 'warrantyEndDate', 'hostname', 'ipAddress', 'macAddress', 'notes', 'printLabel', 'isBundle', 'bundleTag'] as const;
 type Col = (typeof COLUMNS)[number];
-const REQUIRED_NEW: Col[] = ['description', 'categoryCode', 'model', 'companyCode', 'roomCode', 'costCenterCode'];
+const REQUIRED_NEW: Col[] = ['description', 'categoryCode', 'companyCode', 'roomCode', 'costCenterCode'];
 const UPDATE_COLS: Col[] = ['description', 'model', 'serialNo', 'roomCode', 'hostname', 'ipAddress', 'macAddress', 'warrantyEndDate', 'notes', 'bundleTag'];
 const DATE_COLS: Col[] = ['purchaseDate', 'warrantyEndDate'];
 const MAX_ROWS = 2000;
@@ -127,7 +128,7 @@ async function run(c: PoolClient, p: Principal, body: unknown, apply: boolean) {
   const L = await lookups(c);
   const tags = f.rows.map((r) => r.v.assetTag?.toUpperCase()).filter((x): x is string => !!x);
   const existing = new Map((await c.query(`SELECT a.id, upper(a.asset_tag) AS k, a.asset_tag, a.version, a.category_id, a.description, a.serial_no, a.hostname,
-      host(a.ip_address) AS ip, a.mac_address, a.notes, a.model_id, a.room_id, to_char(a.warranty_end_date, 'YYYY-MM-DD') AS warranty, a.is_bundle,
+      host(a.ip_address) AS ip, a.mac_address, a.notes, a.model_id, a.model_text, a.room_id, to_char(a.warranty_end_date, 'YYYY-MM-DD') AS warranty, a.is_bundle,
       (SELECT upper(b.asset_tag) FROM asset b WHERE b.id = a.parent_asset_id) AS bundle_tag FROM asset a WHERE upper(a.asset_tag) = ANY($1)`, [tags])).rows
     .map((r) => [r.k as string, r]));
   const ps = new Params([[...existing.values()].map((r) => r.id)]);
@@ -187,7 +188,8 @@ async function run(c: PoolClient, p: Principal, body: unknown, apply: boolean) {
       put('macAddress', 'macAddress', v.macAddress, cur.mac_address);
       put('notes', 'notes', v.notes, cur.notes);
       if (v.warrantyEndDate && date(v.warrantyEndDate)) put('warrantyEndDate', 'warrantyEndDate', date(v.warrantyEndDate), cur.warranty);
-      if (v.model) { const id = L.model(v.model, cur.category_id); if (!id) err('model', 'UNKNOWN_MODEL', `이 자산 카테고리의 활성 모델이 아닙니다: ${v.model}`); else put('model', 'modelId', id, cur.model_id); }
+      // 모델: 마스터에 있으면 그 모델, 없으면 입력 글자 그대로(직접 입력)
+      if (v.model) { const id = L.model(v.model, cur.category_id); if (id) put('model', 'modelId', id, cur.model_id); else if (cur.model_id || v.model !== cur.model_text) { patch.modelName = v.model; changes.push('model'); } }
       if (v.roomCode) { const id = L.room(v.roomCode); if (!id) err('roomCode', 'UNKNOWN_ROOM', `활성 룸이 아닙니다: ${v.roomCode}`); else put('roomCode', 'roomId', id, cur.room_id); }
       if (v.isBundle && yes(v.isBundle) !== !!cur.is_bundle) warn('isBundle', 'IGNORED_ON_UPDATE', 'isBundle');
       const toBundle = v.bundleTag && v.bundleTag.toUpperCase() !== cur.bundle_tag ? v.bundleTag : undefined;
@@ -212,12 +214,11 @@ async function run(c: PoolClient, p: Principal, body: unknown, apply: boolean) {
       res.action = 'CREATE';
       if (v.assetTag && !TAG.test(v.assetTag)) err('assetTag', 'BAD_TAG', '자산태그는 영문·숫자·- . _ 2~30자입니다');
       const isBundle = yes(v.isBundle);
-      for (const col of REQUIRED_NEW) if (!v[col] && !(col === 'model' && isBundle)) err(col, 'REQUIRED', '신규 등록에 필요합니다');
+      for (const col of REQUIRED_NEW) if (!v[col]) err(col, 'REQUIRED', '신규 등록에 필요합니다');
       if (isBundle && v.bundleTag) err('bundleTag', 'BUNDLE_COMPONENT', 'Bundle은 다른 Bundle에 넣을 수 없습니다');
       const catId = v.categoryCode ? L.cat(v.categoryCode) : undefined;
       if (v.categoryCode && !catId) err('categoryCode', 'UNKNOWN_CATEGORY', `활성 카테고리 코드가 아닙니다: ${v.categoryCode}`);
-      const modelId = v.model ? L.model(v.model, catId) : undefined;
-      if (v.model && catId && !modelId) err('model', 'UNKNOWN_MODEL', `이 카테고리의 활성 모델이 아닙니다(부품번호 또는 '제조사 모델명'): ${v.model}`);
+      const modelId = v.model ? L.model(v.model, catId) : undefined;   // 마스터에 없으면 modelName(직접 입력)으로
       const coId = v.companyCode ? L.co(v.companyCode) : undefined;
       if (v.companyCode && !coId) err('companyCode', 'UNKNOWN_COMPANY', `활성 회사코드가 아닙니다: ${v.companyCode}`);
       const roomId = v.roomCode ? L.room(v.roomCode) : undefined;
@@ -233,7 +234,7 @@ async function run(c: PoolClient, p: Principal, body: unknown, apply: boolean) {
       if (!res.errors.length) {
         await c.query('SAVEPOINT imp');
         try {
-          const out = await createAsset(c, p, { ...(isBundle ? { isBundle: true } : {}), categoryId: catId, modelId, description: v.description, serialNo: v.serialNo, companyId: coId, roomId,
+          const out = await createAsset(c, p, { ...(isBundle ? { isBundle: true } : {}), categoryId: catId, modelId, modelName: modelId ? undefined : v.model, description: v.description, serialNo: v.serialNo, companyId: coId, roomId,
             costCenterId: ccId, status, assignedUserId: status === 'IN_USE' ? userId : undefined, purchaseDate: date(v.purchaseDate) ?? undefined,
             purchaseCost: cost, warrantyEndDate: date(v.warrantyEndDate) ?? undefined, hostname: v.hostname, notes: v.notes,
             printLabel: yes(v.printLabel), registerInSap: false }, v.assetTag ? { assetTag: v.assetTag.toUpperCase() } : {});
@@ -269,7 +270,7 @@ const HELP: [Col, string, string][] = [
   ['assetTag', 'Asset tag. Empty = new asset with the next AT-number. A tag not in ALM = new asset that keeps that tag. A tag in ALM = update that asset.', '자산태그. 비우면 신규(자동 채번), ALM에 없는 태그면 그 태그로 신규, 있는 태그면 수정'],
   ['description', 'Asset name (max 50). Required for new.', '자산명(50자). 신규 필수'],
   ['categoryCode', 'Category code (Codes sheet). Required for new. Not changed on update.', '카테고리 코드. 신규 필수, 수정 안 됨'],
-  ['model', "Model part number, or 'Manufacturer Model name' (Codes sheet). Required for new.", "모델 부품번호 또는 '제조사 모델명'. 신규 필수"],
+  ['model', "Optional. Model part number or 'Manufacturer Model name' from the Codes sheet links the model; any other text is kept as typed.", "선택. Codes 시트의 부품번호·'제조사 모델명'이면 모델에 연결, 아니면 적은 글자 그대로"],
   ['serialNo', 'Serial number (max 40; SAP assets max 18).', '시리얼(40자, SAP 자산 18자)'],
   ['companyCode', 'Company code. Required for new. Not changed on update.', '회사코드. 신규 필수, 수정 안 됨'],
   ['roomCode', 'Room code; the site comes from the room. Required for new.', '룸 코드(사이트는 룸에서). 신규 필수'],
@@ -293,7 +294,7 @@ export async function importTemplate(c: PoolClient, p: Principal, withAssets: bo
   const data: Cell[][] = [COLUMNS.slice()];
   if (withAssets) {
     const ps = new Params();
-    for (const r of (await c.query(`SELECT a.asset_tag, a.description, cat.category_code, coalesce(m.part_no, m.manufacturer || ' ' || m.model_name) AS model, a.serial_no,
+    for (const r of (await c.query(`SELECT a.asset_tag, a.description, cat.category_code, coalesce(m.part_no, m.manufacturer || ' ' || m.model_name, a.model_text) AS model, a.serial_no,
         co.company_code, rm.room_code, cc.cost_center_code, a.status, to_char(a.warranty_end_date, 'YYYY-MM-DD') AS warranty, a.hostname, host(a.ip_address) AS ip, a.mac_address, a.notes,
         a.is_bundle, (SELECT b.asset_tag FROM asset b WHERE b.id = a.parent_asset_id) AS bundle_tag
       FROM asset a JOIN category cat ON cat.id = a.category_id JOIN company co ON co.id = a.company_id LEFT JOIN model m ON m.id = a.model_id

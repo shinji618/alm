@@ -527,6 +527,7 @@ CREATE TABLE asset (
   description varchar(50) NOT NULL,
   category_id uuid NOT NULL,
   model_id uuid,
+  model_text varchar(100),
   serial_no varchar(40),
   status asset_status NOT NULL DEFAULT 'IN_STOCK',
   status_before_missing asset_status,
@@ -576,6 +577,7 @@ COMMENT ON COLUMN asset.asset_tag IS '자산태그 AT-nnnnnn = SAP INVNR, 라벨
 COMMENT ON COLUMN asset.description IS '자산명 = SAP TXT50';
 COMMENT ON COLUMN asset.category_id IS '카테고리';
 COMMENT ON COLUMN asset.model_id IS '모델';
+COMMENT ON COLUMN asset.model_text IS '모델(직접 입력). 모델 마스터에 없을 때';
 COMMENT ON COLUMN asset.serial_no IS '시리얼. SAP SERNR(18자) 초과 시 전송 검증 오류';
 COMMENT ON COLUMN asset.status IS '상태 7종';
 COMMENT ON COLUMN asset.status_before_missing IS 'Missing 전 상태. 다음 스캔 시 복원';

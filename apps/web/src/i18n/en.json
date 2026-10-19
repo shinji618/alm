@@ -160,7 +160,8 @@
       "assignedAt": "Assigned at",
       "lastCount": "Last count",
       "lastSeen": "Last seen (Discovery)",
-      "osName": "OS"
+      "osName": "OS",
+      "modelHint": "Optional. Type any model, or pick a suggestion from this category."
     },
     "sapHint": "Checked: purchase cost is required. A new asset request goes to approval (Dept manager → Asset accountant) and the SAP asset is created after final approval.",
     "sapHintClass": "This asset class is capitalized — SAP registration is suggested.",

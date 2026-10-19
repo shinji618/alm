@@ -12918,6 +12918,9 @@ components:
           type: string
           format: uuid
           description: 모델
+        modelName:
+          type: string
+          description: 모델 표시 이름(마스터 '제조사 모델명' 또는 직접 입력한 값)
         serialNo:
           type: string
           maxLength: 40
@@ -13255,7 +13258,11 @@ components:
         modelId:
           type: string
           format: uuid
-          description: 모델(Bundle이 아니면 필수)
+          description: 모델 마스터(선택)
+        modelName:
+          type: string
+          maxLength: 100
+          description: 모델 직접 입력(선택). 카테고리 모델의 부품번호·'제조사 모델명'과 맞으면 그 모델로 연결, 아니면 글자 그대로
         isBundle:
           type: boolean
           description: Bundle 자산으로 등록(기본 false). 구성품을 묶어 SAP에는 이 자산 1건만 등록
@@ -13359,7 +13366,11 @@ components:
         modelId:
           type: string
           format: uuid
-          description: 모델
+          description: 모델 마스터(null이면 모델 지움)
+        modelName:
+          type: string
+          maxLength: 100
+          description: 모델 직접 입력(modelId와 함께 못 보냄). 마스터와 맞으면 연결, 빈 값이면 지움
         serialNo:
           type: string
           maxLength: 40

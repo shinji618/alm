@@ -650,6 +650,8 @@ model Asset {
   /// 모델
   modelId String? @map("model_id") @db.Uuid
   model Model? @relation("asset_model_id", fields: [modelId], references: [id])
+  /// 모델(직접 입력). 모델 마스터에 없을 때
+  modelText String? @map("model_text") @db.VarChar(100)
   /// 시리얼. SAP SERNR(18자) 초과 시 전송 검증 오류
   serialNo String? @map("serial_no") @db.VarChar(40)
   /// 상태 7종

@@ -12,11 +12,11 @@ import type { AssetDetail, Lookups, LookupItem, RequestRef } from './types';
 import s from './assets.module.css';
 
 interface Form {
-  categoryId: string; modelId: string; description: string; serialNo: string; companyId: string; siteId: string; roomId: string;
+  categoryId: string; modelName: string; description: string; serialNo: string; companyId: string; siteId: string; roomId: string;
   costCenterId: string; assetClassId: string; status: 'IN_STOCK' | 'ON_ORDER' | 'IN_USE'; assignedUserId: string; purchaseDate: string;
   purchaseCost: string; warrantyEndDate: string; hostname: string; notes: string; printLabel: boolean; registerInSap: boolean; isBundle: boolean;
 }
-const EMPTY: Form = { categoryId: '', modelId: '', description: '', serialNo: '', companyId: '', siteId: '', roomId: '', costCenterId: '', assetClassId: '',
+const EMPTY: Form = { categoryId: '', modelName: '', description: '', serialNo: '', companyId: '', siteId: '', roomId: '', costCenterId: '', assetClassId: '',
   status: 'IN_STOCK', assignedUserId: '', purchaseDate: '', purchaseCost: '', warrantyEndDate: '', hostname: '', notes: '', printLabel: true, registerInSap: false, isBundle: false };
 
 export function AssetCreate() {
@@ -59,7 +59,7 @@ export function AssetCreate() {
   const check = (): Record<string, string> => {
     const e: Record<string, string> = {};
     const req = t('common.required');
-    for (const k of ['categoryId', 'modelId', 'description', 'companyId', 'roomId', 'costCenterId'] as const) if (!f[k].trim() && !(k === 'modelId' && f.isBundle)) e[k] = req;
+    for (const k of ['categoryId', 'description', 'companyId', 'roomId', 'costCenterId'] as const) if (!f[k].trim()) e[k] = req;
     if (f.status === 'IN_USE' && !f.assignedUserId) e.assignedUserId = req;
     if (f.registerInSap) {
       if (f.purchaseCost ? !(Number(f.purchaseCost) > 0) : !costFromComponents) e.purchaseCost = req;
@@ -76,7 +76,7 @@ export function AssetCreate() {
     try {
       const body = {
         ...(f.isBundle ? { isBundle: true, componentIds: componentIds.length ? componentIds : undefined } : {}),
-        categoryId: f.categoryId, modelId: f.modelId || undefined, description: f.description.trim(), serialNo: f.serialNo.trim() || undefined, companyId: f.companyId,
+        categoryId: f.categoryId, modelName: f.modelName.trim() || undefined, description: f.description.trim(), serialNo: f.serialNo.trim() || undefined, companyId: f.companyId,
         roomId: f.roomId, costCenterId: f.costCenterId, assetClassId: f.assetClassId || undefined, status: f.status,
         assignedUserId: f.status === 'IN_USE' ? f.assignedUserId : undefined, purchaseDate: f.purchaseDate || undefined,
         purchaseCost: f.purchaseCost ? Number(f.purchaseCost) : undefined, warrantyEndDate: f.warrantyEndDate || undefined,
@@ -106,8 +106,11 @@ export function AssetCreate() {
             {f.isBundle ? `${t('asset.bundle.fieldHint')} ${componentIds.length ? t('asset.bundle.componentsSelected', { count: componentIds.length }) : ''} ${t('asset.bundle.rules')}` : t('asset.bundle.fieldHint')}
           </div>
           <SelectField label={t('asset.field.category')} required value={f.categoryId} error={fe('categoryId')} options={opt(L.categories)}
-            onChange={(e) => setF((x) => ({ ...x, categoryId: e.target.value, modelId: '' }))} />
-          <SelectField label={t('asset.field.model')} required={!f.isBundle} value={f.modelId} error={fe('modelId')} options={opt(models)} onChange={(e) => set('modelId', e.target.value)} />
+            onChange={(e) => set('categoryId', e.target.value)} />
+          {/* 모델(선택): 직접 입력. 카테고리 모델은 제안 목록으로(맞으면 서버가 모델 마스터에 연결) */}
+          <TextField label={t('asset.field.model')} maxLength={100} list="asset-model-options" autoComplete="off" value={f.modelName} error={fe('modelName') ?? fe('modelId')}
+            hint={t('asset.field.modelHint')} onChange={(e) => set('modelName', e.target.value)} />
+          <datalist id="asset-model-options">{models.map((m) => <option key={m.id} value={m.label} />)}</datalist>
           <TextField label={t('asset.field.description')} required maxLength={50} value={f.description} error={fe('description')} onChange={(e) => set('description', e.target.value)} />
           <TextField label={t('asset.field.serialNo')} maxLength={40} value={f.serialNo} error={fe('serialNo')} onChange={(e) => set('serialNo', e.target.value)} />
           <SelectField label={t('asset.field.company')} required value={f.companyId} error={fe('companyId')} options={opt(L.companies)}

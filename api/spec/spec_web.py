@@ -255,6 +255,7 @@ assetTag | string(25) | Y | 자산태그
 description | string(50) | Y | 자산명
 categoryId | uuid | Y | 카테고리
 modelId | uuid | N | 모델
+modelName | string | N | 모델 표시 이름(마스터 '제조사 모델명' 또는 직접 입력한 값)
 serialNo | string(40) | N | 시리얼
 status | enum(ON_ORDER,IN_STOCK,IN_USE,IN_REPAIR,MISSING,RETIRED,DISPOSED) | Y | 상태
 stage | enum(PLAN,PROCURE,DEPLOY,OPERATE,MAINTAIN,RETIRE) | Y | 단계
@@ -336,7 +337,8 @@ status | string | Y | 상태
 ''')
 schema('AssetCreate', '자산 등록(ALM-112)', '''
 categoryId | uuid | Y | 카테고리
-modelId | uuid | N | 모델(Bundle이 아니면 필수)
+modelId | uuid | N | 모델 마스터(선택)
+modelName | string(100) | N | 모델 직접 입력(선택). 카테고리 모델의 부품번호·'제조사 모델명'과 맞으면 그 모델로 연결, 아니면 글자 그대로
 isBundle | bool | N | Bundle 자산으로 등록(기본 false). 구성품을 묶어 SAP에는 이 자산 1건만 등록
 componentIds | [uuid] | N | Bundle 구성품(SAP 자산번호가 없는 같은 회사 ALM 자산, 최대 200)
 description | string(50) | Y | 자산명
@@ -362,7 +364,8 @@ labelJobId | uuid | N | 라벨 출력 작업
 ''')
 schema('AssetPatch', '자산 수정. 보낸 필드만 바꿈', '''
 description | string(50) | N | 자산명(자본화 자산은 변경 요청 자동 생성)
-modelId | uuid | N | 모델
+modelId | uuid | N | 모델 마스터(null이면 모델 지움)
+modelName | string(100) | N | 모델 직접 입력(modelId와 함께 못 보냄). 마스터와 맞으면 연결, 빈 값이면 지움
 serialNo | string(40) | N | 시리얼(자본화 자산은 SAP 전송)
 roomId | uuid | N | 룸(자본화 자산은 STORT 변경 요청 자동 생성)
 hostname | string(63) | N | 호스트명

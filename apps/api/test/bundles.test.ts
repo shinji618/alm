@@ -35,12 +35,12 @@ const files: FileStore = {
   head: async () => null, scanStatus: async () => undefined, remove: async () => undefined,
 };
 
-async function raw(who: string, method: string, path: string, body?: unknown) {
-  return fetch(`${base}${path}`, { method, headers: { authorization: `Bearer at:T-BUN_${who}:web`, 'content-type': 'application/json' },
+async function raw(who: string, method: string, path: string, body?: unknown, extra: Record<string, string> = {}) {
+  return fetch(`${base}${path}`, { method, headers: { authorization: `Bearer at:T-BUN_${who}:web`, 'content-type': 'application/json', ...extra },
     body: body === undefined ? undefined : JSON.stringify(body) });
 }
-async function call(who: string, method: string, path: string, body?: unknown) {
-  const r = await raw(who, method, path, body);
+async function call(who: string, method: string, path: string, body?: unknown, extra: Record<string, string> = {}) {
+  const r = await raw(who, method, path, body, extra);
   const text = await r.text();
   return { status: r.status, body: text ? JSON.parse(text) : undefined };
 }
@@ -104,7 +104,6 @@ after(async () => {
 
 test('Bundle: 등록(구성품·SAP 등록 취득가 = 구성품 합)·구성품 규칙·상세·목록', { skip }, async () => {
   const base = { isBundle: true, categoryId: ids.nb, description: 'Conference room AV set', companyId: ids.co, roomId: ids.r1, costCenterId: ids.cc, printLabel: false };
-  assert.equal((await call('am', 'POST', '/assets', { ...base, isBundle: false })).status, 400, '일반 자산은 모델 필수');
   assert.equal((await call('am', 'POST', '/assets', { ...base, isBundle: false, modelId: ids.m1, componentIds: [ids.c1] })).status, 400, 'componentIds는 Bundle만');
   const bad = await call('am', 'POST', '/assets', { ...base, componentIds: [ids.c1, ids.sap, ids.other] });
   assert.equal(bad.status, 409);
@@ -258,4 +257,24 @@ test('PDA-09 자산 조회: 구성품은 소속 Bundle, Bundle은 구성품 목�
   const b = await pda(bt);
   assert.deepEqual([b.body.limited, b.body.isBundle, b.body.componentCount], [false, true, 2]);
   assert.deepEqual(b.body.components.map((x: { assetTag: string }) => x.assetTag), ['AT-000101', 'AT-000102']);
+});
+
+test('모델 직접 입력(선택): 마스터와 맞으면 연결, 아니면 글자 그대로, 비우면 지움', { skip }, async () => {
+  const base = { categoryId: ids.nb, description: 'Model test', companyId: ids.co, roomId: ids.r1, costCenterId: ids.cc, printLabel: false };
+  const none = await call('am', 'POST', '/assets', base);
+  assert.equal(none.status, 201, JSON.stringify(none.body));
+  assert.equal(none.body.asset.modelId, undefined);
+  const hit = await call('am', 'POST', '/assets', { ...base, modelName: ' lat7440 ' });
+  assert.deepEqual([hit.body.asset.modelId, hit.body.asset.modelName], [ids.m1, 'Dell Latitude 7440']);
+  const free = await call('am', 'POST', '/assets', { ...base, modelName: 'HP  Custom   X1' });
+  assert.deepEqual([free.body.asset.modelId, free.body.asset.modelName], [undefined, 'HP Custom X1']);
+  const id = free.body.asset.id;
+  const list = await call('am', 'GET', '/assets?q=custom');
+  assert.deepEqual(list.body.items.map((x: { modelName?: string }) => x.modelName), ['HP Custom X1']);
+  const p1 = await call('am', 'PATCH', `/assets/${id}`, { modelName: 'Dell Latitude 7440' }, { 'if-match': `"${free.body.asset.version}"` });
+  assert.equal(p1.status, 200, JSON.stringify(p1.body));
+  assert.deepEqual([p1.body.asset.modelId, p1.body.asset.modelName], [ids.m1, 'Dell Latitude 7440']);
+  const p2 = await call('am', 'PATCH', `/assets/${id}`, { modelName: '' }, { 'if-match': `"${p1.body.asset.version}"` });
+  assert.deepEqual([p2.body.asset.modelId, p2.body.asset.modelName], [undefined, undefined]);
+  assert.deepEqual((await owner.query(`SELECT model_id, model_text FROM asset WHERE id = $1`, [id])).rows[0], { model_id: null, model_text: null });
 });

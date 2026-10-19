@@ -118,7 +118,7 @@ export async function pdaGetWorklist(c: PoolClient, p: Principal, campaignId: st
   const after = fromCursor(q.cursor);
   if (after !== undefined && !isUuid(after)) throw E.badRequest('cursor가 올바르지 않습니다');
   const rows = (await c.query(`SELECT ci.id, ci.asset_id, a.asset_tag, a.description, cat.name AS category_name,
-        CASE WHEN m.id IS NULL THEN NULL ELSE m.manufacturer || ' ' || m.model_name END AS model, a.serial_no, a.status AS asset_status,
+        CASE WHEN m.id IS NULL THEN a.model_text ELSE m.manufacturer || ' ' || m.model_name END AS model, a.serial_no, a.status AS asset_status,
         ci.expected_room_id, er.room_code AS expected_room_code, u.display_name AS user_name, ci.result, ci.counted_at,
         greatest(ci.updated_at, a.updated_at, t.updated_at) AS updated_at
       FROM count_item ci JOIN count_task t ON t.id = ci.task_id JOIN asset a ON a.id = ci.asset_id JOIN category cat ON cat.id = a.category_id
@@ -390,7 +390,7 @@ export async function pdaGetAsset(c: PoolClient, p: Principal, tag: string) {
     bundle: bundle ? clean({ assetTag: bundle.asset_tag, description: bundle.description, sapAssetNo: sapNo(bundle.sap_asset_no, bundle.sap_sub_no) }) : undefined,
     components: a.is_bundle ? comps.map((x) => clean({ assetTag: x.asset_tag, description: x.description, status: x.status, roomCode: x.room_code ?? undefined })) : undefined,
     assetTag: a.asset_tag, status: a.status, stage: a.stage ?? undefined, limited: false, description: a.description, categoryName: a.category_name,
-    model: a.model_name ? `${a.manufacturer ?? ''} ${a.model_name}`.trim() : undefined, serialNo: a.serial_no, hostname: a.hostname,
+    model: a.model_name ? `${a.manufacturer ?? ''} ${a.model_name}`.trim() : a.model_text ?? undefined, serialNo: a.serial_no, hostname: a.hostname,
     companyCode: a.company_code, siteCode: a.site_code, siteName: a.site_name, roomCode: a.room_code, roomName: a.room_name,
     costCenterCode: a.cost_center_code, costCenterName: a.cost_center_name, assignedUserName: a.user_name,
     sapAssetNo: sapNo(a.sap_asset_no, a.sap_sub_no), capitalizedOn: day(a.sap_cap_date), purchaseDate: day(a.purchase_date), warrantyEndDate: day(a.warranty_end_date),

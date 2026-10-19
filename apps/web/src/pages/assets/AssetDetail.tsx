@@ -128,7 +128,7 @@ function General({ d, L, lang, name }: { d: Detail; L: Lookups; lang: Lang; name
   return (
     <KeyValue items={[
       { label: t('asset.field.category'), value: name(L.categories, d.categoryId) },
-      { label: t('asset.field.model'), value: name(L.models, d.modelId)?.replace(/^[^·]*· /, '') },
+      { label: t('asset.field.model'), value: d.modelName ?? name(L.models, d.modelId)?.replace(/^[^·]*· /, '') },
       { label: t('asset.field.serialNo'), value: d.serialNo && <span className="mono">{d.serialNo}</span> },
       { label: t('asset.field.source'), value: d.source },
       { label: t('asset.field.site'), value: name(L.sites, d.siteId) },
@@ -281,14 +281,14 @@ function Actions({ onClose, saving, label }: { onClose: () => void; saving: bool
 function EditDrawer({ d, L, onClose, onDone, onConflict }: { d: Detail; L: Lookups; onClose: () => void; onDone: (r: ChangeResult) => void; onConflict: () => void }) {
   const { t } = useTranslation();
   const can = new Set(d.editableFields);
-  const [f, setF] = useState({ description: d.description, modelId: d.modelId ?? '', serialNo: d.serialNo ?? '', roomId: d.roomId ?? '', hostname: d.hostname ?? '',
+  const [f, setF] = useState({ description: d.description, modelName: d.modelName ?? '', serialNo: d.serialNo ?? '', roomId: d.roomId ?? '', hostname: d.hostname ?? '',
     ipAddress: d.ipAddress ?? '', macAddress: d.macAddress ?? '', warrantyEndDate: d.warrantyEndDate ?? '', dueBackDate: d.dueBackDate ?? '', notes: d.notes ?? '' });
   const sub = useSubmit(onDone, onConflict);
   const models = useMemo(() => (L.models ?? []).filter((m) => m.parentId === d.categoryId), [L.models, d.categoryId]);
   const set = (k: keyof typeof f, v: string) => setF((x) => ({ ...x, [k]: v }));
   const submit = () => {
     // 바뀐 필드만 보낸다(빈 문자열은 지우기 = null)
-    const orig: Record<string, string> = { description: d.description, modelId: d.modelId ?? '', serialNo: d.serialNo ?? '', roomId: d.roomId ?? '', hostname: d.hostname ?? '',
+    const orig: Record<string, string> = { description: d.description, modelName: d.modelName ?? '', serialNo: d.serialNo ?? '', roomId: d.roomId ?? '', hostname: d.hostname ?? '',
       ipAddress: d.ipAddress ?? '', macAddress: d.macAddress ?? '', warrantyEndDate: d.warrantyEndDate ?? '', dueBackDate: d.dueBackDate ?? '', notes: d.notes ?? '' };
     const body = Object.fromEntries(Object.entries(f).filter(([k, v]) => can.has(k) && v !== orig[k]).map(([k, v]) => [k, v.trim() === '' ? null : v.trim()]));
     if (!Object.keys(body).length) return onClose();
@@ -299,7 +299,9 @@ function EditDrawer({ d, L, onClose, onDone, onConflict }: { d: Detail; L: Looku
     <Drawer open onClose={onClose} label={t('common.edit')} title={`${t('common.edit')} · ${d.assetTag}`}>
       <FormGrid onSubmit={submit}>
         <TextField label={t('asset.field.description')} required maxLength={50} value={f.description} error={e.description} disabled={!can.has('description')} onChange={(x) => set('description', x.target.value)} />
-        <SelectField label={t('asset.field.model')} value={f.modelId} error={e.modelId} options={opts(models, false)} disabled={!can.has('modelId')} onChange={(x) => set('modelId', x.target.value)} />
+        <TextField label={t('asset.field.model')} maxLength={100} list="edit-model-options" autoComplete="off" value={f.modelName} error={e.modelName ?? e.modelId}
+          hint={t('asset.field.modelHint')} disabled={!can.has('modelName')} onChange={(x) => set('modelName', x.target.value)} />
+        <datalist id="edit-model-options">{models.map((m) => <option key={m.id} value={m.label} />)}</datalist>
         <TextField label={t('asset.field.serialNo')} maxLength={40} value={f.serialNo} error={e.serialNo} disabled={!can.has('serialNo')} onChange={(x) => set('serialNo', x.target.value)} />
         <SelectField label={t('asset.field.room')} value={f.roomId} error={e.roomId} options={opts(L.rooms, false)} disabled={!can.has('roomId')} onChange={(x) => set('roomId', x.target.value)} />
         <TextField label={t('asset.field.hostname')} maxLength={63} value={f.hostname} disabled={!can.has('hostname')} onChange={(x) => set('hostname', x.target.value)} />

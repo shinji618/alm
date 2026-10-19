@@ -20,11 +20,11 @@ export const STAGES = ['PLAN', 'PROCURE', 'DEPLOY', 'OPERATE', 'MAINTAIN', 'RETI
 const QUICK = ['WARRANTY_90', 'PAST_USEFUL_LIFE', 'NON_SAP', 'UNCOUNTED_1Y'] as const;
 // SAP 기준 필드: ALM 수정 API로 못 바꾼다
 const SAP_FIELDS = ['assetClassId', 'purchaseCost', 'acquisitionValue', 'costCenterId', 'companyId'];
-const PATCHABLE = ['description', 'modelId', 'serialNo', 'roomId', 'hostname', 'ipAddress', 'macAddress', 'warrantyEndDate', 'dueBackDate', 'notes'] as const;
+const PATCHABLE = ['description', 'modelId', 'modelName', 'serialNo', 'roomId', 'hostname', 'ipAddress', 'macAddress', 'warrantyEndDate', 'dueBackDate', 'notes'] as const;
 // 이력의 금액 필드(amount.read 없으면 값 숨김)
 const AMOUNT_KEYS = new Set(['purchase_cost', 'purchaseCost', 'acquisition_value', 'acquisitionValue', 'net_book_value', 'sale_amount', 'unit_price']);
 const UPDATABLE = ['description', 'serial_no', 'hostname', 'ip_address', 'mac_address', 'warranty_end_date', 'due_back_date', 'notes',
-  'model_id', 'room_id', 'site_id'];
+  'model_id', 'room_id', 'site_id', 'model_text'];
 const MAC = /^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/;
 const IPV4 = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
 const IPV6 = /^[0-9A-Fa-f:]{2,39}$/;
@@ -61,7 +61,7 @@ export async function listAssets(c: PoolClient, p: Principal, q: Record<string, 
   if (q.q?.trim()) {
     const t = ps.add(`%${likeEsc(q.q.trim().slice(0, 100))}%`);
     where.push(`(a.asset_tag ILIKE ${t} OR a.serial_no ILIKE ${t} OR a.hostname ILIKE ${t} OR host(a.ip_address) ILIKE ${t}
-      OR a.description ILIKE ${t} OR u.display_name ILIKE ${t} OR u.email ILIKE ${t} OR a.sap_asset_no ILIKE ${t})`);
+      OR a.description ILIKE ${t} OR a.model_text ILIKE ${t} OR u.display_name ILIKE ${t} OR u.email ILIKE ${t} OR a.sap_asset_no ILIKE ${t})`);
   }
   if (ids.categoryId) {
     where.push(`a.category_id IN (WITH RECURSIVE t AS (SELECT id FROM category WHERE id = ${ps.add(ids.categoryId)}
@@ -93,7 +93,7 @@ export async function listAssets(c: PoolClient, p: Principal, q: Record<string, 
   const total = (await c.query(`SELECT count(*)::int AS n ${from}`, ps.values)).rows[0].n as number;
   const off = ps.add((page - 1) * pageSize), lim = ps.add(pageSize);
   const rows = (await c.query(
-    `SELECT a.id, a.asset_tag, a.description, c.name AS category_name, m.manufacturer, m.model_name, a.serial_no, a.status, st.stage,
+    `SELECT a.id, a.asset_tag, a.description, c.name AS category_name, m.manufacturer, m.model_name, a.model_text, a.serial_no, a.status, st.stage,
             s.site_code, r.room_code, u.display_name AS user_name, cc.cost_center_code, a.sap_asset_no, a.sap_sub_no, a.warranty_end_date,
             vl.net_book_value, a.updated_at, a.is_bundle, pb.asset_tag AS bundle_tag,
             (SELECT count(*)::int FROM asset x WHERE x.parent_asset_id = a.id) AS component_count
@@ -102,7 +102,7 @@ export async function listAssets(c: PoolClient, p: Principal, q: Record<string, 
   return {
     items: rows.map((r) => clean({
       id: r.id, assetTag: r.asset_tag, description: r.description, categoryName: r.category_name,
-      modelName: r.model_name ? `${r.manufacturer} ${r.model_name}` : undefined, serialNo: r.serial_no ?? undefined, status: r.status,
+      modelName: r.model_name ? `${r.manufacturer} ${r.model_name}` : r.model_text ?? undefined, serialNo: r.serial_no ?? undefined, status: r.status,
       stage: r.stage ?? 'OPERATE', siteCode: r.site_code ?? undefined, roomCode: r.room_code ?? undefined, assignedUserName: r.user_name ?? undefined,
       costCenterCode: r.cost_center_code ?? undefined, sapAssetNo: r.sap_asset_no ? `${r.sap_asset_no}-${r.sap_sub_no ?? '0000'}` : undefined,
       warrantyEndDate: day(r.warranty_end_date), nbv: amount ? numOrNull(r.net_book_value) : null, updatedAt: iso(r.updated_at),
@@ -145,9 +145,10 @@ export async function getAsset(c: PoolClient, p: Principal, id: string) {
 
 export async function detail(c: PoolClient, p: Principal, id: string) {
   const r = (await c.query(
-    `SELECT a.*, host(a.ip_address) AS ip, st.stage, co.company_code, co.sap_enabled, ac.class_code, ac.default_useful_life_years,
+    `SELECT a.*, host(a.ip_address) AS ip, st.stage, co.company_code, co.sap_enabled, ac.class_code, ac.default_useful_life_years, m.manufacturer, m.model_name,
             vl.fiscal_year, vl.period, vl.acquisition_value, vl.accum_depreciation, vl.net_book_value, vl.useful_life_years AS vl_life
        FROM asset a JOIN company co ON co.id = a.company_id
+       LEFT JOIN model m ON m.id = a.model_id
        LEFT JOIN asset_class ac ON ac.id = a.asset_class_id
        LEFT JOIN v_asset_stage st ON st.asset_id = a.id
        LEFT JOIN v_asset_value_latest vl ON vl.asset_id = a.id
@@ -167,6 +168,7 @@ export async function detail(c: PoolClient, p: Principal, id: string) {
     && !['DISPOSED'].includes(r.status);
   return clean({
     id: r.id, version: r.version, assetTag: r.asset_tag, description: r.description, categoryId: r.category_id, modelId: r.model_id ?? undefined,
+    modelName: r.model_name ? `${r.manufacturer} ${r.model_name}` : r.model_text ?? undefined,
     serialNo: r.serial_no ?? undefined, status: r.status, stage: r.stage ?? 'OPERATE', source: r.source, siteId: r.site_id ?? undefined,
     roomId: r.room_id ?? undefined, costCenterId: r.cost_center_id ?? undefined, assignedUserId: r.assigned_user_id ?? undefined,
     assignedAt: iso(r.assigned_at), dueBackDate: day(r.due_back_date), hostname: r.hostname ?? undefined, ipAddress: r.ip ?? undefined,
@@ -200,7 +202,7 @@ export async function createAsset(c: PoolClient, p: Principal, body: unknown, op
   const b = k.obj();
   const v = {
     isBundle: k.bool(b, 'isBundle') ?? false,
-    categoryId: k.uuid(b, 'categoryId', { required: true }), modelId: k.uuid(b, 'modelId', { required: b.isBundle !== true }),
+    categoryId: k.uuid(b, 'categoryId', { required: true }), modelId: k.uuid(b, 'modelId'), modelName: k.str(b, 'modelName', { max: 100 }),
     description: k.str(b, 'description', { required: true, max: 50 }), serialNo: k.str(b, 'serialNo', { max: 40 }),
     companyId: k.uuid(b, 'companyId', { required: true }), roomId: k.uuid(b, 'roomId', { required: true }),
     costCenterId: k.uuid(b, 'costCenterId', { required: true }), assetClassId: k.uuid(b, 'assetClassId'),
@@ -236,13 +238,15 @@ export async function createAsset(c: PoolClient, p: Principal, body: unknown, op
       { errors: [{ field: 'assetClassId', code: 'ALM-E101', message: 'SAP 등록이면 필수입니다' }] });
   }
 
+  // 모델(선택): 모델 마스터 id, 또는 직접 입력(마스터에 있으면 그 모델로 연결, 없으면 글자 그대로)
+  const model = v.modelId ? { modelId: v.modelId, modelText: null } : await resolveModel(c, v.categoryId!, v.modelName);
   const id = randomUUID();
   const tag = opts.assetTag ?? (await nextAssetTags(c, p.tenantId, 1))[0];
   await c.query(`INSERT INTO asset (id, tenant_id, asset_tag, description, category_id, model_id, serial_no, status, source, company_id, site_id, room_id,
-      cost_center_id, asset_class_id, assigned_user_id, assigned_at, purchase_date, purchase_cost, warranty_end_date, hostname, notes, created_by, updated_by)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'MANUAL', $9, $10, $11, $12, $13, $14, CASE WHEN $14::uuid IS NULL THEN NULL ELSE now() END, $15, $16, $17, $18, $19, $20, $20)`,
-  [id, p.tenantId, tag, v.description, v.categoryId, v.modelId, v.serialNo ?? null, v.status, v.companyId, ref.siteId, v.roomId, v.costCenterId,
-    classId, v.assignedUserId ?? null, v.purchaseDate ?? null, v.purchaseCost ?? null, v.warrantyEndDate ?? null, v.hostname ?? null, v.notes ?? null, p.userId]);
+      cost_center_id, asset_class_id, assigned_user_id, assigned_at, purchase_date, purchase_cost, warranty_end_date, hostname, notes, created_by, updated_by, model_text)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'MANUAL', $9, $10, $11, $12, $13, $14, CASE WHEN $14::uuid IS NULL THEN NULL ELSE now() END, $15, $16, $17, $18, $19, $20, $20, $21)`,
+  [id, p.tenantId, tag, v.description, v.categoryId, model.modelId, v.serialNo ?? null, v.status, v.companyId, ref.siteId, v.roomId, v.costCenterId,
+    classId, v.assignedUserId ?? null, v.purchaseDate ?? null, v.purchaseCost ?? null, v.warrantyEndDate ?? null, v.hostname ?? null, v.notes ?? null, p.userId, model.modelText]);
   if (v.status === 'IN_USE') {
     await c.query(`INSERT INTO asset_assignment (id, tenant_id, asset_id, user_id, cost_center_id, room_id, checked_out_at, created_by)
       VALUES ($1, $2, $3, $4, $5, $6, now(), $7)`, [randomUUID(), p.tenantId, id, v.assignedUserId, v.costCenterId, v.roomId, p.userId]);
@@ -275,6 +279,18 @@ export async function createAsset(c: PoolClient, p: Principal, body: unknown, op
     }
   }
   return clean({ asset: await detail(c, p, id), createdRequest, labelJobId });
+}
+
+/** 직접 입력한 모델 → 카테고리의 활성 모델(부품번호·'제조사 모델명'·모델명이 하나만 맞을 때) 또는 입력 글자 그대로 */
+export async function resolveModel(c: PoolClient, categoryId: string, text?: string | null): Promise<{ modelId: string | null; modelText: string | null }> {
+  const t = (text ?? '').trim().replace(/\s+/g, ' ');
+  if (!t) return { modelId: null, modelText: null };
+  const u = t.toUpperCase();
+  const rows = (await c.query(`SELECT id, upper(coalesce(part_no, '')) AS part, upper(manufacturer || ' ' || model_name) AS full_name, upper(model_name) AS name
+     FROM model WHERE is_active AND category_id = $1`, [categoryId])).rows;
+  const hit = rows.filter((x) => x.part === u || x.full_name === u);
+  const one = hit.length === 1 ? hit[0] : rows.filter((x) => x.name === u).length === 1 ? rows.find((x) => x.name === u) : undefined;
+  return one ? { modelId: one.id as string, modelText: null } : { modelId: null, modelText: t.slice(0, 100) };
 }
 
 // 참조 확인(활성·같은 회사코드·모델은 카테고리 소속)
@@ -326,7 +342,7 @@ export async function patchAsset(c: PoolClient, p: Principal, id: string, ifMatc
   const has = (f: string) => Object.prototype.hasOwnProperty.call(b, f);
   const v = {
     description: has('description') ? k.str(b, 'description', { required: true, max: 50 }) : undefined,
-    modelId: has('modelId') ? k.uuid(b, 'modelId', { required: true }) : undefined,
+    modelId: has('modelId') ? k.uuid(b, 'modelId') : undefined, modelName: k.str(b, 'modelName', { max: 100 }),
     serialNo: k.str(b, 'serialNo', { max: 40 }), roomId: has('roomId') ? k.uuid(b, 'roomId', { required: true }) : undefined,
     hostname: k.str(b, 'hostname', { max: 63 }), ipAddress: k.str(b, 'ipAddress', { max: 39 }), macAddress: k.str(b, 'macAddress', { max: 17, pattern: MAC }),
     warrantyEndDate: k.date(b, 'warrantyEndDate'), dueBackDate: k.date(b, 'dueBackDate'), notes: k.str(b, 'notes', { max: 4000 }),
@@ -354,10 +370,19 @@ export async function patchAsset(c: PoolClient, p: Principal, id: string, ifMatc
   if (has('dueBackDate')) cmp('due_back_date', day(cur.due_back_date) ?? null, v.dueBackDate ?? null);
   if (has('notes')) cmp('notes', cur.notes, v.notes ?? null);
   let roomCode: string | undefined;
-  if (has('modelId') && v.modelId !== cur.model_id) {
-    const m = (await c.query('SELECT category_id FROM model WHERE id = $1 AND is_active', [v.modelId])).rows[0];
-    if (!m || m.category_id !== cur.category_id) throw E.badRequest('입력 값을 확인하세요: modelId 자산 카테고리의 활성 모델이 아닙니다', { errors: [{ field: 'modelId', code: 'ALM-E100', message: '카테고리 불일치' }] });
-    cmp('model_id', cur.model_id, v.modelId);
+  if (has('modelId') && has('modelName')) throw E.badRequest('입력 값을 확인하세요: modelName modelId와 함께 보낼 수 없습니다', { errors: [{ field: 'modelName', code: 'ALM-E100', message: '하나만' }] });
+  if (has('modelId') && (v.modelId ?? null) !== cur.model_id) {
+    if (v.modelId) {
+      const m = (await c.query('SELECT category_id FROM model WHERE id = $1 AND is_active', [v.modelId])).rows[0];
+      if (!m || m.category_id !== cur.category_id) throw E.badRequest('입력 값을 확인하세요: modelId 자산 카테고리의 활성 모델이 아닙니다', { errors: [{ field: 'modelId', code: 'ALM-E100', message: '카테고리 불일치' }] });
+    }
+    cmp('model_id', cur.model_id, v.modelId ?? null);
+    cmp('model_text', cur.model_text, null);
+  }
+  if (has('modelName')) {
+    const m = await resolveModel(c, cur.category_id, v.modelName);
+    cmp('model_id', cur.model_id, m.modelId);
+    cmp('model_text', cur.model_text, m.modelText);
   }
   if (has('roomId') && v.roomId !== cur.room_id) {
     const r = (await c.query(`SELECT r.id, r.room_code, r.site_id, s.site_code FROM room r JOIN site s ON s.id = r.site_id WHERE r.id = $1 AND r.is_active AND s.is_active`, [v.roomId])).rows[0];
@@ -385,7 +410,7 @@ export async function patchAsset(c: PoolClient, p: Principal, id: string, ifMatc
       mac_address = CASE WHEN $11 THEN $12 ELSE mac_address END, warranty_end_date = CASE WHEN $13 THEN $14::date ELSE warranty_end_date END,
       due_back_date = CASE WHEN $15 THEN $16::date ELSE due_back_date END, notes = CASE WHEN $17 THEN $18 ELSE notes END,
       model_id = CASE WHEN $19 THEN $20::uuid ELSE model_id END, room_id = CASE WHEN $21 THEN $22::uuid ELSE room_id END,
-      site_id = CASE WHEN $23 THEN $24::uuid ELSE site_id END,
+      site_id = CASE WHEN $23 THEN $24::uuid ELSE site_id END, model_text = CASE WHEN $25 THEN $26 ELSE model_text END,
       updated_at = now(), updated_by = $2, version = version + 1 WHERE id = $1`, [id, p.userId, ...args]);
   await event(c, p, id, 'UPDATED', Object.fromEntries(set.map(([col, before, after]) => [col, { before, after }])));
 

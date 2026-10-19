@@ -80,7 +80,8 @@ describe('asset screens', () => {
     render(<App initialMe={me} />);
     const user = userEvent.setup();
     await user.selectOptions(await screen.findByLabelText(/^Category/), 'cat');
-    await user.selectOptions(screen.getByLabelText(/^Model/), 'mdl');
+    expect(screen.getByLabelText(/^Model/)).not.toBeRequired();
+    await user.type(screen.getByLabelText(/^Model/), 'Dell Latitude 7450');
     await user.type(screen.getByLabelText(/^Description/), 'Latitude 7450');
     await user.selectOptions(screen.getByLabelText(/^Cost center/), 'cc');
     await user.selectOptions(screen.getByLabelText(/^Room/), 'room');
@@ -92,6 +93,6 @@ describe('asset screens', () => {
     await user.type(screen.getByLabelText(/^Purchase cost/), '1500');
     await user.click(screen.getByRole('button', { name: 'Register' }));
     await waitFor(() => expect(posted).toHaveLength(1));
-    expect(posted[0]).toMatchObject({ categoryId: 'cat', modelId: 'mdl', companyId: 'co', costCenterId: 'cc', roomId: 'room', purchaseCost: 1500, registerInSap: true });
+    expect(posted[0]).toMatchObject({ categoryId: 'cat', modelName: 'Dell Latitude 7450', companyId: 'co', costCenterId: 'cc', roomId: 'room', purchaseCost: 1500, registerInSap: true });
   });
 });

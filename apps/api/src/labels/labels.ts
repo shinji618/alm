@@ -88,7 +88,7 @@ export function sapNo(no?: string | null, sub?: string | null): string | undefin
 }
 
 const dataOf = (r: Record<string, any>): LabelData => ({
-  assetTag: r.asset_tag, description: r.description ?? undefined, model: r.model_name ? `${r.manufacturer ?? ''} ${r.model_name}`.trim() : undefined,
+  assetTag: r.asset_tag, description: r.description ?? undefined, model: r.model_name ? `${r.manufacturer ?? ''} ${r.model_name}`.trim() : r.model_text ?? undefined,
   sapAssetNo: sapNo(r.sap_asset_no, r.sap_sub_no), roomCode: r.room_code ?? undefined, siteCode: r.site_code ?? undefined, companyName: (r.company_name ?? '').toUpperCase() || undefined,
 });
 
@@ -219,7 +219,7 @@ export async function testLabel(c: PoolClient, p: Principal, id: string) {
 
 // ---------------- 대기열·이력 ----------------
 const JOB_SQL = `SELECT j.*, t.name AS template_name, t.layout, pr.name AS printer_name, ru.display_name AS requested_by_name, rn.display_name AS rendered_by_name,
-    a.asset_tag, a.description, a.sap_asset_no, a.sap_sub_no, m.manufacturer, m.model_name, r.room_code, s.site_code, co.name AS company_name
+    a.asset_tag, a.description, a.sap_asset_no, a.sap_sub_no, m.manufacturer, m.model_name, a.model_text, r.room_code, s.site_code, co.name AS company_name
   FROM label_print_job j JOIN asset a ON a.id = j.asset_id JOIN company co ON co.id = a.company_id JOIN label_template t ON t.id = j.template_id
   LEFT JOIN printer pr ON pr.id = j.printer_id LEFT JOIN app_user ru ON ru.id = j.requested_by LEFT JOIN app_user rn ON rn.id = j.rendered_by
   LEFT JOIN model m ON m.id = a.model_id LEFT JOIN room r ON r.id = a.room_id LEFT JOIN site s ON s.id = a.site_id`;

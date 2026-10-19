@@ -194,6 +194,7 @@ asset_tag | vc(25) | NN | 자산태그 AT-nnnnnn = SAP INVNR, 라벨 바코드 �
 description | vc(50) | NN | 자산명 = SAP TXT50
 category_id | ->category | NN | 카테고리
 model_id | ->model | | 모델
+model_text | vc(100) | | 모델(직접 입력). 모델 마스터에 없을 때
 serial_no | vc(40) | | 시리얼. SAP SERNR(18자) 초과 시 전송 검증 오류
 status | E:AssetStatus | NN =IN_STOCK | 상태 7종
 status_before_missing | E:AssetStatus | | Missing 전 상태. 다음 스캔 시 복원
