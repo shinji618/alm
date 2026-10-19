@@ -350,6 +350,10 @@ test('코스트센터 직접 관리(SAP 끈 회사만)·자산클래스는 SAP �
   const nbCount = withCounts.body.categories.find((x: { id: string }) => x.id === ids.cat).extra.assetCount;
   const [{ n: nbReal }] = await q(`SELECT count(*)::int AS n FROM asset WHERE category_id = $1`, [ids.cat]);
   assert.equal(nbCount, nbReal);
+  // 'All assets' 옆 전체 수: 카테고리별 수의 합 이상(카테고리 없는·비활성 카테고리 자산 포함)
+  const catSum = withCounts.body.categories.reduce((n: number, x: { extra: { assetCount: number } }) => n + x.extra.assetCount, 0);
+  assert.ok(Number.isInteger(withCounts.body.assetTotal) && withCounts.body.assetTotal >= catSum && withCounts.body.assetTotal > 0);
+  assert.equal((await call('mgr', 'GET', '/lookups?types=categories')).body.assetTotal, undefined);
   assert.equal((await call('mgr', 'GET', '/lookups?types=categories')).body.categories[0].extra.assetCount, undefined, 'counts 없으면 수 없음');
   const [{ n: own }] = await q(`SELECT count(*)::int AS n FROM asset a JOIN app_user u ON u.id = a.assigned_user_id WHERE a.category_id = $1 AND u.email = 'emp@req.test'`, [ids.cat]);
   assert.equal((await call('emp', 'GET', '/lookups?types=categories&counts=true')).body.categories.find((x: { id: string }) => x.id === ids.cat).extra.assetCount, own,

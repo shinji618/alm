@@ -72,6 +72,8 @@ export async function lookups(c: PoolClient, p: Principal, q: Record<string, str
       for (const r of (await c.query(`SELECT a.category_id, count(*)::int AS n FROM asset a WHERE ${assetScope(p, 'asset.read', ps)} GROUP BY a.category_id`, ps.values)).rows) {
         counts.set(r.category_id, r.n);
       }
+      // 메뉴 'All assets' 옆 숫자: 범위 안 전체 자산 수(카테고리 없는 자산·비활성 카테고리 자산 포함)
+      out.assetTotal = [...counts.values()].reduce((n, x) => n + x, 0);
     }
     out.categories = items((await c.query(`SELECT id, category_code, name, parent_id, default_asset_class_id, useful_life_years FROM category
       WHERE is_active ORDER BY category_code`)).rows,

@@ -122,7 +122,7 @@ describe('Assets menu tree with counts', () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       urls.push(url);
       if (url.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'tok' }), { status: 200 });
-      if (url.includes('/lookups')) return new Response(JSON.stringify({ ...LOOKUPS, categories: tree }), { status: 200 });
+      if (url.includes('/lookups')) return new Response(JSON.stringify({ ...LOOKUPS, categories: tree, assetTotal: 9 }), { status: 200 });
       if (url.includes('/assets?')) return new Response(JSON.stringify({ items: [], page: 1, pageSize: 50, total: 0 }), { status: 200 });
       return new Response(JSON.stringify({ code: 'ALM-E404', message: 'nope' }), { status: 404 });
     }));
@@ -133,6 +133,8 @@ describe('Assets menu tree with counts', () => {
     expect(links).toEqual(['Furniture (4 assets)', 'IT Hardware (3 assets)', 'Notebook (2 assets)', 'Server (0 assets)']);
     const nbLink = within(group).getByRole('link', { name: 'Notebook (2 assets)' });
     expect(nbLink.style.paddingLeft).toBe('38px');
+    // All assets: 범위 안 전체 수(카테고리 없는 자산 포함이라 카테고리 합 7보다 클 수 있다)
+    expect(within(nav).getByRole('link', { name: 'All assets (9 assets)' })).toHaveTextContent('9');
     expect(urls.some((u) => u.includes('/lookups?types=categories&counts=true'))).toBe(true);
   }, 20000);
 });

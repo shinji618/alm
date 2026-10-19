@@ -1142,7 +1142,7 @@ paths:
       - name: counts
         in: query
         required: false
-        description: categories에 자산 수(extra.assetCount, asset.read 범위, 직접 등록분)
+        description: categories에 자산 수(extra.assetCount, asset.read 범위, 직접 등록분)와 전체 수(assetTotal)
         schema:
           type: boolean
       responses:
@@ -11723,6 +11723,9 @@ components:
           type: object
           additionalProperties: true
           description: '공통 코드 {그룹: [LookupItem]}'
+        assetTotal:
+          type: integer
+          description: counts=true일 때 asset.read 범위 전체 자산 수(카테고리 없는 자산 포함)
     SearchHit:
       type: object
       description: 전역 검색 결과

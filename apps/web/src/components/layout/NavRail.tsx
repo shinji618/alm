@@ -42,7 +42,7 @@ export function NavRail({ open, counts = {}, onNavigate }: { open: boolean; coun
   const loc = useLocation();
   const showCats = !!me && can('asset.read');
   // 자산 카테고리별 하위 메뉴(조회·등록). 세션이 없으면(Storybook) 부르지 않는다
-  const cats = useAsync((sig) => (showCats ? api.get<{ categories?: CategoryItem[] }>('/lookups?types=categories&counts=true', sig) : Promise.resolve({ categories: [] })), [showCats]);
+  const cats = useAsync((sig) => (showCats ? api.get<{ categories?: CategoryItem[]; assetTotal?: number }>('/lookups?types=categories&counts=true', sig) : Promise.resolve({ categories: [] })), [showCats]);
   // 관리 화면에서 카테고리를 바꾸면(사용 안 함·삭제·추가) 메뉴를 바로 다시 읽는다
   useEffect(() => {
     const on = () => cats.reload();
@@ -81,12 +81,16 @@ export function NavRail({ open, counts = {}, onNavigate }: { open: boolean; coun
             <div className={s.group}>{t(g.labelKey)}</div>
             {g.items.map((it) => {
               const c = counts[it.path];
+              // 'All assets' 옆에는 범위 안 전체 자산 수(카테고리 없는 자산 포함, 0도 표시)
+              const total = it.children === 'categories' ? cats.data?.assetTotal : undefined;
               return (
                 <div key={it.path}>
                   <NavLink to={it.path} end={it.path === '/'} onClick={onNavigate}
+                    aria-label={total !== undefined ? t('nav.categoryCount', { name: t(it.labelKey), count: total }) : undefined}
                     className={({ isActive }) => `${s.link} ${isActive && !(it.children && curCat) ? s.active : ''}`}>
                     {t(it.labelKey)}
-                    {c && c.count > 0 && <span className={`${s.count} ${c.alert ? s.countAlert : ''}`}>{c.count}</span>}
+                    {total !== undefined ? <span className={s.count}>{total}</span>
+                      : c && c.count > 0 && <span className={`${s.count} ${c.alert ? s.countAlert : ''}`}>{c.count}</span>}
                   </NavLink>
                   {it.children === 'categories' && tree.length > 0 && (
                     <div role="group" aria-label={t('nav.byCategory')}>
