@@ -286,6 +286,29 @@
       "deleted": "Deleted",
       "scanning": "Security scan in progress",
       "unavailable": "No preview"
+    },
+    "bundle": {
+      "badge": "Bundle",
+      "badgeCount": "Bundle · {{count}}",
+      "inBundle": "in {{tag}}",
+      "createBundle": "Create bundle ({{count}})",
+      "field": "Bundle asset",
+      "fieldHint": "Groups several ALM assets into one SAP fixed asset. Components stay in ALM with their own tags and are never sent to SAP.",
+      "components": "Components",
+      "componentsSelected": "{{count}} component(s) selected in the asset list will be added.",
+      "costHint": "Leave blank to use the sum of component purchase costs.",
+      "costTotal": "Component cost total",
+      "noComponents": "No components yet. Add assets that are not in SAP.",
+      "addTags": "Add by asset tag",
+      "addTagsHint": "Separate several tags with spaces or commas",
+      "add": "Add",
+      "added": "Added {{count}} component(s)",
+      "remove": "Remove",
+      "removed": "Removed {{tag}} from the bundle",
+      "componentOf": "This asset is a component of bundle {{tag}}. It is managed in ALM only; SAP sees the bundle as one asset.",
+      "openBundle": "Open bundle",
+      "rules": "Retiring or selling the bundle also retires its components. Components are counted one by one; property tax uses the bundle.",
+      "notice": "Bundle asset: SAP registers this asset once for all {{count}} component(s)."
     }
   },
   "request": {

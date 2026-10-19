@@ -91,6 +91,8 @@ export const api = {
     (await request<T>(path, { method: 'PATCH', body, headers: ifMatch === undefined ? undefined : { 'if-match': `"${ifMatch}"` } })).data,
   put: async <T>(path: string, body: unknown) => (await request<T>(path, { method: 'PUT', body })).data,
   del: async (path: string) => { await request<unknown>(path, { method: 'DELETE' }); },
+  /** 본문을 돌려주는 DELETE */
+  delJson: async <T>(path: string) => (await request<T>(path, { method: 'DELETE' })).data,
 };
 
 // 쿼리 문자열(빈 값 제외)

@@ -1,5 +1,6 @@
 // ALM-112 자산 등록. SAP 고정자산 등록은 등록자가 체크 박스로 정한다(2026-10-12 결정):
 //   자산클래스가 자본화 클래스면 체크를 기본으로 제안하고, 체크하면 구매가가 필수 → 신규 자산 요청(승인 후 IF-AA-03)
+//   Bundle 자산(2026-10-19): 모델 없이 등록, 자산 목록에서 고른 자산(?components=)을 구성품으로. SAP 취득가를 비우면 구성품 구매가 합
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -13,10 +14,10 @@ import s from './assets.module.css';
 interface Form {
   categoryId: string; modelId: string; description: string; serialNo: string; companyId: string; siteId: string; roomId: string;
   costCenterId: string; assetClassId: string; status: 'IN_STOCK' | 'ON_ORDER' | 'IN_USE'; assignedUserId: string; purchaseDate: string;
-  purchaseCost: string; warrantyEndDate: string; hostname: string; notes: string; printLabel: boolean; registerInSap: boolean;
+  purchaseCost: string; warrantyEndDate: string; hostname: string; notes: string; printLabel: boolean; registerInSap: boolean; isBundle: boolean;
 }
 const EMPTY: Form = { categoryId: '', modelId: '', description: '', serialNo: '', companyId: '', siteId: '', roomId: '', costCenterId: '', assetClassId: '',
-  status: 'IN_STOCK', assignedUserId: '', purchaseDate: '', purchaseCost: '', warrantyEndDate: '', hostname: '', notes: '', printLabel: true, registerInSap: false };
+  status: 'IN_STOCK', assignedUserId: '', purchaseDate: '', purchaseCost: '', warrantyEndDate: '', hostname: '', notes: '', printLabel: true, registerInSap: false, isBundle: false };
 
 export function AssetCreate() {
   const { t } = useTranslation();
@@ -25,7 +26,8 @@ export function AssetCreate() {
   const lk = useAsync((sig) => api.get<Lookups>('/lookups?types=companies,sites,rooms,costCenters,assetClasses,categories,models,users', sig), []);
   const [sp] = useSearchParams();
   // 메뉴의 카테고리에서 등록하면 그 카테고리로 시작한다
-  const [f, setF] = useState<Form>(() => ({ ...EMPTY, categoryId: sp.get('categoryId') ?? '' }));
+  const componentIds = useMemo(() => (sp.get('components') ?? '').split(',').filter((x) => /^[0-9a-f-]{36}$/i.test(x)), [sp]);
+  const [f, setF] = useState<Form>(() => ({ ...EMPTY, categoryId: sp.get('categoryId') ?? '', isBundle: sp.get('bundle') === '1' || componentIds.length > 0 }));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [sapTouched, setSapTouched] = useState(false);
@@ -52,14 +54,15 @@ export function AssetCreate() {
     return (L.costCenters ?? []).filter((c) => !co || c.extra?.companyCode === co);
   }, [L.costCenters, L.companies, f.companyId]);
 
+  const costFromComponents = f.isBundle && componentIds.length > 0;
   // 화면 검사(서버가 다시 검사한다)
   const check = (): Record<string, string> => {
     const e: Record<string, string> = {};
     const req = t('common.required');
-    for (const k of ['categoryId', 'modelId', 'description', 'companyId', 'roomId', 'costCenterId'] as const) if (!f[k].trim()) e[k] = req;
+    for (const k of ['categoryId', 'modelId', 'description', 'companyId', 'roomId', 'costCenterId'] as const) if (!f[k].trim() && !(k === 'modelId' && f.isBundle)) e[k] = req;
     if (f.status === 'IN_USE' && !f.assignedUserId) e.assignedUserId = req;
     if (f.registerInSap) {
-      if (!f.purchaseCost || !(Number(f.purchaseCost) > 0)) e.purchaseCost = req;
+      if (f.purchaseCost ? !(Number(f.purchaseCost) > 0) : !costFromComponents) e.purchaseCost = req;
       if (!classId) e.assetClassId = req;
     }
     return e;
@@ -72,7 +75,8 @@ export function AssetCreate() {
     setSaving(true);
     try {
       const body = {
-        categoryId: f.categoryId, modelId: f.modelId, description: f.description.trim(), serialNo: f.serialNo.trim() || undefined, companyId: f.companyId,
+        ...(f.isBundle ? { isBundle: true, componentIds: componentIds.length ? componentIds : undefined } : {}),
+        categoryId: f.categoryId, modelId: f.modelId || undefined, description: f.description.trim(), serialNo: f.serialNo.trim() || undefined, companyId: f.companyId,
         roomId: f.roomId, costCenterId: f.costCenterId, assetClassId: f.assetClassId || undefined, status: f.status,
         assignedUserId: f.status === 'IN_USE' ? f.assignedUserId : undefined, purchaseDate: f.purchaseDate || undefined,
         purchaseCost: f.purchaseCost ? Number(f.purchaseCost) : undefined, warrantyEndDate: f.warrantyEndDate || undefined,
@@ -97,9 +101,13 @@ export function AssetCreate() {
       <Panel>
         {lk.error && <div className={s.notice} role="alert">{t('common.error', { message: lk.error.message })}</div>}
         <FormGrid onSubmit={submit}>
+          <CheckboxField label={t('asset.bundle.field')} checked={f.isBundle} disabled={componentIds.length > 0} onChange={(e) => set('isBundle', e.target.checked)} />
+          <div className="small muted" style={{ gridColumn: '1 / -1', marginTop: -8 }}>
+            {f.isBundle ? `${t('asset.bundle.fieldHint')} ${componentIds.length ? t('asset.bundle.componentsSelected', { count: componentIds.length }) : ''} ${t('asset.bundle.rules')}` : t('asset.bundle.fieldHint')}
+          </div>
           <SelectField label={t('asset.field.category')} required value={f.categoryId} error={fe('categoryId')} options={opt(L.categories)}
             onChange={(e) => setF((x) => ({ ...x, categoryId: e.target.value, modelId: '' }))} />
-          <SelectField label={t('asset.field.model')} required value={f.modelId} error={fe('modelId')} options={opt(models)} onChange={(e) => set('modelId', e.target.value)} />
+          <SelectField label={t('asset.field.model')} required={!f.isBundle} value={f.modelId} error={fe('modelId')} options={opt(models)} onChange={(e) => set('modelId', e.target.value)} />
           <TextField label={t('asset.field.description')} required maxLength={50} value={f.description} error={fe('description')} onChange={(e) => set('description', e.target.value)} />
           <TextField label={t('asset.field.serialNo')} maxLength={40} value={f.serialNo} error={fe('serialNo')} onChange={(e) => set('serialNo', e.target.value)} />
           <SelectField label={t('asset.field.company')} required value={f.companyId} error={fe('companyId')} options={opt(L.companies)}
@@ -115,8 +123,8 @@ export function AssetCreate() {
           <SelectField label={t('asset.field.assetClass')} value={f.assetClassId} error={fe('assetClassId')}
             options={[{ value: '', label: cls && !f.assetClassId ? `${cls.code} · ${cls.label}` : '—' },
               ...opt((L.assetClasses ?? []).filter((c) => !sapCompany || c.extra?.isManual !== true), false)]} onChange={(e) => set('assetClassId', e.target.value)} />
-          <TextField label={t('asset.field.purchaseCost')} required={f.registerInSap} type="number" min="0" step="0.01" inputMode="decimal" value={f.purchaseCost}
-            error={fe('purchaseCost')} onChange={(e) => set('purchaseCost', e.target.value)} />
+          <TextField label={t('asset.field.purchaseCost')} required={f.registerInSap && !costFromComponents} type="number" min="0" step="0.01" inputMode="decimal" value={f.purchaseCost}
+            error={fe('purchaseCost')} hint={costFromComponents ? t('asset.bundle.costHint') : undefined} onChange={(e) => set('purchaseCost', e.target.value)} />
           <TextField label={t('asset.field.purchaseDate')} type="date" value={f.purchaseDate} error={fe('purchaseDate')} onChange={(e) => set('purchaseDate', e.target.value)} />
           <TextField label={t('asset.field.warrantyEndDate')} type="date" value={f.warrantyEndDate} error={fe('warrantyEndDate')} onChange={(e) => set('warrantyEndDate', e.target.value)} />
           <TextField label={t('asset.field.hostname')} maxLength={63} value={f.hostname} onChange={(e) => set('hostname', e.target.value)} />

@@ -3,6 +3,7 @@
 //   신고 1건 = 회사 × 관할 × 기준일 연도. 계산하면 그 시점 자산을 행(tax_filing_line)으로 복사해 둔다 → 신고(FILED) 뒤에는 고정(과거 기록)
 //   대상: 그 관할 사이트에 있는 회사 자산 중 기준일에 보유한 것(취득일 ≤ 기준일, 기준일 전에 폐기·처분된 것 제외, 발주 중 제외)
 //   원가: SAP 자산(회사가 SAP 사용·자산번호 있음)은 SAP 취득가(APC), 아니면 ALM 구매가. 둘 다 없으면 '원가 모름'으로 따로 표시
+//   Bundle(2026-10-19): Bundle 기준. 구성품은 빼고, Bundle 원가가 없으면 구성품 구매가 합
 //   공정가치 = 원가 × 계수(계수표: 기준일 연도 × 내용연수 구분 × 경과연수). 평가액 = (공정가치 − 면제) × 평가율. 예상 세액 = 평가액 × 밀리지 ÷ 1,000
 //   전년 신고와 비교: NEW(신규) · CARRIED(계속) · DISPOSED(전년에 있었고 올해 없음 — 처분 목록)
 import { randomUUID } from 'node:crypto';
@@ -258,16 +259,17 @@ async function compute(c: PoolClient, companyId: string, j: Jur, taxYear: number
         cat.tax_property_type AS cat_type, ac.tax_property_type AS cls_type, ac.class_code, ac.name AS class_name,
         coalesce(cat.useful_life_years, ac.default_useful_life_years) AS life,
         coalesce(a.sap_cap_date, a.purchase_date, a.created_at::date) AS acq_date,
-        CASE WHEN co.sap_enabled AND a.sap_asset_no IS NOT NULL THEN vl.acquisition_value END AS sap_cost, a.purchase_cost,
+        CASE WHEN co.sap_enabled AND a.sap_asset_no IS NOT NULL THEN vl.acquisition_value END AS sap_cost,
+        coalesce(a.purchase_cost, CASE WHEN a.is_bundle THEN (SELECT sum(x.purchase_cost) FROM asset x WHERE x.parent_asset_id = a.id) END) AS purchase_cost,
         s.site_code, r.room_code,
         coalesce(a.sap_deact_date, (SELECT max(e.occurred_at)::date FROM asset_event e WHERE e.asset_id = a.id AND e.event_type IN ('RETIRED', 'DISPOSED'))) AS disposal_date
       FROM asset a JOIN company co ON co.id = a.company_id JOIN site s ON s.id = a.site_id
       LEFT JOIN room r ON r.id = a.room_id LEFT JOIN category cat ON cat.id = a.category_id LEFT JOIN asset_class ac ON ac.id = a.asset_class_id
       LEFT JOIN v_asset_value_latest vl ON vl.asset_id = a.id
-     WHERE a.company_id = $1 AND s.tax_jurisdiction_id = $2 AND a.status <> 'ON_ORDER'
+     WHERE a.company_id = $1 AND s.tax_jurisdiction_id = $2 AND a.status <> 'ON_ORDER' AND a.parent_asset_id IS NULL
      ORDER BY a.asset_tag`, [companyId, j.id])).rows;
   const noLoc = (await c.query(`SELECT a.asset_tag FROM asset a LEFT JOIN site s ON s.id = a.site_id
-     WHERE a.company_id = $1 AND a.status NOT IN ('ON_ORDER', 'RETIRED', 'DISPOSED') AND (a.site_id IS NULL OR s.tax_jurisdiction_id IS NULL)
+     WHERE a.company_id = $1 AND a.parent_asset_id IS NULL AND a.status NOT IN ('ON_ORDER', 'RETIRED', 'DISPOSED') AND (a.site_id IS NULL OR s.tax_jurisdiction_id IS NULL)
      ORDER BY a.asset_tag`, [companyId])).rows.map((r) => r.asset_tag as string);
   const noLocation = noLoc.length;
   if (noLocation) warnings.push(warn('NO_JURISDICTION', { count: noLocation, tags: noLoc.slice(0, 10), more: noLocation > 10 }, noLocation));

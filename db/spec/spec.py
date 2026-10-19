@@ -224,12 +224,13 @@ warranty_end_date | date | | 제조사 보증 종료일
 po_item_id | ->po_item | | 구매오더 항목
 goods_receipt_id | ->goods_receipt | | 입고 문서(입고로 생성된 경우)
 is_gr_cancelled | bool | NN =false | 입고 취소(102) 표시
-parent_asset_id | ->asset | | 상위 자산(구성품)
+is_bundle | bool | NN =false | Bundle 자산. 구성품을 묶어 SAP에 1건으로 등록
+parent_asset_id | ->asset | | 소속 Bundle(구성품). 구성품은 SAP에 보내지 않음
 last_seen_at | ts | | Discovery 마지막 확인
 sap_synced_at | ts | | 마지막 SAP 수신
 notes | text | | 메모
 ''', uniques=[('tenant_id','asset_tag'),('tenant_id','company_id','sap_asset_no','sap_sub_no')],
-  indexes=[('tenant_id','status'),('tenant_id','serial_no'),('tenant_id','room_id'),('tenant_id','cost_center_id'),('tenant_id','assigned_user_id'),('tenant_id','hostname'),('tenant_id','mac_address')],
+  indexes=[('tenant_id','status'),('tenant_id','serial_no'),('tenant_id','room_id'),('tenant_id','cost_center_id'),('tenant_id','assigned_user_id'),('tenant_id','hostname'),('tenant_id','mac_address'),('tenant_id','parent_asset_id')],
   screens='ALM-110, 111, 112')
 t('asset','asset_value','자산 금액','SAP 기간별 누적 금액 (IF-AA-02). 최신 값은 뷰 v_asset_value_latest', '''
 asset_id | ->asset | NN | 자산

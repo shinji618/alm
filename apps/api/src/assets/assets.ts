@@ -13,6 +13,7 @@ import type { Principal } from '../auth/principal';
 import { allowsPlace, assetScope, can, Params } from '../auth/scope';
 import { nextAssetTags, nextNumbers } from './tags';
 import { defaultTemplateId } from '../labels/labels';
+import { attachComponents, bundleView, componentCost } from './bundles';
 
 export const STATUSES = ['ON_ORDER', 'IN_STOCK', 'IN_USE', 'IN_REPAIR', 'MISSING', 'RETIRED', 'DISPOSED'] as const;
 export const STAGES = ['PLAN', 'PROCURE', 'DEPLOY', 'OPERATE', 'MAINTAIN', 'RETIRE'] as const;
@@ -87,13 +88,15 @@ export async function listAssets(c: PoolClient, p: Principal, q: Record<string, 
     LEFT JOIN cost_center cc ON cc.id = a.cost_center_id
     LEFT JOIN v_asset_stage st ON st.asset_id = a.id
     LEFT JOIN v_asset_value_latest vl ON vl.asset_id = a.id
+    LEFT JOIN asset pb ON pb.id = a.parent_asset_id
     WHERE ${where.join(' AND ')}`;
   const total = (await c.query(`SELECT count(*)::int AS n ${from}`, ps.values)).rows[0].n as number;
   const off = ps.add((page - 1) * pageSize), lim = ps.add(pageSize);
   const rows = (await c.query(
     `SELECT a.id, a.asset_tag, a.description, c.name AS category_name, m.manufacturer, m.model_name, a.serial_no, a.status, st.stage,
             s.site_code, r.room_code, u.display_name AS user_name, cc.cost_center_code, a.sap_asset_no, a.sap_sub_no, a.warranty_end_date,
-            vl.net_book_value, a.updated_at
+            vl.net_book_value, a.updated_at, a.is_bundle, pb.asset_tag AS bundle_tag,
+            (SELECT count(*)::int FROM asset x WHERE x.parent_asset_id = a.id) AS component_count
        ${from} ORDER BY ${[...sorts, 'a.id'].join(', ')} OFFSET ${off} LIMIT ${lim}`, ps.values)).rows;
   const amount = can(p, 'amount.read');
   return {
@@ -103,6 +106,7 @@ export async function listAssets(c: PoolClient, p: Principal, q: Record<string, 
       stage: r.stage ?? 'OPERATE', siteCode: r.site_code ?? undefined, roomCode: r.room_code ?? undefined, assignedUserName: r.user_name ?? undefined,
       costCenterCode: r.cost_center_code ?? undefined, sapAssetNo: r.sap_asset_no ? `${r.sap_asset_no}-${r.sap_sub_no ?? '0000'}` : undefined,
       warrantyEndDate: day(r.warranty_end_date), nbv: amount ? numOrNull(r.net_book_value) : null, updatedAt: iso(r.updated_at),
+      isBundle: r.is_bundle || undefined, componentCount: r.is_bundle ? r.component_count : undefined, bundleAssetTag: r.bundle_tag ?? undefined,
     })),
     page, pageSize, total,
   };
@@ -184,6 +188,7 @@ export async function detail(c: PoolClient, p: Principal, id: string) {
       isGrCancelled: r.is_gr_cancelled || undefined,
     }) : undefined,
     openRequests: reqs.map((x) => ({ id: x.id, requestNo: x.request_no, requestType: x.request_type, status: x.status })),
+    isBundle: r.is_bundle || undefined, ...(await bundleView(c, p, r)),
     editableFields: writable ? PATCHABLE.filter((f) => f !== 'dueBackDate' || r.status === 'IN_USE') : [],
   });
 }
@@ -194,7 +199,8 @@ export async function createAsset(c: PoolClient, p: Principal, body: unknown, op
   const k = new Check(body);
   const b = k.obj();
   const v = {
-    categoryId: k.uuid(b, 'categoryId', { required: true }), modelId: k.uuid(b, 'modelId', { required: true }),
+    isBundle: k.bool(b, 'isBundle') ?? false,
+    categoryId: k.uuid(b, 'categoryId', { required: true }), modelId: k.uuid(b, 'modelId', { required: b.isBundle !== true }),
     description: k.str(b, 'description', { required: true, max: 50 }), serialNo: k.str(b, 'serialNo', { max: 40 }),
     companyId: k.uuid(b, 'companyId', { required: true }), roomId: k.uuid(b, 'roomId', { required: true }),
     costCenterId: k.uuid(b, 'costCenterId', { required: true }), assetClassId: k.uuid(b, 'assetClassId'),
@@ -203,7 +209,11 @@ export async function createAsset(c: PoolClient, p: Principal, body: unknown, op
     warrantyEndDate: k.date(b, 'warrantyEndDate'), hostname: k.str(b, 'hostname', { max: 63 }), notes: k.str(b, 'notes', { max: 4000 }),
     printLabel: k.bool(b, 'printLabel') ?? true, registerInSap: k.bool(b, 'registerInSap') ?? false,
   };
-  if (v.registerInSap && v.purchaseCost === undefined) k.errors.push({ field: 'purchaseCost', code: 'ALM-E101', message: 'SAP 등록이면 필수입니다' });
+  // Bundle: 구성품(SAP에 없는 ALM 자산)을 함께 넣을 수 있다. SAP 등록 취득가가 없으면 구성품 구매가 합
+  const componentIds = [...new Set(k.arr(b, 'componentIds', { max: 200 }).map((x, i) => { const s = typeof x === 'string' ? x : ''; if (!UUID.test(s)) k.fail(`componentIds[${i}]`, 'uuid'); return s; }))];
+  if (componentIds.length && !v.isBundle) k.fail('componentIds', 'Bundle(isBundle)일 때만 지정합니다');
+  const costFromComponents = v.isBundle && v.registerInSap && v.purchaseCost === undefined && componentIds.length > 0;
+  if (v.registerInSap && v.purchaseCost === undefined && !costFromComponents) k.errors.push({ field: 'purchaseCost', code: 'ALM-E101', message: 'SAP 등록이면 필수입니다' });
   else if (v.registerInSap && v.purchaseCost !== undefined && v.purchaseCost <= 0) k.fail('purchaseCost', 'SAP 등록이면 0보다 커야 합니다');
   if (v.status === 'IN_USE' && !v.assignedUserId) k.errors.push({ field: 'assignedUserId', code: 'ALM-E101', message: 'IN_USE면 필수입니다' });
   if (v.status !== 'IN_USE' && v.assignedUserId) k.fail('assignedUserId', 'IN_USE일 때만 지정합니다');
@@ -237,11 +247,23 @@ export async function createAsset(c: PoolClient, p: Principal, body: unknown, op
     await c.query(`INSERT INTO asset_assignment (id, tenant_id, asset_id, user_id, cost_center_id, room_id, checked_out_at, created_by)
       VALUES ($1, $2, $3, $4, $5, $6, now(), $7)`, [randomUUID(), p.tenantId, id, v.assignedUserId, v.costCenterId, v.roomId, p.userId]);
   }
-  await event(c, p, id, 'CREATED', { source: 'MANUAL', assetTag: tag, status: v.status });
+  await event(c, p, id, 'CREATED', clean({ source: 'MANUAL', assetTag: tag, status: v.status, isBundle: v.isBundle || undefined }));
 
   // SAP 등록 체크: 신규 자산 요청(승인 후 IF-AA-03). 체크하지 않으면 ALM에만 둔다
+  if (v.isBundle) {
+    await c.query('UPDATE asset SET is_bundle = true WHERE id = $1', [id]);
+    if (componentIds.length) await attachComponents(c, p, { id, asset_tag: tag, company_id: v.companyId }, { ids: componentIds, tags: [] });
+  }
+  let value = v.purchaseCost;
+  if (costFromComponents) {
+    value = await componentCost(c, id);
+    if (!(value > 0)) {
+      throw new AlmError(400, 'ALM-E101', '입력 값을 확인하세요: purchaseCost 구성품 구매가 합이 0입니다(SAP 등록 취득가를 입력하세요)',
+        { errors: [{ field: 'purchaseCost', code: 'ALM-E101', message: 'SAP 등록이면 필수입니다' }] });
+    }
+  }
   const createdRequest = v.registerInSap && cls
-    ? await newAssetRequest(c, p, { assetId: id, classId: cls.id, value: v.purchaseCost!, costCenterId: v.costCenterId!, roomId: v.roomId! })
+    ? await newAssetRequest(c, p, { assetId: id, classId: cls.id, value: value!, costCenterId: v.costCenterId!, roomId: v.roomId! })
     : undefined;
   let labelJobId: string | undefined;
   if (v.printLabel) {

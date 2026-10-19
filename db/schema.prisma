@@ -718,7 +718,9 @@ model Asset {
   goodsReceipt GoodsReceipt? @relation("asset_goods_receipt_id", fields: [goodsReceiptId], references: [id])
   /// 입고 취소(102) 표시
   isGrCancelled Boolean @default(false) @map("is_gr_cancelled")
-  /// 상위 자산(구성품)
+  /// Bundle 자산. 구성품을 묶어 SAP에 1건으로 등록
+  isBundle Boolean @default(false) @map("is_bundle")
+  /// 소속 Bundle(구성품). 구성품은 SAP에 보내지 않음
   parentAssetId String? @map("parent_asset_id") @db.Uuid
   parentAsset Asset? @relation("asset_parent_asset_id", fields: [parentAssetId], references: [id])
   /// Discovery 마지막 확인
@@ -764,6 +766,7 @@ model Asset {
   @@index([tenantId, assignedUserId])
   @@index([tenantId, hostname])
   @@index([tenantId, macAddress])
+  @@index([tenantId, parentAssetId])
   @@map("asset")
 }
 

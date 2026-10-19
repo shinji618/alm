@@ -227,6 +227,9 @@ sapAssetNo | string | N | SAP 자산번호 ANLN1-ANLN2
 warrantyEndDate | date | N | 보증 종료
 nbv | number | N | 장부가액(권한 없으면 null)
 updatedAt | datetime | Y | 변경 일시
+isBundle | bool | N | Bundle 자산(구성품을 묶어 SAP에 1건)
+componentCount | int | N | Bundle의 구성품 수
+bundleAssetTag | string | N | 구성품이면 소속 Bundle 자산태그
 ''')
 lst('AssetSummary', '자산 목록')
 schema('AssetFinancial', 'Financial & SAP 탭(amount.read 권한 없으면 금액 null)', '''
@@ -274,6 +277,36 @@ financial | AssetFinancial | Y | Financial & SAP
 purchase | AssetPurchase | N | 구매·입고(IF-MM-01·03). PO 항목이 연결된 자산만
 openRequests | [RequestRef] | Y | 진행 중인 요청
 editableFields | [string] | Y | 이 사용자가 지금 고칠 수 있는 필드
+isBundle | bool | N | Bundle 자산
+components | [BundleComponent] | N | Bundle이면 구성품
+componentCostTotal | number | N | Bundle이면 사용 중인 구성품 구매가 합(권한 없으면 null)
+bundle | BundleRef | N | 구성품이면 소속 Bundle
+''')
+schema('BundleComponent', 'Bundle 구성품(ALM에만 있는 자산)', '''
+id | uuid | Y | id
+assetTag | string(25) | Y | 자산태그
+description | string(50) | Y | 자산명
+status | enum(ON_ORDER,IN_STOCK,IN_USE,IN_REPAIR,MISSING,RETIRED,DISPOSED) | Y | 상태
+categoryName | string | Y | 카테고리
+serialNo | string(40) | N | 시리얼
+roomCode | string | N | 룸
+assignedUserName | string | N | 사용자
+purchaseCost | number | N | 구매가(권한 없으면 null)
+''')
+schema('BundleRef', '소속 Bundle', '''
+id | uuid | Y | id
+assetTag | string(25) | Y | 자산태그
+description | string(50) | Y | 자산명
+sapAssetNo | string | N | SAP 자산번호 ANLN1-ANLN2
+''')
+schema('BundleComponentsInput', 'Bundle 구성품 추가(assetIds 또는 assetTags)', '''
+assetIds | [uuid] | N | 자산 id(최대 200)
+assetTags | [string] | N | 자산태그(최대 200)
+''')
+schema('BundleComponents', 'Bundle 구성품', '''
+added | [string] | N | 이번에 추가한 자산태그
+components | [BundleComponent] | Y | 구성품
+componentCostTotal | number | N | 사용 중인 구성품 구매가 합(권한 없으면 null)
 ''')
 schema('AssetPurchase', '자산의 구매·입고(입고로 연결된 PO 항목, 없으면 PO가 이 자산을 지정한 항목)', '''
 poNo | string | Y | PO 번호
@@ -303,7 +336,9 @@ status | string | Y | 상태
 ''')
 schema('AssetCreate', '자산 등록(ALM-112)', '''
 categoryId | uuid | Y | 카테고리
-modelId | uuid | Y | 모델
+modelId | uuid | N | 모델(Bundle이 아니면 필수)
+isBundle | bool | N | Bundle 자산으로 등록(기본 false). 구성품을 묶어 SAP에는 이 자산 1건만 등록
+componentIds | [uuid] | N | Bundle 구성품(SAP 자산번호가 없는 같은 회사 ALM 자산, 최대 200)
 description | string(50) | Y | 자산명
 serialNo | string(40) | N | 시리얼
 companyId | uuid | Y | 회사코드
@@ -313,7 +348,7 @@ assetClassId | uuid | N | 자산클래스(비면 카테고리 기본값). regist
 status | enum(ON_ORDER,IN_STOCK,IN_USE) | N | 기본 IN_STOCK
 assignedUserId | uuid | N | IN_USE면 필수
 purchaseDate | date | N | 구매일
-purchaseCost | number | N | 구매가(예상 취득가로도 사용). registerInSap이면 필수(0보다 큼)
+purchaseCost | number | N | 구매가(예상 취득가로도 사용). registerInSap이면 필수(0보다 큼). Bundle이고 비우면 구성품 구매가 합
 warrantyEndDate | date | N | 보증 종료
 hostname | string(63) | N | 호스트명
 notes | string | N | 메모
@@ -432,6 +467,11 @@ W('자산','POST','/assets/{id}:check-in','checkInAsset','반납','ASSET_MANAGER
   ['상태 IN_STOCK, 할당 종료. 위치가 비면 사이트의 IT 창고 룸(is_storage).'], idem='Idempotency-Key', params=[ID()])
 W('자산','POST','/assets/{id}:repair','moveRepair','수리 입고·출고','ASSET_MANAGER','RepairMove','AssetChangeResult','200, 400, 403, 409','asset, asset_event','ALM-111',
   ['IN: IN_REPAIR. OUT: 수리 전 상태로 되돌림.'], idem='Idempotency-Key', params=[ID()])
+W('자산','POST','/assets/{id}/components','addBundleComponents','Bundle 구성품 추가','ASSET_MANAGER','BundleComponentsInput','BundleComponents','200, 400, 404, 409','asset, asset_event','ALM-111',
+  ['구성품: SAP 자산번호가 없고, Bundle이 아니고, 다른 Bundle에 없고, 같은 회사코드이고, 폐기·처분되지 않았고, 진행 중인 SAP 신규 등록 요청이 없는 자산(asset.write 범위).', '하나라도 안 되면 아무것도 넣지 않고 409(detail.errors에 자산태그별 이유).', '구성품은 SAP 신규 등록(NEW_ASSET)을 받지 않는다(409). Bundle이 폐기·처분되면 구성품도 함께 같은 상태가 된다. 실사는 구성품별, 재산세는 Bundle 기준.'],
+  params=[ID()])
+W('자산','DELETE','/assets/{id}/components/{componentId}','removeBundleComponent','Bundle 구성품 빼기','ASSET_MANAGER',None,'BundleComponents','200, 404, 409','asset, asset_event','ALM-111',
+  ['구성품은 일반 ALM 자산으로 돌아간다.'], params=[ID(),('componentId','path','uuid','Y','구성품 자산 id')])
 W('자산','GET','/assets/{id}/history','listAssetHistory','자산 이력','로그인 사용자(범위 내)',None,'AssetEventItemList','200, 404','asset_event','ALM-111',[ '최근 순. 금액 변경은 amount.read 권한이 있을 때만 값 표시.'],params=[ID()]+PG[:2])
 W('자산','GET','/assets/{id}/values','listAssetValues','기간별 SAP 금액','amount.read',None,'AssetValueList','200, 403, 404','asset_value','ALM-111',[ '상각영역 01, 최근 24기간.'],params=[ID()])
 W('자산','GET','/assets/{id}/assignments','listAssetAssignments','할당 이력','로그인 사용자(범위 내)',None,'AssignmentList','200, 404','asset_assignment','ALM-111',[ '최근 순.'],params=[ID()])

@@ -286,6 +286,29 @@
       "deleted": "삭제했습니다",
       "scanning": "보안 검사 중",
       "unavailable": "미리보기 불가"
+    },
+    "bundle": {
+      "badge": "Bundle",
+      "badgeCount": "Bundle · {{count}}",
+      "inBundle": "{{tag}} 구성품",
+      "createBundle": "Bundle 만들기({{count}})",
+      "field": "Bundle 자산",
+      "fieldHint": "여러 ALM 자산을 묶어 SAP 고정자산 1건으로 등록합니다. 구성품은 각자 태그로 ALM에서 관리하고 SAP로 보내지 않습니다.",
+      "components": "구성품",
+      "componentsSelected": "자산 목록에서 고른 {{count}}건을 구성품으로 넣습니다.",
+      "costHint": "비우면 구성품 구매가 합계를 씁니다.",
+      "costTotal": "구성품 구매가 합계",
+      "noComponents": "구성품이 없습니다. SAP에 없는 자산을 추가하세요.",
+      "addTags": "자산태그로 추가",
+      "addTagsHint": "여러 태그는 공백이나 쉼표로 구분",
+      "add": "추가",
+      "added": "구성품 {{count}}건을 추가했습니다",
+      "remove": "빼기",
+      "removed": "{{tag}}을(를) Bundle에서 뺐습니다",
+      "componentOf": "이 자산은 Bundle {{tag}}의 구성품입니다. ALM에서만 관리하고, SAP에서는 Bundle을 하나의 자산으로 봅니다.",
+      "openBundle": "Bundle 열기",
+      "rules": "Bundle을 폐기·매각하면 구성품도 함께 폐기됩니다. 실사는 구성품별로, 재산세는 Bundle 기준으로 계산합니다.",
+      "notice": "Bundle 자산: 구성품 {{count}}건을 SAP에 이 자산 1건으로 등록합니다."
     }
   },
   "request": {

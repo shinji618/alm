@@ -98,7 +98,7 @@ OPS = {
     # assets
     'listAssets': 'asset.read', 'getAsset': 'asset.read', 'listAssetHistory': 'asset.read', 'listAssetAssignments': 'asset.read',
     'listAssetContracts': 'asset.read', 'listAssetSoftware': 'asset.read', 'listAssetTickets': 'asset.read', 'listAssetAttachments': 'asset.read',
-    'listAssetValues': 'amount.read', 'createAsset': 'asset.write', 'patchAsset': 'asset.write',
+    'listAssetValues': 'amount.read', 'createAsset': 'asset.write', 'patchAsset': 'asset.write', 'addBundleComponents': 'asset.write', 'removeBundleComponent': 'asset.write',
     'checkOutAsset': 'asset.assign', 'checkInAsset': 'asset.assign', 'moveRepair': 'asset.assign',
     # discovery & cmdb
     'listDiscoveryJobs': 'discovery.read', 'listDiscoveryRuns': 'discovery.read', 'listDiscoveryItems': 'discovery.read',

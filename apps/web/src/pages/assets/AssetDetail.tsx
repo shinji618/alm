@@ -14,6 +14,7 @@ import { useSession } from '@/lib/session';
 import type { AssetDetail as Detail, ChangeResult, Lookups, LookupItem } from './types';
 import { RequestDrawer } from '../requests/RequestDrawer';
 import { AttachmentPanel } from './AttachmentPanel';
+import { BundlePanel } from './BundlePanel';
 import s from './assets.module.css';
 
 type Tab = 'general' | 'financial' | 'history' | 'assignments' | 'attachments';
@@ -90,12 +91,19 @@ export function AssetDetail() {
           ))}
         </div>
       )}
+      {d?.bundle && (
+        <div className={s.notice}>
+          {t('asset.bundle.componentOf', { tag: d.bundle.assetTag })} <Link to={`/assets/${d.bundle.id}`}>{t('asset.bundle.openBundle')}</Link>
+        </div>
+      )}
       <Panel padded={false}>
         <Tabs<Tab> label={t('asset.detail.crumb')} value={tab} onChange={setTab} items={(['general', 'financial', 'history', 'assignments', 'attachments'] as const)
           .map((v) => ({ value: v, label: t(`asset.detail.tabs.${v}`) }))} />
         <div style={{ padding: 16 }}>
           {!d ? <span className="muted">{t('common.loading')}</span>
-            : tab === 'general' ? <General d={d} L={L} lang={lang} name={name} />
+            : tab === 'general' ? <><General d={d} L={L} lang={lang} name={name} />
+              {d.isBundle && <BundlePanel d={d} canWrite={can('asset.write') && !['RETIRED', 'DISPOSED'].includes(d.status)}
+                onChange={(x) => a.setData({ ...d, components: x.components, componentCostTotal: x.componentCostTotal })} />}</>
             : tab === 'financial' ? <><Financial d={d} lang={lang} /><h3>{t('asset.po.title')}</h3><Purchase d={d} lang={lang} /></>
             : tab === 'history' ? <History id={id} lang={lang} />
             : tab === 'assignments' ? <Assignments id={id} lang={lang} />

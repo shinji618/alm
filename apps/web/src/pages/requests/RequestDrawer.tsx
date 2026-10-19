@@ -16,8 +16,10 @@ export function RequestDrawer({ d, L, onClose, onDone }: { d: AssetDetail; L: Lo
   const toast = useToast();
   const sapCompany = d.financial.sapEnabled !== false;
   const sap = sapCompany && !!d.financial.sapAssetNo;   // SAP에 보낼 자산인가
-  const types: RequestType[] = sap || !sapCompany ? ['TRANSFER', 'CHANGE', 'RETIRE', 'SALE'] : ['NEW_ASSET', 'TRANSFER', 'CHANGE', 'RETIRE', 'SALE'];
-  const [f, setF] = useState({ type: types[0], reason: '', assetClassId: '', targetCostCenterId: '', acquisitionValue: d.financial.tcoEstimate ? String(d.financial.tcoEstimate) : '',
+  // Bundle 구성품은 SAP에 보내지 않는다(Bundle을 등록). Bundle의 SAP 취득가 기본값은 구매가, 없으면 구성품 구매가 합
+  const types: RequestType[] = sap || !sapCompany || d.bundle ? ['TRANSFER', 'CHANGE', 'RETIRE', 'SALE'] : ['NEW_ASSET', 'TRANSFER', 'CHANGE', 'RETIRE', 'SALE'];
+  const value = d.financial.tcoEstimate || (d.isBundle ? d.componentCostTotal : undefined);
+  const [f, setF] = useState({ type: types[0], reason: '', assetClassId: '', targetCostCenterId: '', acquisitionValue: value ? String(value) : '',
     effectiveDate: today(), targetRoomId: '', description: d.description, serialNo: d.serialNo ?? '', retireType: 'SCRAP', saleAmount: '', buyer: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);

@@ -39,6 +39,8 @@ export function AssetList() {
   // 라벨 출력 대상 선택(F-110-03): 페이지를 옮겨도 선택을 유지 → [Print labels (n)] → 라벨 대기열(ALM-250)
   const toast = useToast();
   const printable = can('label.print');
+  const writable = can('asset.write');
+  const selectable = printable || writable;
   const [selected, setSelected] = useState<string[]>([]);
   const [queuing, setQueuing] = useState(false);
   const queueLabels = async () => {
@@ -57,7 +59,12 @@ export function AssetList() {
 
   const amount = can('amount.read');
   const columns = useMemo<Column<AssetSummary>[]>(() => [
-    { key: 'assetTag', label: t('asset.col.tag'), sortValue: (r) => r.assetTag, render: (r) => <AssetTag tag={r.assetTag} /> },
+    { key: 'assetTag', label: t('asset.col.tag'), sortValue: (r) => r.assetTag, render: (r) => (
+      <div>
+        <AssetTag tag={r.assetTag} />
+        {r.isBundle && <div><StatusPill tone="info">{t('asset.bundle.badgeCount', { count: r.componentCount ?? 0 })}</StatusPill></div>}
+        {r.bundleAssetTag && <div className="small muted mono">{t('asset.bundle.inBundle', { tag: r.bundleAssetTag })}</div>}
+      </div>) },
     { key: 'description', label: t('asset.col.description'), sortValue: (r) => r.description,
       render: (r) => <div><div>{r.description}</div><div className="small muted">{[r.categoryName, r.modelName].filter(Boolean).join(' · ')}</div></div> },
     { key: 'serialNo', label: t('asset.col.serial'), sortValue: (r) => r.serialNo ?? '', render: (r) => <span className="mono">{r.serialNo ?? '—'}</span> },
@@ -85,9 +92,10 @@ export function AssetList() {
   return (
     <>
       <ViewHeader crumb="ALM-110" title={catLabel ? `${t('nav.assets')} · ${catLabel}` : t('nav.assets')} description={t('asset.list.description')}
-        actions={can('asset.write') || printable ? (
+        actions={writable || printable ? (
           <>
             {printable && <Button disabled={!selected.length || queuing} onClick={() => void queueLabels()}>{t('label.printLabels', { count: selected.length })}</Button>}
+            {writable && <Button disabled={!selected.length} onClick={() => nav(`/assets/new?bundle=1&components=${selected.join(',')}`)}>{t('asset.bundle.createBundle', { count: selected.length })}</Button>}
             {can('asset.write') && <Button variant="primary" onClick={() => nav(`/assets/new${get('categoryId') ? `?categoryId=${get('categoryId')}` : ''}`)}>
               {catLabel ? t('asset.list.registerIn', { category: catLabel }) : t('asset.list.register')}</Button>}
           </>) : undefined} />
@@ -108,8 +116,8 @@ export function AssetList() {
         ) : (
           <DataTable rows={list.data?.items ?? []} columns={columns} rowId={(r) => r.id} loading={list.loading} sorting={sorting} onSortingChange={onSorting}
             onRowClick={(r) => nav(`/assets/${r.id}`)}
-            selected={printable ? selected.filter((id) => (list.data?.items ?? []).some((r) => r.id === id)) : undefined}
-            onSelectedChange={printable ? (ids) => {
+            selected={selectable ? selected.filter((id) => (list.data?.items ?? []).some((r) => r.id === id)) : undefined}
+            onSelectedChange={selectable ? (ids) => {
               const onPage = new Set((list.data?.items ?? []).map((r) => r.id));
               setSelected((prev) => [...prev.filter((id) => !onPage.has(id)), ...ids]);
             } : undefined}

@@ -386,6 +386,8 @@
   "listAssetValues": "amount.read",
   "createAsset": "asset.write",
   "patchAsset": "asset.write",
+  "addBundleComponents": "asset.write",
+  "removeBundleComponent": "asset.write",
   "checkOutAsset": "asset.assign",
   "checkInAsset": "asset.assign",
   "moveRepair": "asset.assign",

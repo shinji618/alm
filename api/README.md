@@ -2,11 +2,11 @@
 
 > 이 파일은 `spec/build_web_md.py`가 만든다. 수량을 손으로 고치지 말고 생성기를 다시 돌린다.
 
-엔드포인트 = HTTP 메서드 + 경로 1개(OpenAPI operation 1개). 전체 **207개**: 웹 184 · PDA 12 · SAP 11.
+엔드포인트 = HTTP 메서드 + 경로 1개(OpenAPI operation 1개). 전체 **209개**: 웹 186 · PDA 12 · SAP 11.
 
 | 파일 | 내용 |
 | --- | --- |
-| `openapi.yaml` | OpenAPI 3.1, 엔드포인트 207개, 각 작업에 `x-permission`·`x-scope` (생성물) |
+| `openapi.yaml` | OpenAPI 3.1, 엔드포인트 209개, 각 작업에 `x-permission`·`x-scope` (생성물) |
 | `permissions.json` | 역할·권한 키·범위·작업별 권한 (생성물, 백엔드·프론트 가드용) |
 | `spec/spec_api.py` | PDA·SAP 스키마·엔드포인트 정의 (원본) |
 | `spec/spec_web.py` | 웹 화면 스키마·엔드포인트 정의 (원본) |
@@ -21,7 +21,7 @@
 | --- | --- |
 | 공통 | 12 |
 | 대시보드 | 1 |
-| 자산 | 14 |
+| 자산 | 16 |
 | Discovery | 7 |
 | CMDB | 7 |
 | 라이선스 | 12 |

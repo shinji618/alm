@@ -557,6 +557,7 @@ CREATE TABLE asset (
   po_item_id uuid,
   goods_receipt_id uuid,
   is_gr_cancelled boolean NOT NULL DEFAULT false,
+  is_bundle boolean NOT NULL DEFAULT false,
   parent_asset_id uuid,
   last_seen_at timestamptz,
   sap_synced_at timestamptz,
@@ -605,7 +606,8 @@ COMMENT ON COLUMN asset.warranty_end_date IS '제조사 보증 종료일';
 COMMENT ON COLUMN asset.po_item_id IS '구매오더 항목';
 COMMENT ON COLUMN asset.goods_receipt_id IS '입고 문서(입고로 생성된 경우)';
 COMMENT ON COLUMN asset.is_gr_cancelled IS '입고 취소(102) 표시';
-COMMENT ON COLUMN asset.parent_asset_id IS '상위 자산(구성품)';
+COMMENT ON COLUMN asset.is_bundle IS 'Bundle 자산. 구성품을 묶어 SAP에 1건으로 등록';
+COMMENT ON COLUMN asset.parent_asset_id IS '소속 Bundle(구성품). 구성품은 SAP에 보내지 않음';
 COMMENT ON COLUMN asset.last_seen_at IS 'Discovery 마지막 확인';
 COMMENT ON COLUMN asset.sap_synced_at IS '마지막 SAP 수신';
 COMMENT ON COLUMN asset.notes IS '메모';
@@ -622,6 +624,7 @@ CREATE INDEX ix_asset_tenant_id_cost_center_id ON asset (tenant_id, cost_center_
 CREATE INDEX ix_asset_tenant_id_assigned_user_id ON asset (tenant_id, assigned_user_id);
 CREATE INDEX ix_asset_tenant_id_hostname ON asset (tenant_id, hostname);
 CREATE INDEX ix_asset_tenant_id_mac_address ON asset (tenant_id, mac_address);
+CREATE INDEX ix_asset_tenant_id_parent_asset_id ON asset (tenant_id, parent_asset_id);
 
 -- 자산 금액: SAP 기간별 누적 금액 (IF-AA-02). 최신 값은 뷰 v_asset_value_latest
 CREATE TABLE asset_value (

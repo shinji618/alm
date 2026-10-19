@@ -180,10 +180,12 @@ export async function patchCampaign(c: PoolClient, p: Principal, id: string, ifM
 // ---------------- 범위 ----------------
 function scopeWhere(s: Scope, companyId: string) {
   const args: unknown[] = [companyId, s.siteIds];
-  const w = [`a.company_id = $1`, `a.site_id = ANY($2)`, `a.status NOT IN ('RETIRED', 'DISPOSED')`];
+  // Bundle은 실물이 없으므로 대상에서 빼고 구성품을 하나씩 센다. 구성품의 클래스·자본화 여부는 Bundle 기준
+  const w = [`a.company_id = $1`, `a.site_id = ANY($2)`, `a.status NOT IN ('RETIRED', 'DISPOSED')`, 'NOT a.is_bundle'];
+  const viaBundle = (col: string) => `coalesce((SELECT pb.${col} FROM asset pb WHERE pb.id = a.parent_asset_id), a.${col})`;
   if (s.roomIds?.length) { args.push(s.roomIds); w.push(`a.room_id = ANY($${args.length})`); }
-  if (s.assetClassIds?.length) { args.push(s.assetClassIds); w.push(`a.asset_class_id = ANY($${args.length})`); }
-  if (s.includeNonCapitalized === false) w.push('a.is_capitalized');
+  if (s.assetClassIds?.length) { args.push(s.assetClassIds); w.push(`${viaBundle('asset_class_id')} = ANY($${args.length})`); }
+  if (s.includeNonCapitalized === false) w.push(viaBundle('is_capitalized'));
   return { where: w.join(' AND '), args };
 }
 
@@ -453,11 +455,24 @@ export async function postCountResults(c: PoolClient, p: Principal, id: string) 
   const open = (await c.query(`SELECT count(*)::int AS n FROM count_item ci WHERE ci.campaign_id = $1 AND ${VARIANCE} AND ci.variance_action IS NULL`, [id])).rows[0].n as number;
   const unreg = (await c.query('SELECT count(*)::int AS n FROM count_unregistered WHERE campaign_id = $1 AND resolution IS NULL', [id])).rows[0].n as number;
   if (open || unreg) throw new AlmError(409, 'ALM-E317', `처리하지 않은 차이 ${open}건, 미등록 ${unreg}건이 남았습니다`, { variances: open, unregistered: unreg });
-  const counted = (await c.query(`SELECT ci.id, ci.asset_id, ci.result, a.sap_asset_no, a.company_id FROM count_item ci JOIN asset a ON a.id = ci.asset_id
+  const counted = (await c.query(`SELECT ci.id, ci.asset_id, ci.result, a.sap_asset_no, a.company_id, a.parent_asset_id, pb.sap_asset_no AS bundle_sap_no
+     FROM count_item ci JOIN asset a ON a.id = ci.asset_id LEFT JOIN asset pb ON pb.id = a.parent_asset_id
     WHERE ci.campaign_id = $1 AND ci.result IN ('FOUND', 'MISPLACED') ORDER BY a.asset_tag`, [id])).rows;
   const note = (res: string) => `${r.campaign_code}-${res === 'FOUND' ? 'OK' : 'MV'}`.slice(0, 15);
-  let seq = 0;
+  // Bundle 구성품: 구성품 실사일은 ALM에, SAP에는 Bundle 1건(구성품 중 하나라도 위치가 다르면 MV)
+  const bundles = new Map<string, { itemId: string; companyId: string; result: string; sap: boolean }>();
   for (const x of counted) {
+    if (!x.parent_asset_id) continue;
+    const b = bundles.get(x.parent_asset_id);
+    if (!b) bundles.set(x.parent_asset_id, { itemId: x.id, companyId: x.company_id, result: x.result, sap: !!x.bundle_sap_no });
+    else if (x.result === 'MISPLACED') b.result = 'MISPLACED';
+  }
+  const items = [
+    ...counted.map((x) => ({ ...x, sap_asset_no: x.parent_asset_id ? null : x.sap_asset_no })),
+    ...[...bundles].map(([bid, b]) => ({ id: b.itemId, asset_id: bid, result: b.result, sap_asset_no: b.sap ? 'Y' : null, company_id: b.companyId })),
+  ];
+  let seq = 0;
+  for (const x of items) {
     if (r.sap_enabled && x.sap_asset_no) {
       seq += 1;
       await c.query(`INSERT INTO sap_posting (id, tenant_id, posting_id, posting_type, company_id, asset_id, count_item_id, posting_date, payload, approved_by, approved_at, created_by)

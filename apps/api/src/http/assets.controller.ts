@@ -1,10 +1,11 @@
 // 자산(ALM-110~112) API. 권한 키는 가드가 operationId로, 데이터 범위는 assets/·auth/scope가 확인. WBS 4.2
-import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Patch, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Inject, Param, Patch, Post, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import type { PoolClient } from 'pg';
 import { Db } from '../db/pool';
 import * as assets from '../assets/assets';
 import { lookups } from '../assets/lookups';
+import { addComponents, removeComponent } from '../assets/bundles';
 import { checkIn, checkOut, repair } from '../assets/assign';
 import { AlmContext, Ctx, Operation, txOf } from './context';
 import { CONFIG, DB, MAILER } from './tokens';
@@ -62,6 +63,20 @@ export class AssetsController {
     const r = await this.withRequestMails(ctx, (c) => assets.patchAsset(c, ctx.principal!, id, ifMatch, body));
     res.setHeader('ETag', `"${r.asset.version}"`);
     return r;
+  }
+
+  // Bundle 구성품(SAP에 없는 ALM 자산을 묶어 SAP에는 Bundle 1건)
+  @Post('assets/:id/components')
+  @HttpCode(200)
+  @Operation('addBundleComponents')
+  addComponents(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) {
+    return this.db.withTx(txOf(ctx), (c) => addComponents(c, ctx.principal!, id, body));
+  }
+
+  @Delete('assets/:id/components/:componentId')
+  @Operation('removeBundleComponent')
+  removeComponent(@Ctx() ctx: AlmContext, @Param('id') id: string, @Param('componentId') componentId: string) {
+    return this.db.withTx(txOf(ctx), (c) => removeComponent(c, ctx.principal!, id, componentId));
   }
 
   @Get('assets/:id/history')

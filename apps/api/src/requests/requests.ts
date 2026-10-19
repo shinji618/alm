@@ -16,6 +16,7 @@
 //           승인 단계 2(부서 관리자 → 자산회계) · 1(부서 관리자) · 0(승인 없음, 범위 안의 자산 관리자가 제출하면 바로 반영).
 //           1단계만 쓰는 회사에서 부서 관리자가 없으면 자산 관리자가 대리한다. 단계 1·0은 SAP 연계를 끈 회사만(DB CHECK)
 //   금액  : 취득가·매각금액은 amount.read, 요청자 본인, 지금 단계의 승인자에게만 보인다(09 4.2)
+import { cascadeBundle } from '../assets/bundles';
 import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { AlmError, E } from '../common/errors';
@@ -358,6 +359,11 @@ async function validate(c: PoolClient, p: Principal, v: Input, selfId?: string) 
     const co = (await c.query('SELECT sap_enabled FROM company WHERE id = $1', [a.company_id])).rows[0];
     if (!co?.sap_enabled) throw new AlmError(422, 'ALM-E100', '이 회사는 SAP 연계를 쓰지 않습니다(SAP 신규 등록 불가)');
     if (a.sap_asset_no) throw new AlmError(409, 'ALM-E322', '이미 SAP 자산번호가 있는 자산입니다');
+    // Bundle 구성품은 SAP에 보내지 않는다(Bundle을 등록)
+    if (a.parent_asset_id) {
+      const b = (await c.query('SELECT asset_tag FROM asset WHERE id = $1', [a.parent_asset_id])).rows[0];
+      throw new AlmError(409, 'ALM-E322', `Bundle(${b?.asset_tag ?? ''}) 구성품은 SAP에 등록할 수 없습니다 — Bundle을 등록하세요`, { bundleAssetTag: b?.asset_tag });
+    }
     const cls = (await c.query('SELECT is_capitalized, is_low_value, is_active, is_manual FROM asset_class WHERE id = $1', [v.assetClassId])).rows[0];
     if (!cls?.is_active) bad('assetClassId', '활성 자산클래스가 아닙니다');
     if (cls.is_manual) bad('assetClassId', 'ALM에서 직접 만든 클래스는 SAP에 등록할 수 없습니다(SAP 자산클래스를 고르세요)');
@@ -810,6 +816,12 @@ export async function applyRequest(c: PoolClient, r: Record<string, any>, a: Rec
     out.has('asset_class_id'), val('asset_class_id'), out.has('is_capitalized'), val('is_capitalized')]);
   if (out.has('status')) {
     await c.query(`UPDATE asset_assignment SET returned_at = now(), updated_at = now(), version = version + 1 WHERE asset_id = $1 AND returned_at IS NULL`, [a.id]);
+  }
+  // Bundle 폐기·처분: 구성품도 함께
+  const st = val('status') as string | null;
+  if (a.is_bundle && (st === 'RETIRED' || st === 'DISPOSED')) {
+    const tags = await cascadeBundle(c, a, st, r.id ?? null, r.request_no);
+    if (tags.length) out.set('components', { before: null, after: tags });
   }
   return Object.fromEntries(out);
 }

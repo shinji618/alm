@@ -2043,6 +2043,105 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/RepairMove'
+  /assets/{id}/components:
+    post:
+      operationId: addBundleComponents
+      summary: Bundle 구성품 추가
+      tags:
+      - WEB
+      description: 'ALM-111 · 테이블: asset, asset_event
+
+
+        - 구성품: SAP 자산번호가 없고, Bundle이 아니고, 다른 Bundle에 없고, 같은 회사코드이고, 폐기·처분되지 않았고, 진행 중인 SAP 신규 등록 요청이 없는 자산(asset.write 범위).
+
+        - 하나라도 안 되면 아무것도 넣지 않고 409(detail.errors에 자산태그별 이유).
+
+        - 구성품은 SAP 신규 등록(NEW_ASSET)을 받지 않는다(409). Bundle이 폐기·처분되면 구성품도 함께 같은 상태가 된다. 실사는 구성품별, 재산세는 Bundle 기준.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BundleComponents'
+        '400':
+          $ref: '#/components/responses/E400'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: asset.write
+      x-scope:
+        ASSET_MANAGER: ALL
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BundleComponentsInput'
+  /assets/{id}/components/{componentId}:
+    delete:
+      operationId: removeBundleComponent
+      summary: Bundle 구성품 빼기
+      tags:
+      - WEB
+      description: 'ALM-111 · 테이블: asset, asset_event
+
+
+        - 구성품은 일반 ALM 자산으로 돌아간다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      - name: componentId
+        in: path
+        required: true
+        description: 구성품 자산 id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BundleComponents'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: asset.write
+      x-scope:
+        ASSET_MANAGER: ALL
+      security:
+      - webAuth:
+        - web
   /assets/{id}/history:
     get:
       operationId: listAssetHistory
@@ -12680,6 +12779,15 @@ components:
           type: string
           format: date-time
           description: 변경 일시
+        isBundle:
+          type: boolean
+          description: Bundle 자산(구성품을 묶어 SAP에 1건)
+        componentCount:
+          type: integer
+          description: Bundle의 구성품 수
+        bundleAssetTag:
+          type: string
+          description: 구성품이면 소속 Bundle 자산태그
       required:
       - id
       - assetTag
@@ -12894,6 +13002,21 @@ components:
           items:
             type: string
           description: 이 사용자가 지금 고칠 수 있는 필드
+        isBundle:
+          type: boolean
+          description: Bundle 자산
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/BundleComponent'
+          description: Bundle이면 구성품
+        componentCostTotal:
+          type: number
+          description: Bundle이면 사용 중인 구성품 구매가 합(권한 없으면 null)
+        bundle:
+          allOf:
+          - $ref: '#/components/schemas/BundleRef'
+          description: 구성품이면 소속 Bundle
       required:
       - id
       - version
@@ -12906,6 +13029,112 @@ components:
       - financial
       - openRequests
       - editableFields
+    BundleComponent:
+      type: object
+      description: Bundle 구성품(ALM에만 있는 자산)
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: id
+        assetTag:
+          type: string
+          maxLength: 25
+          description: 자산태그
+        description:
+          type: string
+          maxLength: 50
+          description: 자산명
+        status:
+          type: string
+          enum:
+          - ON_ORDER
+          - IN_STOCK
+          - IN_USE
+          - IN_REPAIR
+          - MISSING
+          - RETIRED
+          - DISPOSED
+          description: 상태
+        categoryName:
+          type: string
+          description: 카테고리
+        serialNo:
+          type: string
+          maxLength: 40
+          description: 시리얼
+        roomCode:
+          type: string
+          description: 룸
+        assignedUserName:
+          type: string
+          description: 사용자
+        purchaseCost:
+          type: number
+          description: 구매가(권한 없으면 null)
+      required:
+      - id
+      - assetTag
+      - description
+      - status
+      - categoryName
+    BundleRef:
+      type: object
+      description: 소속 Bundle
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: id
+        assetTag:
+          type: string
+          maxLength: 25
+          description: 자산태그
+        description:
+          type: string
+          maxLength: 50
+          description: 자산명
+        sapAssetNo:
+          type: string
+          description: SAP 자산번호 ANLN1-ANLN2
+      required:
+      - id
+      - assetTag
+      - description
+    BundleComponentsInput:
+      type: object
+      description: Bundle 구성품 추가(assetIds 또는 assetTags)
+      properties:
+        assetIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: 자산 id(최대 200)
+        assetTags:
+          type: array
+          items:
+            type: string
+          description: 자산태그(최대 200)
+    BundleComponents:
+      type: object
+      description: Bundle 구성품
+      properties:
+        added:
+          type: array
+          items:
+            type: string
+          description: 이번에 추가한 자산태그
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/BundleComponent'
+          description: 구성품
+        componentCostTotal:
+          type: number
+          description: 사용 중인 구성품 구매가 합(권한 없으면 null)
+      required:
+      - components
     AssetPurchase:
       type: object
       description: 자산의 구매·입고(입고로 연결된 PO 항목, 없으면 PO가 이 자산을 지정한 항목)
@@ -13010,7 +13239,16 @@ components:
         modelId:
           type: string
           format: uuid
-          description: 모델
+          description: 모델(Bundle이 아니면 필수)
+        isBundle:
+          type: boolean
+          description: Bundle 자산으로 등록(기본 false). 구성품을 묶어 SAP에는 이 자산 1건만 등록
+        componentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Bundle 구성품(SAP 자산번호가 없는 같은 회사 ALM 자산, 최대 200)
         description:
           type: string
           maxLength: 50
@@ -13052,7 +13290,7 @@ components:
           description: 구매일
         purchaseCost:
           type: number
-          description: 구매가(예상 취득가로도 사용). registerInSap이면 필수(0보다 큼)
+          description: 구매가(예상 취득가로도 사용). registerInSap이면 필수(0보다 큼). Bundle이고 비우면 구성품 구매가 합
         warrantyEndDate:
           type: string
           format: date
@@ -13072,7 +13310,6 @@ components:
           description: SAP 고정자산 등록(기본 false). 등록자가 판단해 체크하면 신규 자산 요청(NEW_ASSET)을 만들어 승인 후 IF-AA-03으로 SAP 자산 생성
       required:
       - categoryId
-      - modelId
       - description
       - companyId
       - roomId
