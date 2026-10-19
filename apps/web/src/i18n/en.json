@@ -1013,7 +1013,26 @@
     "ptypeClasses": "Asset classes",
     "ptypeCategories": "Categories (override)",
     "ptypeCategoriesNote": "Set only when a category differs from its asset class.",
-    "includeLeasehold": "Include leasehold improvements (GA: improvements that become part of the building are not personal property; trade fixtures go in Schedule A)"
+    "includeLeasehold": "Include leasehold improvements (GA: improvements that become part of the building are not personal property; trade fixtures go in Schedule A)",
+    "warn": {
+      "noClass": "(no asset class)",
+      "typeCount": "{{type}} {{count}}",
+      "OLD_FACTOR_TABLE": "No {{taxYear}} factor table, so the {{tableYear}} table was used.",
+      "UNVERIFIED_FACTORS": "The factor table is an unverified reference. Compare it with the jurisdiction's official table.",
+      "NO_FACTOR_TABLE": "No {{factorSet}} factor table, so factor 1.0 (cost as is) was used. Load or enter the factor table.",
+      "GENERIC_FACTORS": "Generic straight-line factors (20% floor). Enter the appraisal district's depreciation table for better accuracy.",
+      "NO_JURISDICTION": "{{count}} asset(s) with no site, or whose site is not linked to a jurisdiction, are in no filing ({{tags}}). Set the asset's site or link the site to a jurisdiction.",
+      "EXCLUDED_TYPES": "Left out as not reportable: {{types}}. Whether vehicles, CIP and leasehold improvements are included is set on the jurisdiction.",
+      "LEASED_LISTED": "{{count}} leased item(s) are left out of the tax and listed on the return's leased equipment schedule (Excel 'Leased equipment'). Fill in the owner (lessor) name and address.",
+      "PROPERTY_TYPE_GUESSED": "Asset classes with no property type ({{classes}}) were classified by name. Check them on the Property types tab.",
+      "NO_FACTOR_CLASS": "Classes not in the factor table ({{classes}}) used factor 1.0.",
+      "UNKNOWN_COST": "{{count}} asset(s) with no cost are left out of the totals (report them in the return's 'cost unknown' section at estimated value).",
+      "ACQUIRED_AFTER_LIEN": "{{count}} asset(s) acquired after the lien date ({{lienDate}}) are not in this year's filing (they belong to next year). Acquisition date is the SAP capitalization date → purchase date → ALM registration date.",
+      "NO_ASSETS": "This company has no assets at the sites linked to this jurisdiction. Check the site links on the Jurisdictions tab.",
+      "ZERO_MILLAGE": "Millage (tax rate) is 0, so the estimated tax is 0. Enter the county millage on the Jurisdictions tab.",
+      "NOT_TAXABLE": "{{state}} does not tax business personal property (no filing required). The listing is for reference.",
+      "EXEMPT": "Exempt because total fair market value is ${{amount}} or less (the return is still filed)."
+    }
   },
   "cat": {
     "code": "Code",

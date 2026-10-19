@@ -126,6 +126,26 @@ describe('property tax (ALM-260)', () => {
     await waitFor(() => expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({ assetClasses: [{ id: 'c2', propertyType: 'INTANGIBLE' }] }));
   }, 20000);
 
+  it('shows calculation warnings in the user language, not the server text', async () => {
+    window.history.pushState({}, '', '/tax/filings/f26');
+    const warnings = [
+      { code: 'ACQUIRED_AFTER_LIEN', count: 2, params: { count: 2, lienDate: '2027-01-01' }, message: 'server text' },
+      { code: 'EXCLUDED_TYPES', count: 3, params: { types: [{ type: 'VEHICLE', count: 1 }, { type: 'REAL_PROPERTY', count: 2 }] }, message: 'server text' },
+      { code: 'PROPERTY_TYPE_GUESSED', count: 2, params: { classes: ['RS1030', ''], more: false }, message: 'server text' },
+      { code: 'ZERO_MILLAGE', message: 'server text' },
+      { code: 'UNKNOWN_COST', count: 1, message: '원가가 없는 자산 1건은 합계에서 빠졌습니다' },   // 예전 신고(params 없음)는 저장된 문장
+    ];
+    mockFetch((url) => (url.endsWith('/tax/filings/f26') ? { body: detail({ warnings }) } : undefined));
+    render(<App initialMe={acct} />);
+    const list = await screen.findByRole('list', { name: 'Warnings' });
+    expect(list).toHaveTextContent("2 asset(s) acquired after the lien date (2027-01-01) are not in this year's filing");
+    expect(list).toHaveTextContent('Left out as not reportable: Vehicles 1, Real property (land, buildings) 2.');
+    expect(list).toHaveTextContent('Asset classes with no property type (RS1030, (no asset class)) were classified by name.');
+    expect(list).toHaveTextContent('Millage (tax rate) is 0');
+    expect(list).toHaveTextContent('원가가 없는 자산 1건은 합계에서 빠졌습니다');
+    expect(list).not.toHaveTextContent('server text');
+  }, 20000);
+
   it('read-only users see filings without manage actions', async () => {
     window.history.pushState({}, '', '/tax/filings/f26');
     mockFetch((url) => (url.endsWith('/tax/filings/f26') ? { body: detail() } : undefined));

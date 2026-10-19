@@ -139,6 +139,10 @@ test('재산세: 신고 자료 계산·면제·다시 계산·행·엑셀', { sk
   const codes = r.body.warnings.map((w: { code: string }) => w.code);
   for (const c of ['OLD_FACTOR_TABLE', 'NO_JURISDICTION', 'UNKNOWN_COST', 'EXEMPT']) assert.ok(codes.includes(c), c);
   assert.equal(r.body.warnings.find((w: { code: string }) => w.code === 'ACQUIRED_AFTER_LIEN').count, 1, 'AT-000004(2026-02 취득)는 2027년 신고 대상');
+  // 경고는 code + params(화면이 사용자 언어로 문장을 만든다), message는 영어 기본 문장
+  const al = r.body.warnings.find((w: { code: string }) => w.code === 'ACQUIRED_AFTER_LIEN');
+  assert.deepEqual(al.params, { count: 1, lienDate: '2026-01-01' });
+  assert.ok(r.body.warnings.every((w: { message: string }) => !/[가-힣]/.test(w.message)), JSON.stringify(r.body.warnings));
   assert.equal((await call('ac', 'POST', '/tax/filings', { companyId: ids.co, jurisdictionId: ids.jur, taxYear: 2026 })).status, 409);
 
   await call('ac', 'PATCH', `/tax/jurisdictions/${ids.jur}`, { exemptionMode: 'NONE' });

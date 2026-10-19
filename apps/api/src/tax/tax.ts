@@ -11,6 +11,7 @@ import { AlmError, E } from '../common/errors';
 import { Check, UUID } from '../common/validate';
 import type { Principal } from '../auth/principal';
 import { buildXlsx, type Cell } from '../common/xlsx';
+import { warn, type TaxWarning } from './warnings';
 import { AGE_START, FACTOR_SETS, genericFactor, lifeClassOf, NEVER_TAXED, PROPERTY_TYPES, REFERENCE_TABLES, STATE_PRESETS, suggestPropertyType, type FactorSet,
   type PropertyType } from './reference';
 
@@ -231,7 +232,7 @@ interface Line { assetId: string | null; assetTag: string; description: string; 
 
 async function compute(c: PoolClient, companyId: string, j: Jur, taxYear: number) {
   const lien = `${taxYear}-${pad(j.lien_month)}-${pad(j.lien_day)}`;
-  const warnings: { code: string; message: string; count?: number }[] = [];
+  const warnings: TaxWarning[] = [];
   // 계수표: 기준일 연도 이하 중 가장 최근
   const tableYear = (await c.query('SELECT max(table_year) AS y FROM tax_factor WHERE factor_set = $1 AND table_year <= $2', [j.factor_set, taxYear])).rows[0]?.y as number | null;
   const table = new Map<string, number[]>();
@@ -244,12 +245,12 @@ async function compute(c: PoolClient, companyId: string, j: Jur, taxYear: number
       table.set(r.life_class, arr);
       source = r.source ?? source;
     }
-    if (tableYear < taxYear) warnings.push({ code: 'OLD_FACTOR_TABLE', message: `${taxYear}년 계수표가 없어 ${tableYear}년 표를 썼습니다` });
-    if (source?.startsWith('[verify]')) warnings.push({ code: 'UNVERIFIED_FACTORS', message: '계수표가 확인되지 않은 참고값입니다. 관할 공식 표와 대조하세요' });
+    if (tableYear < taxYear) warnings.push(warn('OLD_FACTOR_TABLE', { taxYear, tableYear }));
+    if (source?.startsWith('[verify]')) warnings.push(warn('UNVERIFIED_FACTORS'));
   } else if (j.factor_set !== 'GENERIC_SL') {
-    warnings.push({ code: 'NO_FACTOR_TABLE', message: `${j.factor_set} 계수표가 없어 계수 1.0(원가 그대로)으로 계산했습니다. 계수표를 불러오거나 입력하세요` });
+    warnings.push(warn('NO_FACTOR_TABLE', { factorSet: j.factor_set }));
   }
-  if (j.factor_set === 'GENERIC_SL') warnings.push({ code: 'GENERIC_FACTORS', message: '정액 추정 계수(하한 20%)입니다. 감정 구역의 감가표를 넣으면 더 정확합니다' });
+  if (j.factor_set === 'GENERIC_SL') warnings.push(warn('GENERIC_FACTORS'));
   const classMap = new Map((await c.query('SELECT category_id, life_class FROM tax_class_map WHERE factor_set = $1', [j.factor_set])).rows
     .map((r) => [r.category_id as string, r.life_class as string]));
 
@@ -269,7 +270,7 @@ async function compute(c: PoolClient, companyId: string, j: Jur, taxYear: number
      WHERE a.company_id = $1 AND a.status NOT IN ('ON_ORDER', 'RETIRED', 'DISPOSED') AND (a.site_id IS NULL OR s.tax_jurisdiction_id IS NULL)
      ORDER BY a.asset_tag`, [companyId])).rows.map((r) => r.asset_tag as string);
   const noLocation = noLoc.length;
-  if (noLocation) warnings.push({ code: 'NO_JURISDICTION', count: noLocation, message: `사이트가 없거나 관할이 연결되지 않은 자산 ${noLocation}건은 어느 신고에도 들어가지 않았습니다(${noLoc.slice(0, 10).join(', ')}${noLocation > 10 ? ' 외' : ''}). 자산의 사이트를 지정하거나 사이트를 관할에 연결하세요` });
+  if (noLocation) warnings.push(warn('NO_JURISDICTION', { count: noLocation, tags: noLoc.slice(0, 10), more: noLocation > 10 }, noLocation));
 
   const lines: Line[] = [];
   const missingClass = new Set<string>();
@@ -283,7 +284,7 @@ async function compute(c: PoolClient, companyId: string, j: Jur, taxYear: number
     if (['RETIRED', 'DISPOSED'].includes(a.status) && (!disposal || disposal <= lien)) continue;
     // 재산세 구분: 카테고리 → 자산클래스 → 클래스 이름 추정 → 장비
     const ptype: PropertyType = a.cat_type ?? a.cls_type ?? suggestPropertyType(a.class_name) ?? 'EQUIPMENT';
-    if (!a.cat_type && !a.cls_type) guessed.add(a.class_code ?? '(클래스 없음)');
+    if (!a.cat_type && !a.cls_type) guessed.add(a.class_code ?? '');   // '' = 자산클래스 없음(화면·영문 문장에서 이름으로 바꾼다)
     if (NEVER_TAXED.includes(ptype) || (ptype === 'VEHICLE' && !j.include_vehicles) || (ptype === 'CIP' && !j.include_cip)
       || (ptype === 'LEASEHOLD' && !j.include_leasehold)) {
       excluded.set(ptype, (excluded.get(ptype) ?? 0) + 1);
@@ -312,18 +313,14 @@ async function compute(c: PoolClient, companyId: string, j: Jur, taxYear: number
       marketValue: cost === null || factor === null ? null : r2(cost * factor), siteCode: a.site_code ?? null, roomCode: a.room_code ?? null, change: 'NEW', disposalDate: null });
   }
   if (excluded.size) {
-    const parts = [...excluded].map(([k, n]) => `${TYPE_LABEL[k]} ${n}건`).join(', ');
-    warnings.push({ code: 'EXCLUDED_TYPES', count: [...excluded.values()].reduce((x, y) => x + y, 0),
-      message: `신고 대상이 아닌 구분이라 뺐습니다: ${parts}. 차량·건설중자산·임차개량 포함 여부는 관할 설정에서 바꿉니다` });
+    warnings.push(warn('EXCLUDED_TYPES', { types: [...excluded].map(([type, count]) => ({ type, count })) }, [...excluded.values()].reduce((x, y) => x + y, 0)));
   }
   const leased = lines.filter((l) => l.propertyType === 'LEASED_IN').length;
-  if (leased) warnings.push({ code: 'LEASED_LISTED', count: leased,
-    message: `임차 장비 ${leased}건은 세액에서 빼고 신고서의 임차 장비 목록(엑셀 'Leased equipment')에 넣었습니다. 소유자(리스사) 이름·주소를 적으세요` });
-  if (guessed.size) warnings.push({ code: 'PROPERTY_TYPE_GUESSED', count: guessed.size,
-    message: `재산세 구분이 지정되지 않은 자산클래스(${[...guessed].slice(0, 10).join(', ')})는 이름으로 추정했습니다. 계수표 탭의 재산세 구분에서 확인하세요` });
-  if (missingClass.size) warnings.push({ code: 'NO_FACTOR_CLASS', message: `계수표에 없는 구분(${[...missingClass].join(', ')})은 계수 1.0으로 계산했습니다` });
+  if (leased) warnings.push(warn('LEASED_LISTED', { count: leased }, leased));
+  if (guessed.size) warnings.push(warn('PROPERTY_TYPE_GUESSED', { classes: [...guessed].slice(0, 10), more: guessed.size > 10 }, guessed.size));
+  if (missingClass.size) warnings.push(warn('NO_FACTOR_CLASS', { classes: [...missingClass] }));
   const unknownCost = lines.filter((l) => l.originalCost === null && l.propertyType !== 'LEASED_IN').length;
-  if (unknownCost) warnings.push({ code: 'UNKNOWN_COST', count: unknownCost, message: `원가가 없는 자산 ${unknownCost}건은 합계에서 빠졌습니다(신고서의 '원가 모름' 칸에 추정 시가로 적습니다)` });
+  if (unknownCost) warnings.push(warn('UNKNOWN_COST', { count: unknownCost }, unknownCost));
 
   // 전년 신고와 비교
   const prior = (await c.query(`SELECT id, tax_year FROM tax_filing WHERE company_id = $1 AND jurisdiction_id = $2 AND tax_year < $3 ORDER BY tax_year DESC LIMIT 1`,
@@ -352,12 +349,11 @@ async function compute(c: PoolClient, companyId: string, j: Jur, taxYear: number
   const assessed = j.taxable ? r2((mv - exemption) * Number(j.assessment_ratio)) : 0;
   const tax = r2(assessed * Number(j.millage) / 1000);
   // 세액이 0인 이유를 화면에 바로 보이게
-  if (afterLien) warnings.push({ code: 'ACQUIRED_AFTER_LIEN', count: afterLien,
-    message: `기준일(${lien}) 뒤에 취득한 자산 ${afterLien}건은 이 연도 신고에 들어가지 않습니다(다음 연도 신고 대상). 취득일은 SAP 자본화일 → 구매일 → ALM 등록일 순으로 봅니다` });
-  if (!rows.length) warnings.push({ code: 'NO_ASSETS', message: '이 관할에 연결된 사이트에 이 회사 자산이 없습니다. 관할 탭에서 사이트 연결을 확인하세요' });
-  if (j.taxable && Number(j.millage) === 0) warnings.push({ code: 'ZERO_MILLAGE', message: '밀리지(세율)가 0이라 예상 세액이 0입니다. 관할 탭에서 카운티 밀리지를 입력하세요' });
-  if (!j.taxable) warnings.push({ code: 'NOT_TAXABLE', message: `${j.state}는 사업용 동산을 과세하지 않습니다(신고 대상 아님). 목록은 참고용입니다` });
-  else if (j.exemption_mode === 'THRESHOLD' && exemption > 0) warnings.push({ code: 'EXEMPT', message: `공정가치 합계가 $${exAmt.toLocaleString('en-US')} 이하라 면제됩니다(신고서는 제출)` });
+  if (afterLien) warnings.push(warn('ACQUIRED_AFTER_LIEN', { count: afterLien, lienDate: lien }, afterLien));
+  if (!rows.length) warnings.push(warn('NO_ASSETS'));
+  if (j.taxable && Number(j.millage) === 0) warnings.push(warn('ZERO_MILLAGE'));
+  if (!j.taxable) warnings.push(warn('NOT_TAXABLE', { state: j.state }));
+  else if (j.exemption_mode === 'THRESHOLD' && exemption > 0) warnings.push(warn('EXEMPT', { amount: exAmt }));
   const due = j.due_month ? `${taxYear}-${pad(j.due_month)}-${pad(j.due_day ?? 1)}` : null;
   const params = { state: j.state, county: j.county, name: j.name, taxable: j.taxable, formCode: j.form_code, lienMonth: j.lien_month, lienDay: j.lien_day,
     assessmentRatio: Number(j.assessment_ratio), millage: Number(j.millage), exemptionMode: j.exemption_mode, exemptionAmount: exAmt,
@@ -557,7 +553,8 @@ export async function exportFiling(c: PoolClient, id: string): Promise<{ fileNam
     ['Leased equipment listed (not taxed to you)', leasedIn.length],
     ['', ''], ['Not in ALM — report separately', 'Inventory and supplies (GA Schedule B, AL supplies, TX Schedules B/C, CA line 1), boats and aircraft'],
     ['Estimate only — confirm values, factor tables and millage with the jurisdiction before filing.', ''],
-    ...((f.warnings as { message: string }[]) ?? []).map((w): Cell[] => ['Note', w.message]),
+    // 예전 신고(params 없음)는 저장된 문장, 새 신고는 영어 문장으로
+    ...((f.warnings as TaxWarning[]) ?? []).map((w): Cell[] => ['Note', w.params ? warn(w.code, w.params).message : w.message]),
   ];
   const money = 'money' as const, factor = 'factor' as const, int = 'int' as const;
   const sheets = [
@@ -587,8 +584,6 @@ export async function exportFiling(c: PoolClient, id: string): Promise<{ fileNam
 }
 
 // ---------------- 재산세 구분(자산클래스·카테고리) ----------------
-const TYPE_LABEL: Record<PropertyType, string> = { EQUIPMENT: '장비·가구·기계', LEASEHOLD: '임차개량', VEHICLE: '차량', CIP: '건설중자산',
-  LEASED_IN: '임차 자산', REAL_PROPERTY: '부동산', INTANGIBLE: '무형', EXCLUDED: '제외' };
 const TYPE_LABEL_EN: Record<PropertyType, string> = { EQUIPMENT: 'Furniture, fixtures, machinery & equipment', LEASEHOLD: 'Leasehold improvements',
   VEHICLE: 'Vehicles', CIP: 'Construction in progress', LEASED_IN: 'Leased from others', REAL_PROPERTY: 'Real property', INTANGIBLE: 'Intangible', EXCLUDED: 'Excluded' };
 

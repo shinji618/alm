@@ -1877,9 +1877,10 @@ marketValue | number | Y | 공정가치
 factor | number | N | 계수
 ''')
 schema('TaxWarning', '계산 경고', '''
-code | string | Y | OLD_FACTOR_TABLE, UNVERIFIED_FACTORS, NO_FACTOR_TABLE, GENERIC_FACTORS, NO_JURISDICTION, NO_FACTOR_CLASS, UNKNOWN_COST, NOT_TAXABLE, EXEMPT
-message | string | Y | 설명
+code | string | Y | OLD_FACTOR_TABLE, UNVERIFIED_FACTORS, NO_FACTOR_TABLE, GENERIC_FACTORS, NO_JURISDICTION, EXCLUDED_TYPES, LEASED_LISTED, PROPERTY_TYPE_GUESSED, NO_FACTOR_CLASS, UNKNOWN_COST, ACQUIRED_AFTER_LIEN, NO_ASSETS, ZERO_MILLAGE, NOT_TAXABLE, EXEMPT
+message | string | Y | 영어 기본 문장(엑셀 신고 자료용). 화면은 code·params로 사용자 언어 문장을 만든다
 count | int | N | 건수
+params | object | N | 문장 값(예: {count, lienDate}, {classes, more}, {types:[{type,count}]}). 예전 신고에는 없음
 ''')
 schema('TaxFilingDetail', '재산세 신고 상세', '''
 id | uuid | Y | id

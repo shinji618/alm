@@ -10,7 +10,7 @@ import { api, ApiError, download, qs } from '@/lib/api';
 import { formatDate, formatDateTime, formatPercent, formatUsd } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
 import { useSession } from '@/lib/session';
-import { changeTone, filingTone, type FilingDetail, type FilingLine, type LineChange } from './types';
+import { changeTone, filingTone, warningText, type FilingDetail, type FilingLine, type LineChange } from './types';
 import s from '../assets/assets.module.css';
 import c from './tax.module.css';
 
@@ -82,7 +82,7 @@ export function TaxFilingDetail() {
         </span>} />
       {x.warnings.length > 0 && (
         <ul className={c.warnings} aria-label={t('tax.detail.warnings')}>
-          {x.warnings.map((w) => <li key={w.code} className="small"><strong className="mono">{w.code}</strong> {w.message}</li>)}
+          {x.warnings.map((w) => <li key={w.code} className="small"><strong className="mono">{w.code}</strong> {warningText(w, t)}</li>)}
         </ul>
       )}
       <div className={c.kpis}>
