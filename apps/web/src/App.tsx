@@ -6,6 +6,7 @@ import { SessionProvider, useSession, type Me } from '@/lib/session';
 import { DesignGallery } from '@/pages/DesignGallery';
 import { Labels } from '@/pages/labels/Labels';
 import { Dashboard } from '@/pages/dashboard/Dashboard';
+import { AssetImport } from '@/pages/admin/AssetImport';
 import { Placeholder } from '@/pages/Placeholder';
 import { Login } from '@/pages/Login';
 import { AssetList } from '@/pages/assets/AssetList';
@@ -24,7 +25,7 @@ import { AssetCategories } from '@/pages/admin/AssetCategories';
 import { TaxFilingDetail } from '@/pages/tax/TaxFilingDetail';
 
 // 만든 화면(그 외 메뉴는 아직 자리 화면)
-const BUILT = new Set(['/', '/labels', '/assets', '/requests', '/counts', '/tax', '/sap', '/admin/companies', '/admin/fin-masters', '/admin/categories', '/admin/dept-managers', '/design']);
+const BUILT = new Set(['/', '/labels', '/assets', '/requests', '/counts', '/tax', '/sap', '/admin/companies', '/admin/fin-masters', '/admin/categories', '/admin/dept-managers', '/admin/asset-import', '/design']);
 
 function Routed() {
   const { t } = useTranslation();
@@ -60,6 +61,7 @@ function Routed() {
         <Route path="/admin/fin-masters" element={<FinMasters />} />
         <Route path="/admin/categories" element={<AssetCategories />} />
         <Route path="/admin/dept-managers" element={<DeptManagers />} />
+        <Route path="/admin/asset-import" element={<AssetImport />} />
         {NAV_ITEMS.filter((i) => !BUILT.has(i.path)).map((i) => (
           <Route key={i.path} path={i.path} element={<Placeholder />} />
         ))}

@@ -37,7 +37,8 @@
     "propertyTax": "Property tax",
     "byCategory": "By category",
     "categories": "Asset categories",
-    "categoryCount": "{{name}} ({{count}} assets)"
+    "categoryCount": "{{name}} ({{count}} assets)",
+    "assetImport": "Bulk asset upload"
   },
   "common": {
     "clear": "Clear",
@@ -1236,5 +1237,83 @@
       "UNMANAGED_DEVICE": "Unmanaged devices found"
     },
     "noAccess": "Your role has no dashboard. Use the menu to open your assets and requests."
+  },
+  "imp": {
+    "description": "Register or update many assets at once from Excel or CSV. Preview first — nothing changes until you apply. New assets are registered in ALM only (no SAP request).",
+    "step1": "1. Download a template",
+    "step1Hint": "The Instructions sheet explains each column; the Codes sheet lists valid category, model, company, room and cost center codes.",
+    "template": "Empty template",
+    "templateWithAssets": "Template with current assets",
+    "downloaded": "Downloaded {{name}}",
+    "step2": "2. Upload the file",
+    "step2Hint": "xlsx or CSV, up to 2,000 rows and 700 KB. An empty or new asset tag creates an asset; an existing tag updates only the filled cells.",
+    "chooseFile": "Choose file",
+    "checking": "Checking…",
+    "tooLarge": "The file is larger than 700 KB. Split it into smaller files.",
+    "previewTitle": "Preview — nothing has been changed yet",
+    "previewHint": "Rows with errors are skipped when you apply. Fix them in the file and upload again if needed.",
+    "resultTitle": "Applied",
+    "resultHint": "Rows with errors were skipped. Download the results to fix and upload them again.",
+    "apply": "Apply",
+    "applyN": "Apply {{count}} row(s)",
+    "applyMsg": "Create {{create}} and update {{update}} asset(s)? {{errors}} row(s) with errors will be skipped.",
+    "applied": "Created {{create}}, updated {{update}}",
+    "downloadResults": "Download results (CSV)",
+    "unknownColumns": "Ignored columns: {{cols}}",
+    "filter": "Show",
+    "autoTag": "(next AT-number)",
+    "changes": "Changes: {{cols}}",
+    "filters": {
+      "all": "All",
+      "errors": "Errors",
+      "warnings": "Warnings",
+      "create": "New",
+      "update": "Updates"
+    },
+    "sum": {
+      "rows": "Rows",
+      "create": "New",
+      "update": "Updates",
+      "unchanged": "No change",
+      "warnings": "Warnings",
+      "errors": "Errors"
+    },
+    "col": {
+      "row": "Row",
+      "action": "Action",
+      "status": "Result",
+      "tag": "Asset tag",
+      "description": "Description",
+      "details": "Details"
+    },
+    "action": {
+      "CREATE": "New",
+      "UPDATE": "Update",
+      "UNCHANGED": "No change",
+      "SKIP": "Skip"
+    },
+    "status": {
+      "OK": "OK",
+      "WARN": "Warning",
+      "ERROR": "Error"
+    },
+    "code": {
+      "REQUIRED": "Required for a new asset",
+      "UNKNOWN_CATEGORY": "Not an active category code",
+      "UNKNOWN_MODEL": "Not an active model of this category (part number or 'Manufacturer Model name')",
+      "UNKNOWN_COMPANY": "Not an active company code",
+      "UNKNOWN_ROOM": "Not an active room code",
+      "UNKNOWN_COST_CENTER": "Not an active cost center of this company",
+      "UNKNOWN_USER": "Not an active user email",
+      "BAD_DATE": "Not a date (use YYYY-MM-DD)",
+      "BAD_NUMBER": "Not an amount",
+      "BAD_STATUS": "New assets can be IN_STOCK, IN_USE or ON_ORDER",
+      "BAD_TAG": "Asset tag: letters, digits, - . _ (2–30)",
+      "DUPLICATE_TAG": "This asset tag appears twice or already exists",
+      "OUT_OF_SCOPE": "Outside the sites and companies you can change",
+      "IGNORED_ON_UPDATE": "Ignored on update (use a transfer or check-out request, or SAP): {{message}}",
+      "SAP_CHANGE_QUEUED": "SAP asset: the change goes to the SAP posting queue",
+      "USER_IGNORED": "A user is set only when the status is IN_USE"
+    }
   }
 }

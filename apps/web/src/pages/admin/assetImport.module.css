@@ -1,0 +1,8 @@
+/* ADM-060 자산 일괄 업로드 */
+.bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.file { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; padding: 12px; }
+.filters { padding: 0 12px 10px; }
+.msgs { display: grid; gap: 2px; min-width: 220px; }
+.err { color: var(--bad, #dc2626); font-size: 13px; }
+.warn { color: var(--warn, #b45309); font-size: 13px; }

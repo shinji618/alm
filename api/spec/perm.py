@@ -151,7 +151,7 @@ OPS = {
     'listCompanies': 'admin.config', 'createCompany': 'admin.config', 'patchCompany': 'admin.config',
     'listCostCenters': 'master.read', 'createCostCenter': 'master.write', 'patchCostCenter': 'master.write',
     'listDeptManagers': 'admin.user', 'addDeptManager': 'admin.user', 'patchDeptManager': 'admin.user', 'removeDeptManager': 'admin.user',
-    'listAssetClasses': 'master.read', 'listCategories': 'master.read', 'createCategory': 'master.write', 'patchCategory': 'master.write', 'deleteCategory': 'master.write',
+    'listAssetClasses': 'master.read', 'listCategories': 'master.read', 'createCategory': 'master.write', 'patchCategory': 'master.write', 'deleteCategory': 'master.write', 'getAssetImportTemplate': 'asset.write', 'previewAssetImport': 'asset.write', 'applyAssetImport': 'asset.write',
     'listAuditLogs': 'audit.read', 'listSecurityEvents': 'audit.read',
 }
 # PDA endpoints: count.scan (TASK). SAP endpoints: sap.api. Filled by group in apply().

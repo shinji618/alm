@@ -189,7 +189,8 @@ export async function detail(c: PoolClient, p: Principal, id: string) {
 }
 
 // ---------------- 등록 ----------------
-export async function createAsset(c: PoolClient, p: Principal, body: unknown) {
+/** opts.assetTag: 일괄 업로드에서 기존 라벨 태그를 그대로 쓸 때(자동 채번 대신, 본문으로는 받지 않음) */
+export async function createAsset(c: PoolClient, p: Principal, body: unknown, opts: { assetTag?: string } = {}) {
   const k = new Check(body);
   const b = k.obj();
   const v = {
@@ -226,7 +227,7 @@ export async function createAsset(c: PoolClient, p: Principal, body: unknown) {
   }
 
   const id = randomUUID();
-  const [tag] = await nextAssetTags(c, p.tenantId, 1);
+  const tag = opts.assetTag ?? (await nextAssetTags(c, p.tenantId, 1))[0];
   await c.query(`INSERT INTO asset (id, tenant_id, asset_tag, description, category_id, model_id, serial_no, status, source, company_id, site_id, room_id,
       cost_center_id, asset_class_id, assigned_user_id, assigned_at, purchase_date, purchase_cost, warranty_end_date, hostname, notes, created_by, updated_by)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'MANUAL', $9, $10, $11, $12, $13, $14, CASE WHEN $14::uuid IS NULL THEN NULL ELSE now() END, $15, $16, $17, $18, $19, $20, $20)`,

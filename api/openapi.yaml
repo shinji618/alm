@@ -8192,6 +8192,126 @@ paths:
       security:
       - webAuth:
         - web
+  /admin/asset-import/template:
+    get:
+      operationId: getAssetImportTemplate
+      summary: 자산 일괄 업로드 템플릿
+      tags:
+      - WEB
+      description: 'ADM-060 · 테이블: category, model, company, room, cost_center, asset
+
+
+        - 시트 Assets(열 머리글) · Instructions(열별 작성 방법 영·한) · Codes(카테고리·모델·회사·룸·코스트센터 코드).
+
+        - withAssets=true면 Assets 시트에 수정 범위(asset.write) 안 현재 자산을 채운다(최대 2,000행) — 고쳐서 다시 올리면 수정.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: withAssets
+        in: query
+        required: false
+        description: 현재 자산 채우기
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: 성공(파일)
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                contentMediaType: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: asset.write
+      x-scope:
+        ASSET_MANAGER: ALL
+      security:
+      - webAuth:
+        - web
+  /admin/asset-import:preview:
+    post:
+      operationId: previewAssetImport
+      summary: 자산 일괄 업로드 미리보기
+      tags:
+      - WEB
+      description: 'ADM-060 · 테이블: asset
+
+
+        - 행마다 화면 등록(createAsset)·수정(patchAsset)과 같은 검사를 해 보고 모두 되돌린다(아무것도 바뀌지 않음).
+
+        - 자산태그가 비었거나 ALM에 없으면 신규(ALM에만, SAP 요청 없음 — 없는 태그를 적으면 그 태그 유지), 있으면 수정(적힌 칸만). 수정에서 회사·코스트센터·상태·사용자·구매가는 무시(경고).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetImportResult'
+        '400':
+          $ref: '#/components/responses/E400'
+        '413':
+          $ref: '#/components/responses/E413'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: asset.write
+      x-scope:
+        ASSET_MANAGER: ALL
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssetImportFile'
+  /admin/asset-import:apply:
+    post:
+      operationId: applyAssetImport
+      summary: 자산 일괄 업로드 적용
+      tags:
+      - WEB
+      description: 'ADM-060 · 테이블: asset, asset_event, asset_assignment, label_print_job, sap_posting
+
+
+        - 미리보기와 같은 파일을 다시 받는다. 오류 없는 행만 적용하고 오류 행은 건너뛴다(결과에 표시).
+
+        - 자산 이력에 CREATED·UPDATED. SAP 자산의 자산명·시리얼·룸 변경은 IF-AA-04 전기 대기열에 들어간다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetImportResult'
+        '400':
+          $ref: '#/components/responses/E400'
+        '413':
+          $ref: '#/components/responses/E413'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: asset.write
+      x-scope:
+        ASSET_MANAGER: ALL
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssetImportFile'
   /admin/settings:
     get:
       operationId: listSettings
@@ -17703,6 +17823,121 @@ components:
           type: string
           format: date
           description: 유효 종료일(null이면 무기한)
+    AssetImportFile:
+      type: object
+      description: 자산 일괄 업로드 파일
+      properties:
+        fileName:
+          type: string
+          maxLength: 200
+          description: 파일 이름(.xlsx 또는 .csv)
+        contentBase64:
+          type: string
+          description: 파일 내용(base64, 최대 700KB, 2,000행)
+      required:
+      - fileName
+      - contentBase64
+    AssetImportMessage:
+      type: object
+      description: 행 오류·경고
+      properties:
+        field:
+          type: string
+          description: 업로드 열(assetTag, description, categoryCode, model, serialNo, companyCode, roomCode, costCenterCode, status, assignedUserEmail, purchaseDate, purchaseCost, warrantyEndDate, hostname,
+            ipAddress, macAddress, notes, printLabel)
+        code:
+          type: string
+          description: REQUIRED, UNKNOWN_CATEGORY, UNKNOWN_MODEL, UNKNOWN_COMPANY, UNKNOWN_ROOM, UNKNOWN_COST_CENTER, UNKNOWN_USER, BAD_DATE, BAD_NUMBER, BAD_STATUS, BAD_TAG, DUPLICATE_TAG, OUT_OF_SCOPE,
+            IGNORED_ON_UPDATE, SAP_CHANGE_QUEUED, USER_IGNORED 또는 API 오류 코드(ALM-E…)
+        message:
+          type: string
+          description: 설명
+      required:
+      - code
+      - message
+    AssetImportRow:
+      type: object
+      description: 행 결과
+      properties:
+        rowNo:
+          type: integer
+          description: 엑셀 행 번호
+        action:
+          type: string
+          enum:
+          - CREATE
+          - UPDATE
+          - UNCHANGED
+          - SKIP
+          description: 신규·수정·변경 없음
+        status:
+          type: string
+          enum:
+          - OK
+          - WARN
+          - ERROR
+          description: 결과. ERROR 행은 적용하지 않는다
+        assetTag:
+          type: string
+          description: 자산태그(신규 자동 채번은 적용 결과에만)
+        description:
+          type: string
+          description: 자산명
+        changes:
+          type: array
+          items:
+            type: string
+          description: 수정할 열
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssetImportMessage'
+          description: 오류
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssetImportMessage'
+          description: 경고
+        assetId:
+          type: string
+          format: uuid
+          description: 만들거나 고친 자산(적용 결과)
+      required:
+      - rowNo
+      - action
+      - status
+      - errors
+      - warnings
+    AssetImportResult:
+      type: object
+      description: 미리보기·적용 결과
+      properties:
+        fileName:
+          type: string
+          description: 파일 이름
+        applied:
+          type: boolean
+          description: true = 적용 결과, false = 미리보기(아무것도 바뀌지 않음)
+        unknownColumns:
+          type: array
+          items:
+            type: string
+          description: 무시한 열 이름
+        summary:
+          type: object
+          additionalProperties: true
+          description: '{rows, create, update, unchanged, errors, warnings}'
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssetImportRow'
+          description: 행별 결과
+      required:
+      - fileName
+      - applied
+      - unknownColumns
+      - summary
+      - rows
     AccessToken:
       type: object
       description: 웹 액세스 토큰

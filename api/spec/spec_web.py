@@ -1674,6 +1674,41 @@ W('관리','PATCH','/admin/categories/{id}','patchCategory','자산 카테고리
 W('관리','DELETE','/admin/categories/{id}','deleteCategory','자산 카테고리 삭제',MA,None,None,'204, 404, 409','category, model, tax_class_map, audit_log','ADM-050',
   [ '이 카테고리로 등록된 자산(상태 무관)이 있으면 409 ALM-E318(메시지에 건수·자산태그 5건).', '하위 카테고리, 구매요청·실사 미등록 기록이 있어도 409(사용 안 함으로 바꾸도록 안내).',
     '카테고리의 모델과 재산세 내용연수 구분 매핑은 함께 지운다. 삭제는 감사 로그에 남는다.'],params=[ID()],ok='204')
+schema('AssetImportFile', '자산 일괄 업로드 파일', '''
+fileName | string(200) | Y | 파일 이름(.xlsx 또는 .csv)
+contentBase64 | string | Y | 파일 내용(base64, 최대 700KB, 2,000행)
+''')
+schema('AssetImportMessage', '행 오류·경고', '''
+field | string | N | 업로드 열(assetTag, description, categoryCode, model, serialNo, companyCode, roomCode, costCenterCode, status, assignedUserEmail, purchaseDate, purchaseCost, warrantyEndDate, hostname, ipAddress, macAddress, notes, printLabel)
+code | string | Y | REQUIRED, UNKNOWN_CATEGORY, UNKNOWN_MODEL, UNKNOWN_COMPANY, UNKNOWN_ROOM, UNKNOWN_COST_CENTER, UNKNOWN_USER, BAD_DATE, BAD_NUMBER, BAD_STATUS, BAD_TAG, DUPLICATE_TAG, OUT_OF_SCOPE, IGNORED_ON_UPDATE, SAP_CHANGE_QUEUED, USER_IGNORED 또는 API 오류 코드(ALM-E…)
+message | string | Y | 설명
+''')
+schema('AssetImportRow', '행 결과', '''
+rowNo | int | Y | 엑셀 행 번호
+action | enum(CREATE,UPDATE,UNCHANGED,SKIP) | Y | 신규·수정·변경 없음
+status | enum(OK,WARN,ERROR) | Y | 결과. ERROR 행은 적용하지 않는다
+assetTag | string | N | 자산태그(신규 자동 채번은 적용 결과에만)
+description | string | N | 자산명
+changes | [string] | N | 수정할 열
+errors | [AssetImportMessage] | Y | 오류
+warnings | [AssetImportMessage] | Y | 경고
+assetId | uuid | N | 만들거나 고친 자산(적용 결과)
+''')
+schema('AssetImportResult', '미리보기·적용 결과', '''
+fileName | string | Y | 파일 이름
+applied | bool | Y | true = 적용 결과, false = 미리보기(아무것도 바뀌지 않음)
+unknownColumns | [string] | Y | 무시한 열 이름
+summary | object | Y | {rows, create, update, unchanged, errors, warnings}
+rows | [AssetImportRow] | Y | 행별 결과
+''')
+W('관리','GET','/admin/asset-import/template','getAssetImportTemplate','자산 일괄 업로드 템플릿',AM,None,'@xlsx','200','category, model, company, room, cost_center, asset','ADM-060',
+  ['시트 Assets(열 머리글) · Instructions(열별 작성 방법 영·한) · Codes(카테고리·모델·회사·룸·코스트센터 코드).', 'withAssets=true면 Assets 시트에 수정 범위(asset.write) 안 현재 자산을 채운다(최대 2,000행) — 고쳐서 다시 올리면 수정.'],
+  params=[('withAssets','query','bool','N','현재 자산 채우기')])
+W('관리','POST','/admin/asset-import:preview','previewAssetImport','자산 일괄 업로드 미리보기',AM,'AssetImportFile','AssetImportResult','200, 400, 413','asset','ADM-060',
+  ['행마다 화면 등록(createAsset)·수정(patchAsset)과 같은 검사를 해 보고 모두 되돌린다(아무것도 바뀌지 않음).',
+   '자산태그가 비었거나 ALM에 없으면 신규(ALM에만, SAP 요청 없음 — 없는 태그를 적으면 그 태그 유지), 있으면 수정(적힌 칸만). 수정에서 회사·코스트센터·상태·사용자·구매가는 무시(경고).'])
+W('관리','POST','/admin/asset-import:apply','applyAssetImport','자산 일괄 업로드 적용',AM,'AssetImportFile','AssetImportResult','200, 400, 413','asset, asset_event, asset_assignment, label_print_job, sap_posting','ADM-060',
+  ['미리보기와 같은 파일을 다시 받는다. 오류 없는 행만 적용하고 오류 행은 건너뛴다(결과에 표시).', '자산 이력에 CREATED·UPDATED. SAP 자산의 자산명·시리얼·룸 변경은 IF-AA-04 전기 대기열에 들어간다.'])
 W('관리','GET','/admin/settings','listSettings',  '설정',SA,None,'SettingList','200','setting','관리',[ '-'])
 W('관리','PUT','/admin/settings/{key}','putSetting','설정 저장',SA,'SettingRow','SettingRow','200, 400','setting, audit_log','관리',[ '키별 값 형식 검사(SettingRow.value 설명). 모르는 키는 400 ALM-E100.'],params=[('key','path','string(60)','Y','키')])
 W('관리','GET','/admin/audit-logs','listAuditLogs','감사 로그 조회','SYS_ADMIN, ASSET_ACCOUNTANT',None,'AuditRowList','200','audit_log','관리',[ '10년 보관. 13개월 지난 기간은 보관 저장소에서 비동기 조회(내보내기로 안내).'],

@@ -10,6 +10,7 @@ import * as companies from '../admin/companies';
 import * as fin from '../admin/finmasters';
 import * as cats from '../admin/categories';
 import * as dm from '../admin/deptmanagers';
+import * as imp from '../admin/assetImport';
 import { AlmContext, Ctx, Operation, txOf } from './context';
 import { DB, PRINCIPALS } from './tokens';
 
@@ -148,6 +149,27 @@ export class AdminController {
   patchCategory(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) {
     return this.db.withTx(txOf(ctx), (c) => cats.patchCategory(c, id, ctx.principal!.userId, body));
   }
+
+  // ---- 자산 일괄 업로드(ADM-060) ----
+  @Get('asset-import/template')
+  @Operation('getAssetImportTemplate')
+  async importTemplate(@Ctx() ctx: AlmContext, @Query('withAssets') withAssets: string | undefined, @Res() res: Response) {
+    const x = await this.db.withTx(txOf(ctx), (c) => imp.importTemplate(c, ctx.principal!, withAssets === 'true'));
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${x.fileName}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(x.body);
+  }
+
+  @Post('asset-import\\:preview')
+  @HttpCode(200)
+  @Operation('previewAssetImport')
+  previewImport(@Ctx() ctx: AlmContext, @Body() body: unknown) { return this.db.withTx(txOf(ctx), (c) => imp.previewImport(c, ctx.principal!, body)); }
+
+  @Post('asset-import\\:apply')
+  @HttpCode(200)
+  @Operation('applyAssetImport')
+  applyImport(@Ctx() ctx: AlmContext, @Body() body: unknown) { return this.db.withTx(txOf(ctx), (c) => imp.applyImport(c, ctx.principal!, body)); }
 
   @Delete('categories/:id')
   @HttpCode(204)
