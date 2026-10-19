@@ -2,6 +2,7 @@ package com.bsg.alm.pda
 
 import com.bsg.alm.pda.net.PdaAssetDetail
 import com.bsg.alm.pda.net.json
+import com.bsg.alm.pda.ui.bundleNote
 import com.bsg.alm.pda.ui.eventLabel
 import com.bsg.alm.pda.ui.statusLabel
 import org.junit.Assert.assertEquals
@@ -22,6 +23,15 @@ class AssetLookupTest {
             "count":{"campaignCode":"PI26Q4","expectedRoomCode":"ATL-101","result":"PENDING"},
             "events":[{"eventType":"ASSIGNED","occurredAt":"2026-10-19T12:00:00Z","channel":"UI","actorName":"Asset Mgr"}]}""")
         assertEquals("PI26Q4", a.count?.campaignCode); assertEquals(700.5, a.netBookValue!!, 0.001); assertEquals("Asset Mgr", a.events[0].actorName)
+    }
+
+    @Test fun bundleAndComponent() {
+        val b = json.decodeFromString(PdaAssetDetail.serializer(), """{"assetTag":"AT-000200","status":"IN_STOCK","limited":false,"isBundle":true,"componentCount":2,
+            "components":[{"assetTag":"AT-000201","description":"Display","status":"IN_STOCK","roomCode":"ATL-101"},{"assetTag":"AT-000202","status":"IN_USE"}]}""")
+        assertTrue(b.isBundle); assertEquals(2, b.components.size); assertNull(b.bundle); assertEquals("ATL-101", b.components[0].roomCode)
+        val c = json.decodeFromString(PdaAssetDetail.serializer(), """{"assetTag":"AT-000201","status":"IN_STOCK","bundle":{"assetTag":"AT-000200","sapAssetNo":"1000060"}}""")
+        assertEquals("AT-000200", c.bundle?.assetTag); assertTrue(!c.isBundle)
+        assertEquals("Part of bundle AT-000200. Managed in ALM only — SAP sees the bundle (1000060) as one asset.", bundleNote("AT-000200", "1000060"))
     }
 
     @Test fun labels() {

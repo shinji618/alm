@@ -368,7 +368,11 @@ export async function pdaGetAsset(c: PoolClient, p: Principal, tag: string) {
       JOIN count_campaign cc ON cc.id = ci.campaign_id AND cc.status IN ('COUNTING', 'REVIEW') JOIN room er ON er.id = ci.expected_room_id
      WHERE ci.asset_id = $1 AND EXISTS (SELECT 1 FROM count_task t WHERE t.campaign_id = ci.campaign_id AND t.assignee_id = $2)
      ORDER BY cc.key_date DESC LIMIT 1`, [a.id, p.userId])).rows[0];
-  if (!inScope && !mine) {
+  // Bundle은 실사 대상이 아니다: 구성품이 내 실사 대상이면 Bundle도 상세로
+  const bundleMine = !inScope && !mine && a.is_bundle && !!(await c.query(`SELECT 1 FROM count_item ci JOIN asset x ON x.id = ci.asset_id AND x.parent_asset_id = $1
+      JOIN count_campaign cc ON cc.id = ci.campaign_id AND cc.status IN ('COUNTING', 'REVIEW')
+     WHERE EXISTS (SELECT 1 FROM count_task t WHERE t.campaign_id = ci.campaign_id AND t.assignee_id = $2) LIMIT 1`, [a.id, p.userId])).rowCount;
+  if (!inScope && !mine && !bundleMine) {
     return { assetTag: a.asset_tag, status: a.status, siteCode: a.site_code ?? undefined, limited: true };
   }
   const last = (await c.query(`SELECT ci.counted_at, cc.campaign_code, fr.room_code FROM count_item ci JOIN count_campaign cc ON cc.id = ci.campaign_id
@@ -377,7 +381,14 @@ export async function pdaGetAsset(c: PoolClient, p: Principal, tag: string) {
   const events = (await c.query(`SELECT e.event_type, e.occurred_at, e.channel, u.display_name FROM asset_event e LEFT JOIN app_user u ON u.id = e.actor_id
      WHERE e.asset_id = $1 ORDER BY e.occurred_at DESC, e.created_at DESC LIMIT 5`, [a.id])).rows;
   const amount = can(p, 'amount.read');
+  // Bundle: 구성품이면 소속 Bundle, Bundle이면 구성품(SAP에는 Bundle 1건)
+  const bundle = a.parent_asset_id ? (await c.query('SELECT asset_tag, description, sap_asset_no, sap_sub_no FROM asset WHERE id = $1', [a.parent_asset_id])).rows[0] : undefined;
+  const comps = a.is_bundle ? (await c.query(`SELECT x.asset_tag, x.description, x.status, r.room_code, count(*) OVER () AS n FROM asset x LEFT JOIN room r ON r.id = x.room_id
+     WHERE x.parent_asset_id = $1 ORDER BY x.asset_tag LIMIT 50`, [a.id])).rows : [];
   return clean({
+    isBundle: a.is_bundle || undefined, componentCount: a.is_bundle ? Number(comps[0]?.n ?? 0) : undefined,
+    bundle: bundle ? clean({ assetTag: bundle.asset_tag, description: bundle.description, sapAssetNo: sapNo(bundle.sap_asset_no, bundle.sap_sub_no) }) : undefined,
+    components: a.is_bundle ? comps.map((x) => clean({ assetTag: x.asset_tag, description: x.description, status: x.status, roomCode: x.room_code ?? undefined })) : undefined,
     assetTag: a.asset_tag, status: a.status, stage: a.stage ?? undefined, limited: false, description: a.description, categoryName: a.category_name,
     model: a.model_name ? `${a.manufacturer ?? ''} ${a.model_name}`.trim() : undefined, serialNo: a.serial_no, hostname: a.hostname,
     companyCode: a.company_code, siteCode: a.site_code, siteName: a.site_name, roomCode: a.room_code, roomName: a.room_name,

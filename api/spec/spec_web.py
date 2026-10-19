@@ -1719,8 +1719,8 @@ fileName | string(200) | Y | 파일 이름(.xlsx 또는 .csv)
 contentBase64 | string | Y | 파일 내용(base64, 최대 700KB, 2,000행)
 ''')
 schema('AssetImportMessage', '행 오류·경고', '''
-field | string | N | 업로드 열(assetTag, description, categoryCode, model, serialNo, companyCode, roomCode, costCenterCode, status, assignedUserEmail, purchaseDate, purchaseCost, warrantyEndDate, hostname, ipAddress, macAddress, notes, printLabel)
-code | string | Y | REQUIRED, UNKNOWN_CATEGORY, UNKNOWN_MODEL, UNKNOWN_COMPANY, UNKNOWN_ROOM, UNKNOWN_COST_CENTER, UNKNOWN_USER, BAD_DATE, BAD_NUMBER, BAD_STATUS, BAD_TAG, DUPLICATE_TAG, OUT_OF_SCOPE, IGNORED_ON_UPDATE, SAP_CHANGE_QUEUED, USER_IGNORED 또는 API 오류 코드(ALM-E…)
+field | string | N | 업로드 열(assetTag, description, categoryCode, model, serialNo, companyCode, roomCode, costCenterCode, status, assignedUserEmail, purchaseDate, purchaseCost, warrantyEndDate, hostname, ipAddress, macAddress, notes, printLabel, isBundle, bundleTag)
+code | string | Y | REQUIRED, UNKNOWN_CATEGORY, UNKNOWN_MODEL, UNKNOWN_COMPANY, UNKNOWN_ROOM, UNKNOWN_COST_CENTER, UNKNOWN_USER, BAD_DATE, BAD_NUMBER, BAD_STATUS, BAD_TAG, DUPLICATE_TAG, OUT_OF_SCOPE, IGNORED_ON_UPDATE, SAP_CHANGE_QUEUED, USER_IGNORED, UNKNOWN_BUNDLE, NOT_BUNDLE, BUNDLE_COMPONENT 또는 API 오류 코드(ALM-E…)
 message | string | Y | 설명
 ''')
 schema('AssetImportRow', '행 결과', '''

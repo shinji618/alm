@@ -1269,7 +1269,7 @@
     "templateWithAssets": "Template with current assets",
     "downloaded": "Downloaded {{name}}",
     "step2": "2. Upload the file",
-    "step2Hint": "xlsx or CSV, up to 2,000 rows and 700 KB. An empty or new asset tag creates an asset; an existing tag updates only the filled cells.",
+    "step2Hint": "xlsx or CSV, up to 2,000 rows and 700 KB. An empty or new asset tag creates an asset; an existing tag updates only the filled cells. Bundles: isBundle = Y creates a bundle; bundleTag puts the asset into a bundle.",
     "chooseFile": "Choose file",
     "checking": "Checking…",
     "tooLarge": "The file is larger than 700 KB. Split it into smaller files.",
@@ -1336,7 +1336,10 @@
       "OUT_OF_SCOPE": "Outside the sites and companies you can change",
       "IGNORED_ON_UPDATE": "Ignored on update (use a transfer or check-out request, or SAP): {{message}}",
       "SAP_CHANGE_QUEUED": "SAP asset: the change goes to the SAP posting queue",
-      "USER_IGNORED": "A user is set only when the status is IN_USE"
+      "USER_IGNORED": "A user is set only when the status is IN_USE",
+      "UNKNOWN_BUNDLE": "Bundle not found (a bundle in ALM or an isBundle row in this file)",
+      "NOT_BUNDLE": "Not an active bundle asset",
+      "BUNDLE_COMPONENT": "Cannot be a component of this bundle: {{message}}"
     }
   }
 }

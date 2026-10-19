@@ -3,7 +3,9 @@
 //   - ALM에 있는 태그 → 수정. 적힌 칸만 바꾼다(빈 칸은 그대로). 수정 가능: 자산명·모델·시리얼·룸·호스트명·IP·MAC·보증 만료·메모
 //     회사·코스트센터·상태·사용자·구매가 등은 수정에서 무시(경고) — 이관·할당 요청과 SAP 기준 필드 규칙을 지킨다
 //   - 미리보기(:preview)와 적용(:apply)은 같은 파일을 받는다. 행마다 SAVEPOINT에서 화면 등록·수정과 같은 함수(createAsset·patchAsset)를 돌린다:
-//     미리보기는 항상 되돌리고, 적용은 오류 없는 행만 남긴다(오류 행은 건너뜀)
+//     오류 행은 그 행만 되돌린다. 미리보기는 끝에 전체를 되돌리고, 적용은 오류 없는 행만 남긴다(오류 행은 건너뜀)
+//   - Bundle(2026-10-19): isBundle=Y 행은 Bundle로 신규 등록(모델 불필요). bundleTag = 넣을 Bundle 태그(ALM에 있거나 같은 파일의 Bundle 행).
+//     Bundle 행을 먼저 처리한다. 미리보기도 적용과 같이 행을 반영해 보고(같은 파일 Bundle 참조 확인) 마지막에 전부 되돌린다
 //   권한 asset.write(범위: 역할 행의 회사코드·사이트). 최대 2,000행, 파일 700KB
 import type { PoolClient } from 'pg';
 import { AlmError, E } from '../common/errors';
@@ -11,14 +13,15 @@ import { Check } from '../common/validate';
 import type { Principal } from '../auth/principal';
 import { assetScope, Params } from '../auth/scope';
 import { createAsset, patchAsset } from '../assets/assets';
+import { attachComponents } from '../assets/bundles';
 import { buildXlsx, type Cell } from '../common/xlsx';
 import { excelDate, readCsv, readXlsx } from '../common/xlsxRead';
 
 export const COLUMNS = ['assetTag', 'description', 'categoryCode', 'model', 'serialNo', 'companyCode', 'roomCode', 'costCenterCode', 'status',
-  'assignedUserEmail', 'purchaseDate', 'purchaseCost', 'warrantyEndDate', 'hostname', 'ipAddress', 'macAddress', 'notes', 'printLabel'] as const;
+  'assignedUserEmail', 'purchaseDate', 'purchaseCost', 'warrantyEndDate', 'hostname', 'ipAddress', 'macAddress', 'notes', 'printLabel', 'isBundle', 'bundleTag'] as const;
 type Col = (typeof COLUMNS)[number];
 const REQUIRED_NEW: Col[] = ['description', 'categoryCode', 'model', 'companyCode', 'roomCode', 'costCenterCode'];
-const UPDATE_COLS: Col[] = ['description', 'model', 'serialNo', 'roomCode', 'hostname', 'ipAddress', 'macAddress', 'warrantyEndDate', 'notes'];
+const UPDATE_COLS: Col[] = ['description', 'model', 'serialNo', 'roomCode', 'hostname', 'ipAddress', 'macAddress', 'warrantyEndDate', 'notes', 'bundleTag'];
 const DATE_COLS: Col[] = ['purchaseDate', 'warrantyEndDate'];
 const MAX_ROWS = 2000;
 const MAX_BYTES = 700 * 1024;
@@ -105,6 +108,8 @@ const FIELD_COL: Record<string, Col> = { categoryId: 'categoryCode', modelId: 'm
   assignedUserId: 'assignedUserEmail', description: 'description', serialNo: 'serialNo', status: 'status', purchaseDate: 'purchaseDate', purchaseCost: 'purchaseCost',
   warrantyEndDate: 'warrantyEndDate', hostname: 'hostname', ipAddress: 'ipAddress', macAddress: 'macAddress', notes: 'notes' };
 function fromError(e: unknown): RowMessage[] {
+  const rm = (e as { rowMsg?: RowMessage })?.rowMsg;
+  if (rm) return [rm];
   // 같은 태그가 이미 있음(자동 채번과 적힌 태그가 겹침 등)
   if ((e as { code?: string })?.code === '23505') return [{ field: 'assetTag', code: 'DUPLICATE_TAG', message: '이미 있는 자산태그입니다' }];
   if (!(e instanceof AlmError)) throw e;
@@ -122,14 +127,37 @@ async function run(c: PoolClient, p: Principal, body: unknown, apply: boolean) {
   const L = await lookups(c);
   const tags = f.rows.map((r) => r.v.assetTag?.toUpperCase()).filter((x): x is string => !!x);
   const existing = new Map((await c.query(`SELECT a.id, upper(a.asset_tag) AS k, a.asset_tag, a.version, a.category_id, a.description, a.serial_no, a.hostname,
-      host(a.ip_address) AS ip, a.mac_address, a.notes, a.model_id, a.room_id, to_char(a.warranty_end_date, 'YYYY-MM-DD') AS warranty FROM asset a WHERE upper(a.asset_tag) = ANY($1)`, [tags])).rows
+      host(a.ip_address) AS ip, a.mac_address, a.notes, a.model_id, a.room_id, to_char(a.warranty_end_date, 'YYYY-MM-DD') AS warranty, a.is_bundle,
+      (SELECT upper(b.asset_tag) FROM asset b WHERE b.id = a.parent_asset_id) AS bundle_tag FROM asset a WHERE upper(a.asset_tag) = ANY($1)`, [tags])).rows
     .map((r) => [r.k as string, r]));
   const ps = new Params([[...existing.values()].map((r) => r.id)]);
   const writable = new Set((await c.query(`SELECT a.id FROM asset a WHERE a.id = ANY($1::uuid[]) AND ${assetScope(p, 'asset.write', ps)}`, ps.values)).rows.map((r) => r.id as string));
   const seen = new Map<string, number>();
   const results: RowResult[] = [];
+  // Bundle 행 먼저(구성품 행이 같은 파일의 Bundle을 참조할 수 있게). 미리보기는 전체를 마지막에 되돌린다
+  const ordered = [...f.rows.filter((r) => yes(r.v.isBundle)), ...f.rows.filter((r) => !yes(r.v.isBundle))];
+  if (!apply) await c.query('SAVEPOINT imp_preview');
+  // bundleTag → Bundle(범위 안·활성). 이 실행에서 만든 Bundle도 찾는다
+  const bundleOf = async (tag: string): Promise<{ row?: Record<string, any>; code?: string; message?: string }> => {
+    const bp = new Params([tag.toUpperCase()]);
+    const b = (await c.query(`SELECT a.id, a.asset_tag, a.company_id, a.is_bundle, a.status FROM asset a WHERE upper(a.asset_tag) = $1 AND ${assetScope(p, 'asset.write', bp)}`, bp.values)).rows[0];
+    if (!b) return { code: 'UNKNOWN_BUNDLE', message: `Bundle을 찾을 수 없습니다(ALM 또는 이 파일의 isBundle 행): ${tag}` };
+    if (!b.is_bundle) return { code: 'NOT_BUNDLE', message: `Bundle 자산이 아닙니다: ${tag}` };
+    if (['RETIRED', 'DISPOSED'].includes(b.status)) return { code: 'NOT_BUNDLE', message: `폐기·처분된 Bundle입니다: ${tag}` };
+    return { row: b };
+  };
+  // 구성품으로 넣기: 안 되면 행 오류(bundleTag 열)
+  const attach = async (_res: RowResult, assetId: string, tag: string) => {
+    const b = await bundleOf(tag);
+    if (!b.row) throw Object.assign(new Error(b.message), { rowMsg: { field: 'bundleTag' as Col, code: b.code!, message: b.message! } });
+    try { await attachComponents(c, p, b.row, { ids: [assetId], tags: [] }); } catch (e) {
+      const m = e instanceof AlmError ? ((e.detail?.errors as { message: string }[] | undefined)?.[0]?.message ?? e.message) : undefined;
+      if (m === undefined) throw e;
+      throw Object.assign(new Error(m), { rowMsg: { field: 'bundleTag' as Col, code: 'BUNDLE_COMPONENT', message: m } });
+    }
+  };
 
-  for (const { rowNo, v } of f.rows) {
+  for (const { rowNo, v } of ordered) {
     const res: RowResult = { rowNo, action: 'SKIP', status: 'OK', assetTag: v.assetTag, description: v.description, errors: [], warnings: [] };
     results.push(res);
     const err = (field: Col | undefined, code: string, message: string) => res.errors.push({ field, code, message });
@@ -161,15 +189,19 @@ async function run(c: PoolClient, p: Principal, body: unknown, apply: boolean) {
       if (v.warrantyEndDate && date(v.warrantyEndDate)) put('warrantyEndDate', 'warrantyEndDate', date(v.warrantyEndDate), cur.warranty);
       if (v.model) { const id = L.model(v.model, cur.category_id); if (!id) err('model', 'UNKNOWN_MODEL', `이 자산 카테고리의 활성 모델이 아닙니다: ${v.model}`); else put('model', 'modelId', id, cur.model_id); }
       if (v.roomCode) { const id = L.room(v.roomCode); if (!id) err('roomCode', 'UNKNOWN_ROOM', `활성 룸이 아닙니다: ${v.roomCode}`); else put('roomCode', 'roomId', id, cur.room_id); }
+      if (v.isBundle && yes(v.isBundle) !== !!cur.is_bundle) warn('isBundle', 'IGNORED_ON_UPDATE', 'isBundle');
+      const toBundle = v.bundleTag && v.bundleTag.toUpperCase() !== cur.bundle_tag ? v.bundleTag : undefined;
+      if (toBundle) changes.push('bundleTag');
       res.changes = changes;
       if (!res.errors.length && !changes.length) { res.action = 'UNCHANGED'; }
       if (!res.errors.length && changes.length) {
         await c.query('SAVEPOINT imp');
         try {
-          const out = await patchAsset(c, p, cur.id, String(cur.version), patch);
+          const out = Object.keys(patch).length ? await patchAsset(c, p, cur.id, String(cur.version), patch) : { createdRequests: [] };
+          if (toBundle) await attach(res, cur.id, toBundle);
           if (out.createdRequests?.length) warn(undefined, 'SAP_CHANGE_QUEUED', 'SAP 자산이라 변경(자산명·시리얼·룸)이 SAP 전기 대기열에 들어갑니다');
           res.assetId = cur.id;
-          await c.query(apply ? 'RELEASE SAVEPOINT imp' : 'ROLLBACK TO SAVEPOINT imp');
+          await c.query('RELEASE SAVEPOINT imp');
         } catch (e) {
           await c.query('ROLLBACK TO SAVEPOINT imp');
           res.errors.push(...fromError(e));
@@ -179,7 +211,9 @@ async function run(c: PoolClient, p: Principal, body: unknown, apply: boolean) {
       // ---- 신규 ----
       res.action = 'CREATE';
       if (v.assetTag && !TAG.test(v.assetTag)) err('assetTag', 'BAD_TAG', '자산태그는 영문·숫자·- . _ 2~30자입니다');
-      for (const col of REQUIRED_NEW) if (!v[col]) err(col, 'REQUIRED', '신규 등록에 필요합니다');
+      const isBundle = yes(v.isBundle);
+      for (const col of REQUIRED_NEW) if (!v[col] && !(col === 'model' && isBundle)) err(col, 'REQUIRED', '신규 등록에 필요합니다');
+      if (isBundle && v.bundleTag) err('bundleTag', 'BUNDLE_COMPONENT', 'Bundle은 다른 Bundle에 넣을 수 없습니다');
       const catId = v.categoryCode ? L.cat(v.categoryCode) : undefined;
       if (v.categoryCode && !catId) err('categoryCode', 'UNKNOWN_CATEGORY', `활성 카테고리 코드가 아닙니다: ${v.categoryCode}`);
       const modelId = v.model ? L.model(v.model, catId) : undefined;
@@ -199,15 +233,16 @@ async function run(c: PoolClient, p: Principal, body: unknown, apply: boolean) {
       if (!res.errors.length) {
         await c.query('SAVEPOINT imp');
         try {
-          const out = await createAsset(c, p, { categoryId: catId, modelId, description: v.description, serialNo: v.serialNo, companyId: coId, roomId,
+          const out = await createAsset(c, p, { ...(isBundle ? { isBundle: true } : {}), categoryId: catId, modelId, description: v.description, serialNo: v.serialNo, companyId: coId, roomId,
             costCenterId: ccId, status, assignedUserId: status === 'IN_USE' ? userId : undefined, purchaseDate: date(v.purchaseDate) ?? undefined,
             purchaseCost: cost, warrantyEndDate: date(v.warrantyEndDate) ?? undefined, hostname: v.hostname, notes: v.notes,
             printLabel: yes(v.printLabel), registerInSap: false }, v.assetTag ? { assetTag: v.assetTag.toUpperCase() } : {});
           const a = out.asset as { id: string; assetTag: string };
           res.assetId = a.id;
           res.assetTag = a.assetTag;
+          if (v.bundleTag) await attach(res, a.id, v.bundleTag);
           if (v.status && userId && status !== 'IN_USE') warn('assignedUserEmail', 'USER_IGNORED', 'IN_USE가 아니면 사용자는 넣지 않습니다');
-          await c.query(apply ? 'RELEASE SAVEPOINT imp' : 'ROLLBACK TO SAVEPOINT imp');
+          await c.query('RELEASE SAVEPOINT imp');
           if (!apply) res.assetTag = v.assetTag?.toUpperCase();   // 미리보기: 자동 채번은 적용 때 정해진다
         } catch (e) {
           await c.query('ROLLBACK TO SAVEPOINT imp');
@@ -218,6 +253,8 @@ async function run(c: PoolClient, p: Principal, body: unknown, apply: boolean) {
     res.status = res.errors.length ? 'ERROR' : res.warnings.length ? 'WARN' : 'OK';
     if (res.errors.length && apply) res.assetId = undefined;
   }
+  if (!apply) await c.query('ROLLBACK TO SAVEPOINT imp_preview');
+  results.sort((a, b) => a.rowNo - b.rowNo);
   const count = (fn: (r: RowResult) => boolean) => results.filter(fn).length;
   return {
     fileName: f.fileName, applied: apply, unknownColumns: f.unknownColumns,
@@ -247,6 +284,8 @@ const HELP: [Col, string, string][] = [
   ['macAddress', 'MAC address AA:BB:CC:DD:EE:FF (update).', 'MAC(수정)'],
   ['notes', 'Notes.', '메모'],
   ['printLabel', 'New only: Y = add to the label print queue.', '신규만: Y면 라벨 출력 대기열에 추가'],
+  ['isBundle', 'New only: Y = register a bundle asset (no model needed). Components are registered in SAP as this one asset.', '신규만: Y면 Bundle 자산으로 등록(모델 불필요). 구성품을 SAP에 이 자산 1건으로 등록'],
+  ['bundleTag', 'Tag of the bundle this asset belongs to: a bundle in ALM or an isBundle row in this file (give that row a tag). Only assets not in SAP.', '넣을 Bundle 태그(ALM의 Bundle 또는 이 파일의 isBundle 행 — 그 행에 태그를 적으세요). SAP에 없는 자산만'],
 ];
 
 export async function importTemplate(c: PoolClient, p: Principal, withAssets: boolean) {
@@ -255,15 +294,16 @@ export async function importTemplate(c: PoolClient, p: Principal, withAssets: bo
   if (withAssets) {
     const ps = new Params();
     for (const r of (await c.query(`SELECT a.asset_tag, a.description, cat.category_code, coalesce(m.part_no, m.manufacturer || ' ' || m.model_name) AS model, a.serial_no,
-        co.company_code, rm.room_code, cc.cost_center_code, a.status, to_char(a.warranty_end_date, 'YYYY-MM-DD') AS warranty, a.hostname, host(a.ip_address) AS ip, a.mac_address, a.notes
+        co.company_code, rm.room_code, cc.cost_center_code, a.status, to_char(a.warranty_end_date, 'YYYY-MM-DD') AS warranty, a.hostname, host(a.ip_address) AS ip, a.mac_address, a.notes,
+        a.is_bundle, (SELECT b.asset_tag FROM asset b WHERE b.id = a.parent_asset_id) AS bundle_tag
       FROM asset a JOIN category cat ON cat.id = a.category_id JOIN company co ON co.id = a.company_id LEFT JOIN model m ON m.id = a.model_id
       LEFT JOIN room rm ON rm.id = a.room_id LEFT JOIN cost_center cc ON cc.id = a.cost_center_id
      WHERE a.status NOT IN ('RETIRED', 'DISPOSED') AND ${assetScope(p, 'asset.write', ps)} ORDER BY a.asset_tag LIMIT ${MAX_ROWS}`, ps.values)).rows) {
       data.push([r.asset_tag, r.description, r.category_code, r.model, r.serial_no, r.company_code, r.room_code, r.cost_center_code, r.status, null, null, null,
-        r.warranty, r.hostname, r.ip, r.mac_address, r.notes, null]);
+        r.warranty, r.hostname, r.ip, r.mac_address, r.notes, null, r.is_bundle ? 'Y' : null, r.bundle_tag]);
     }
   }
-  sheets.push({ name: 'Assets', rows: data, widths: [14, 32, 12, 26, 18, 10, 12, 12, 11, 26, 12, 12, 14, 16, 15, 18, 30, 9] });
+  sheets.push({ name: 'Assets', rows: data, widths: [14, 32, 12, 26, 18, 10, 12, 12, 11, 26, 12, 12, 14, 16, 15, 18, 30, 9, 9, 14] });
   sheets.push({ name: 'Instructions', rows: [['Column', 'How to fill (English)', '작성 방법(한국어)'], ...HELP.map((h) => [h[0], h[1], h[2]] as Cell[]),
     [], ['Rules', 'Upload the Assets sheet (xlsx or CSV, up to 2,000 rows). Preview first; only rows without errors are applied. New assets are registered in ALM only (no SAP request).',
       'Assets 시트를 올립니다(xlsx·CSV, 최대 2,000행). 먼저 미리보기, 오류 없는 행만 적용. 신규는 ALM에만 등록(SAP 요청 없음)'],

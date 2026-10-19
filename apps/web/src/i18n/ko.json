@@ -1269,7 +1269,7 @@
     "templateWithAssets": "현재 자산이 들어간 템플릿",
     "downloaded": "{{name}}을(를) 내려받았습니다",
     "step2": "2. 파일 올리기",
-    "step2Hint": "xlsx 또는 CSV, 최대 2,000행·700KB. 자산태그가 비었거나 새 태그면 신규, 있는 태그면 적힌 칸만 수정합니다.",
+    "step2Hint": "xlsx 또는 CSV, 최대 2,000행·700KB. 자산태그가 비었거나 새 태그면 신규, 있는 태그면 적힌 칸만 수정합니다. Bundle: isBundle = Y면 Bundle 등록, bundleTag로 구성품 연결.",
     "chooseFile": "파일 선택",
     "checking": "검사 중…",
     "tooLarge": "파일이 700KB보다 큽니다. 나눠서 올리세요.",
@@ -1336,7 +1336,10 @@
       "OUT_OF_SCOPE": "수정 권한 범위(사이트·회사) 밖입니다",
       "IGNORED_ON_UPDATE": "수정에서는 무시합니다(이관·할당 요청 또는 SAP에서 관리): {{message}}",
       "SAP_CHANGE_QUEUED": "SAP 자산이라 변경이 SAP 전기 대기열에 들어갑니다",
-      "USER_IGNORED": "사용자는 상태가 IN_USE일 때만 넣습니다"
+      "USER_IGNORED": "사용자는 상태가 IN_USE일 때만 넣습니다",
+      "UNKNOWN_BUNDLE": "Bundle을 찾을 수 없습니다(ALM의 Bundle 또는 이 파일의 isBundle 행)",
+      "NOT_BUNDLE": "활성 Bundle 자산이 아닙니다",
+      "BUNDLE_COMPONENT": "이 Bundle의 구성품이 될 수 없습니다: {{message}}"
     }
   }
 }

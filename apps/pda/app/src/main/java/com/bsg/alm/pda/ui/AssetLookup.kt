@@ -2,6 +2,7 @@ package com.bsg.alm.pda.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -96,7 +97,8 @@ fun AssetLookupScreen(vm: AppViewModel, online: Boolean, pending: Int) {
                 is Lookup.Failed -> Notice("Could not look up ${s.tag}", s.message, Bad)
                 is Lookup.Local -> LocalDetail(s.item)
                 // 실사 중 스캔 화면에서 온 경우에만 실사 확인(PDA-05)으로 이어 준다
-                is Lookup.Found -> AssetDetail(s.asset, onCount = if (vm.lookupBack == Screen.SCAN && room != null) { t -> vm.openConfirm(t) } else null)
+                is Lookup.Found -> AssetDetail(s.asset, onCount = if (vm.lookupBack == Screen.SCAN && room != null) { t -> vm.openConfirm(t) } else null,
+                    onOpen = { t -> vm.lookup(t) })
             }
             Spacer(Modifier.height(16.dp))
         }
@@ -112,7 +114,7 @@ private fun Notice(title: String, body: String, color: Color) {
 }
 
 @Composable
-private fun AssetDetail(a: PdaAssetDetail, onCount: ((String) -> Unit)?) {
+private fun AssetDetail(a: PdaAssetDetail, onCount: ((String) -> Unit)?, onOpen: (String) -> Unit = {}) {
     Spacer(Modifier.height(4.dp))
     Text(a.assetTag, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 22.sp)
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -125,6 +127,28 @@ private fun AssetDetail(a: PdaAssetDetail, onCount: ((String) -> Unit)?) {
     }
     a.description?.let { Text(it, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp)) }
     Text(listOfNotNull(a.categoryName, a.model).joinToString(" · "), color = Muted)
+
+    // Bundle: 구성품은 소속 Bundle로, Bundle은 구성품으로 이동할 수 있다
+    a.bundle?.let { b ->
+        Notice("Bundle component", bundleNote(b.assetTag, b.sapAssetNo), Blue)
+        TextButton(onClick = { onOpen(b.assetTag) }) { Text("Open bundle ${b.assetTag}") }
+    }
+    if (a.isBundle) {
+        Notice("Bundle asset", "SAP sees this bundle as one asset. Count its components one by one — the bundle label itself is not counted.", Blue)
+        Section("Components (${a.componentCount ?: a.components.size})")
+        if (a.components.isEmpty()) Text("No components.", color = Muted)
+        a.components.forEach { c ->
+            Row(Modifier.fillMaxWidth().clickable { onOpen(c.assetTag) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(c.assetTag, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium)
+                    Text(listOfNotNull(c.description, c.roomCode).joinToString(" · "), color = Muted, fontSize = 12.sp)
+                }
+                Pill(statusLabel(c.status), statusColor(c.status))
+            }
+            HorizontalDivider()
+        }
+        if ((a.componentCount ?: 0) > a.components.size) Text("Showing the first ${a.components.size}.", color = Muted, fontSize = 12.sp)
+    }
 
     a.count?.let { c ->
         Section("Current count")
@@ -197,6 +221,9 @@ private fun Field(label: String, value: String?, color: Color = Color.Unspecifie
 private val dtFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.US)
 private fun dateTime(s: String): String = runCatching { OffsetDateTime.parse(s).atZoneSameInstant(java.time.ZoneId.systemDefault()).format(dtFmt) }.getOrDefault(s)
 private fun money(v: Double): String = NumberFormat.getCurrencyInstance(Locale.US).format(v)
+
+fun bundleNote(tag: String, sapNo: String?) =
+    "Part of bundle $tag. Managed in ALM only — SAP sees the bundle${sapNo?.let { " ($it)" } ?: ""} as one asset."
 
 fun statusLabel(s: String) = when (s) {
     "ON_ORDER" -> "On order"; "IN_STOCK" -> "In stock"; "IN_USE" -> "In use"; "IN_REPAIR" -> "In repair"; "MISSING" -> "Missing"

@@ -73,6 +73,9 @@ import kotlinx.serialization.Serializable
 // PDA-09 자산 조회(바코드 → 상세). limited=true면 범위 밖 자산(태그·상태·사이트만)
 @Serializable data class PdaCountState(val campaignCode: String, val expectedRoomCode: String, val result: String, val countedAt: String? = null)
 @Serializable data class PdaAssetEvent(val eventType: String, val occurredAt: String, val channel: String? = null, val actorName: String? = null)
+// Bundle(2026-10-19): 구성품이면 소속 Bundle, Bundle이면 구성품 목록(SAP에는 Bundle 1건)
+@Serializable data class PdaBundleRef(val assetTag: String, val description: String? = null, val sapAssetNo: String? = null)
+@Serializable data class PdaComponent(val assetTag: String, val description: String? = null, val status: String, val roomCode: String? = null)
 @Serializable data class PdaAssetDetail(
     val assetTag: String, val status: String, val limited: Boolean = false, val stage: String? = null, val description: String? = null, val categoryName: String? = null,
     val model: String? = null, val serialNo: String? = null, val hostname: String? = null, val companyCode: String? = null, val siteCode: String? = null,
@@ -80,6 +83,7 @@ import kotlinx.serialization.Serializable
     val assignedUserName: String? = null, val sapAssetNo: String? = null, val capitalizedOn: String? = null, val purchaseDate: String? = null,
     val warrantyEndDate: String? = null, val acquisitionValue: Double? = null, val netBookValue: Double? = null, val lastCountedAt: String? = null,
     val lastCountedRoomCode: String? = null, val lastCountCampaign: String? = null, val count: PdaCountState? = null, val events: List<PdaAssetEvent> = emptyList(),
+    val isBundle: Boolean = false, val componentCount: Int? = null, val bundle: PdaBundleRef? = null, val components: List<PdaComponent> = emptyList(),
 )
 
 @Serializable data class Problem(val code: String? = null, val detail: String? = null, val message: String? = null, val title: String? = null)

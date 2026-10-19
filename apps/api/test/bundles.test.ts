@@ -199,3 +199,63 @@ test('Bundle: 폐기하면 구성품도 함께(할당 반납)', { skip }, async 
   assert.equal((await owner.query(`SELECT count(*)::int AS n FROM asset_assignment WHERE asset_id = $1 AND returned_at IS NULL`, [ids.c1])).rows[0].n, 0);
   assert.equal((await owner.query(`SELECT count(*)::int AS n FROM asset_event WHERE asset_id = ANY($1) AND event_type = 'RETIRED'`, [[ids.c1, ids.c2]])).rows[0].n, 2);
 });
+
+test('일괄 업로드: isBundle 행으로 Bundle 등록, bundleTag로 구성품 연결(같은 파일·기존 자산), 미리보기는 되돌림', { skip }, async () => {
+  const { buildXlsx } = await import('../src/common/xlsx');
+  const HEAD = ['assetTag', 'description', 'categoryCode', 'model', 'companyCode', 'roomCode', 'costCenterCode', 'isBundle', 'bundleTag'];
+  const rows = [
+    [null, 'Speaker', 'NB', 'LAT7440', '1000', 'ATL-101', 'CC100', null, 'AV-SET-1'],   // 2: 신규 구성품(Bundle은 아래 행)
+    ['AV-SET-1', 'Huddle AV set', 'NB', null, '1000', 'ATL-101', 'CC100', 'Y', null],   // 3: Bundle(모델 없음)
+    ['AT-000103', null, null, null, null, null, null, null, 'av-set-1'],                 // 4: 기존 자산을 구성품으로
+    ['AT-000104', null, null, null, null, null, null, null, 'AV-SET-1'],                 // 5: SAP 자산은 안 됨
+    [null, 'Mic', 'NB', 'LAT7440', '1000', 'ATL-101', 'CC100', null, 'NOPE-1'],          // 6: 없는 Bundle
+  ];
+  const file = { fileName: 'b.xlsx', contentBase64: buildXlsx([{ name: 'Assets', rows: [HEAD, ...rows] }]).toString('base64') };
+  const before = (await owner.query(`SELECT count(*)::int AS n FROM asset`)).rows[0].n;
+  const pv = await call('am', 'POST', '/admin/asset-import:preview', file);
+  assert.equal(pv.status, 200, JSON.stringify(pv.body));
+  const r = (b: { rows: { rowNo: number }[] }, n: number) => b.rows.find((x) => x.rowNo === n) as unknown as { action: string; status: string; changes?: string[]; errors: { code: string; field?: string }[] };
+  assert.deepEqual(pv.body.rows.map((x: { rowNo: number }) => x.rowNo), [2, 3, 4, 5, 6], '행 순서대로');
+  assert.deepEqual([r(pv.body, 2).status, r(pv.body, 3).status, r(pv.body, 4).status], ['OK', 'OK', 'OK']);
+  assert.deepEqual(r(pv.body, 4).changes, ['bundleTag']);
+  assert.deepEqual(r(pv.body, 5).errors.map((e) => [e.field, e.code]), [['bundleTag', 'BUNDLE_COMPONENT']]);
+  assert.deepEqual(r(pv.body, 6).errors.map((e) => [e.field, e.code]), [['bundleTag', 'UNKNOWN_BUNDLE']]);
+  assert.equal((await owner.query(`SELECT count(*)::int AS n FROM asset`)).rows[0].n, before, '미리보기는 바꾸지 않음');
+  assert.equal((await owner.query(`SELECT parent_asset_id FROM asset WHERE id = $1`, [ids.c3])).rows[0].parent_asset_id, null);
+
+  const ap = await call('am', 'POST', '/admin/asset-import:apply', file);
+  assert.equal(ap.status, 200, JSON.stringify(ap.body));
+  assert.deepEqual(ap.body.summary, { rows: 5, create: 2, update: 1, unchanged: 0, errors: 2, warnings: 0 });
+  const b = (await owner.query(`SELECT id, is_bundle, model_id FROM asset WHERE asset_tag = 'AV-SET-1'`)).rows[0];
+  assert.deepEqual([b.is_bundle, b.model_id], [true, null]);
+  const comps = (await owner.query(`SELECT description FROM asset WHERE parent_asset_id = $1 ORDER BY description`, [b.id])).rows.map((x) => x.description);
+  assert.deepEqual(comps, ['AT-000103', 'Speaker']);
+  assert.equal((await owner.query(`SELECT count(*)::int AS n FROM asset WHERE description = 'Mic'`)).rows[0].n, 0, '오류 행은 건너뜀');
+
+  const t = await raw('am', 'GET', '/admin/asset-import/template?withAssets=true');
+  const { readXlsx } = await import('../src/common/xlsxRead');
+  const sheet = readXlsx(Buffer.from(await t.arrayBuffer()), 'Assets');
+  const col = (name: string) => sheet.rows[0].indexOf(name);
+  const row = (tag: string) => sheet.rows.find((x) => x[0] === tag)!;
+  assert.equal(row('AV-SET-1')[col('isBundle')], 'Y');
+  assert.equal(row('AT-000103')[col('bundleTag')], 'AV-SET-1');
+});
+
+test('PDA-09 자산 조회: 구성품은 소속 Bundle, Bundle은 구성품 목록(구성품이 내 실사 대상이면 상세)', { skip }, async () => {
+  const pda = async (tag: string) => {
+    const r = await fetch(`${base}/pda/assets/${tag}`, { headers: { authorization: 'Bearer at:T-BUN_c1:pda', 'x-device-id': 'TC58-9' } });
+    return { status: r.status, body: await r.json() as any };   // eslint-disable-line @typescript-eslint/no-explicit-any
+  };
+  await owner.query(`INSERT INTO pda_device (id, tenant_id, device_serial, is_active) VALUES (gen_random_uuid(), $1, 'TC58-9', true)`, [tenantId]);
+  const bt = (await owner.query(`SELECT asset_tag FROM asset WHERE id = $1`, [ids.b])).rows[0].asset_tag;
+  await owner.query(`UPDATE asset SET status = 'IN_STOCK' WHERE id = ANY($1)`, [[ids.b, ids.c1, ids.c2]]);
+  const off = await pda(bt);
+  assert.equal(off.body.limited, true, JSON.stringify(off.body));
+  await owner.query(`UPDATE count_campaign SET status = 'COUNTING' WHERE campaign_code = 'PIB1'`);
+  const c = await pda('at-000101');
+  assert.equal(c.status, 200, JSON.stringify(c.body));
+  assert.deepEqual(c.body.bundle, { assetTag: bt, description: 'Conference room AV set', sapAssetNo: '1000060' });
+  const b = await pda(bt);
+  assert.deepEqual([b.body.limited, b.body.isBundle, b.body.componentCount], [false, true, 2]);
+  assert.deepEqual(b.body.components.map((x: { assetTag: string }) => x.assetTag), ['AT-000101', 'AT-000102']);
+});

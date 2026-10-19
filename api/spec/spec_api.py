@@ -153,6 +153,10 @@ lastCountedRoomCode | string | N | 마지막 실사 룸
 lastCountCampaign | string | N | 마지막 실사 캠페인
 count | object | N | 내게 배정된 진행 중 실사에서의 상태 {campaignCode, expectedRoomCode, result, countedAt}
 events | [object] | N | 최근 이력 5건 {eventType, occurredAt, channel, actorName}
+isBundle | bool | N | Bundle 자산(구성품을 묶어 SAP에 1건)
+bundle | object | N | 구성품이면 소속 Bundle {assetTag, description, sapAssetNo}
+components | [object] | N | Bundle이면 구성품 {assetTag, description, status, roomCode} (최대 50)
+componentCount | int | N | Bundle의 구성품 수
 ''')
 schema('CodeItem', '코드', '''
 id | string | Y | 코드 또는 id
