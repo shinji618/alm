@@ -108,3 +108,31 @@ describe('Assets menu refresh', () => {
     await vi.waitFor(() => expect(within(nav).queryByRole('link', { name: 'Furniture' })).not.toBeInTheDocument());
   }, 20000);
 });
+
+describe('Assets menu tree with counts', () => {
+  it('nests sub-categories under their parent and shows rolled-up asset counts', async () => {
+    window.history.pushState({}, '', '/assets');
+    const tree = [
+      { id: 'it', code: 'IT', label: 'IT Hardware', extra: { assetCount: 1 } },
+      { id: 'nb', code: 'NB', label: 'Notebook', parentId: 'it', extra: { assetCount: 2 } },
+      { id: 'srv', code: 'SRV', label: 'Server', parentId: 'it', extra: { assetCount: 0 } },
+      { id: 'fur', code: 'FUR', label: 'Furniture', extra: { assetCount: 4 } },
+    ];
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      urls.push(url);
+      if (url.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'tok' }), { status: 200 });
+      if (url.includes('/lookups')) return new Response(JSON.stringify({ ...LOOKUPS, categories: tree }), { status: 200 });
+      if (url.includes('/assets?')) return new Response(JSON.stringify({ items: [], page: 1, pageSize: 50, total: 0 }), { status: 200 });
+      return new Response(JSON.stringify({ code: 'ALM-E404', message: 'nope' }), { status: 404 });
+    }));
+    render(<App initialMe={me} />);
+    const nav = screen.getByRole('complementary', { name: 'Main navigation' });
+    const group = await within(nav).findByRole('group', { name: 'By category' });
+    const links = within(group).getAllByRole('link').map((a) => a.getAttribute('aria-label'));
+    expect(links).toEqual(['Furniture (4 assets)', 'IT Hardware (3 assets)', 'Notebook (2 assets)', 'Server (0 assets)']);
+    const nbLink = within(group).getByRole('link', { name: 'Notebook (2 assets)' });
+    expect(nbLink.style.paddingLeft).toBe('38px');
+    expect(urls.some((u) => u.includes('/lookups?types=categories&counts=true'))).toBe(true);
+  }, 20000);
+});

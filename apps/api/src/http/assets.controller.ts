@@ -29,7 +29,8 @@ export class AssetsController {
   @Get('lookups')
   @Operation('getLookups')
   lookups(@Ctx() ctx: AlmContext, @Query() q: Record<string, string>, @Res({ passthrough: true }) res: Response) {
-    res.setHeader('Cache-Control', 'private, max-age=300');
+    // 카테고리는 관리 화면에서 바로 바뀌고(추가·사용 안 함·삭제) 메뉴의 자산 수도 함께 오므로 캐시하지 않는다
+    res.setHeader('Cache-Control', (q.types ?? '').split(',').includes('categories') ? 'no-store' : 'private, max-age=300');
     return this.db.withTx(txOf(ctx), (c) => lookups(c, ctx.principal!, q));
   }
 

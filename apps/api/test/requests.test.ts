@@ -345,6 +345,15 @@ test('코스트센터 직접 관리(SAP 끈 회사만)·자산클래스는 SAP �
   assert.equal((await call('mgr', 'PATCH', `/admin/asset-classes/${ids.cls}`, { name: 'x' })).status, 404);
   const [old] = await q(`INSERT INTO asset_class (id, tenant_id, class_code, name, is_manual) VALUES (gen_random_uuid(), $1, 'ALM-IT', 'IT equipment', true) RETURNING id`, [tenantId]);
   const cls = { body: { id: old.id as string } };
+  // 메뉴용 카테고리 자산 수(counts=true): asset.read 범위, 직접 등록분, 캐시 안 함
+  const withCounts = await call('mgr', 'GET', '/lookups?types=categories&counts=true');
+  const nbCount = withCounts.body.categories.find((x: { id: string }) => x.id === ids.cat).extra.assetCount;
+  const [{ n: nbReal }] = await q(`SELECT count(*)::int AS n FROM asset WHERE category_id = $1`, [ids.cat]);
+  assert.equal(nbCount, nbReal);
+  assert.equal((await call('mgr', 'GET', '/lookups?types=categories')).body.categories[0].extra.assetCount, undefined, 'counts 없으면 수 없음');
+  const [{ n: own }] = await q(`SELECT count(*)::int AS n FROM asset a JOIN app_user u ON u.id = a.assigned_user_id WHERE a.category_id = $1 AND u.email = 'emp@req.test'`, [ids.cat]);
+  assert.equal((await call('emp', 'GET', '/lookups?types=categories&counts=true')).body.categories.find((x: { id: string }) => x.id === ids.cat).extra.assetCount, own,
+    '직원은 자기 자산만(OWN)');
   const lk = await call('mgr', 'GET', '/lookups?types=assetClasses');
   assert.ok(!lk.body.assetClasses.some((x: { code: string }) => x.code === 'ALM-IT'), '예전 ALM 클래스는 고를 수 없음');
   assert.equal((await call('mgr', 'GET', '/admin/asset-classes')).body.items.find((x: { classCode: string }) => x.classCode === 'ALM-IT').isManual, true);

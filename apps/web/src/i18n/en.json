@@ -36,7 +36,8 @@
     "deptManagers": "Department managers",
     "propertyTax": "Property tax",
     "byCategory": "By category",
-    "categories": "Asset categories"
+    "categories": "Asset categories",
+    "categoryCount": "{{name}} ({{count}} assets)"
   },
   "common": {
     "clear": "Clear",

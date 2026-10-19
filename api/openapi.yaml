@@ -1139,6 +1139,12 @@ paths:
         schema:
           type: string
           format: uuid
+      - name: counts
+        in: query
+        required: false
+        description: categories에 자산 수(extra.assetCount, asset.read 범위, 직접 등록분)
+        schema:
+          type: boolean
       responses:
         '200':
           description: 성공

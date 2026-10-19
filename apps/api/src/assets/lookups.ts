@@ -3,7 +3,7 @@
 import type { PoolClient } from 'pg';
 import { Check } from '../common/validate';
 import type { Principal } from '../auth/principal';
-import { can, scopeRows } from '../auth/scope';
+import { assetScope, can, Params, scopeRows } from '../auth/scope';
 
 const TYPES = ['companies', 'sites', 'rooms', 'costCenters', 'assetClasses', 'categories', 'models', 'vendors', 'users', 'codes'] as const;
 type T = (typeof TYPES)[number];
@@ -64,9 +64,19 @@ export async function lookups(c: PoolClient, p: Principal, q: Record<string, str
     (r) => ({ id: r.id, code: r.class_code, label: r.name, extra: { isLowValue: r.is_low_value, isCapitalized: r.is_capitalized, usefulLifeYears: r.default_useful_life_years, isManual: r.is_manual } }));
   }
   if (has('categories')) {
+    // counts=true: 카테고리별 자산 수(이 카테고리에 직접 등록된 것, 사용자의 asset.read 범위 안, 상태 무관). 메뉴의 카테고리 옆 숫자용.
+    //   하위 카테고리 합계는 화면에서 parentId로 더한다. asset.read가 없으면 수를 넣지 않는다
+    const counts = new Map<string, number>();
+    if (q.counts === 'true' && can(p, 'asset.read')) {
+      const ps = new Params();
+      for (const r of (await c.query(`SELECT a.category_id, count(*)::int AS n FROM asset a WHERE ${assetScope(p, 'asset.read', ps)} GROUP BY a.category_id`, ps.values)).rows) {
+        counts.set(r.category_id, r.n);
+      }
+    }
     out.categories = items((await c.query(`SELECT id, category_code, name, parent_id, default_asset_class_id, useful_life_years FROM category
       WHERE is_active ORDER BY category_code`)).rows,
-    (r) => ({ id: r.id, code: r.category_code, label: r.name, parentId: r.parent_id, extra: { defaultAssetClassId: r.default_asset_class_id, usefulLifeYears: r.useful_life_years } }));
+    (r) => ({ id: r.id, code: r.category_code, label: r.name, parentId: r.parent_id, extra: { defaultAssetClassId: r.default_asset_class_id, usefulLifeYears: r.useful_life_years,
+      ...(q.counts === 'true' && can(p, 'asset.read') ? { assetCount: counts.get(r.id) ?? 0 } : {}) } }));
   }
   if (has('models')) {
     out.models = items((await c.query(`SELECT id, manufacturer, model_name, part_no, category_id FROM model WHERE is_active ORDER BY manufacturer, model_name LIMIT 5000`)).rows,

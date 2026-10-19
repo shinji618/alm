@@ -36,7 +36,8 @@
     "deptManagers": "부서 관리자",
     "propertyTax": "재산세 신고",
     "byCategory": "카테고리별",
-    "categories": "자산 카테고리"
+    "categories": "자산 카테고리",
+    "categoryCount": "{{name}} (자산 {{count}}개)"
   },
   "common": {
     "clear": "초기화",
