@@ -1806,6 +1806,7 @@ CREATE TABLE label_print_job (
   requested_at timestamptz NOT NULL DEFAULT now(),
   rendered_by uuid,
   rendered_at timestamptz,
+  render_id uuid,
   attempt_count integer NOT NULL DEFAULT 0,
   printed_at timestamptz,
   client_info varchar(200),
@@ -1828,6 +1829,7 @@ COMMENT ON COLUMN label_print_job.requested_by IS '요청자';
 COMMENT ON COLUMN label_print_job.requested_at IS '요청 일시';
 COMMENT ON COLUMN label_print_job.rendered_by IS 'ZPL을 받아 출력한 사용자';
 COMMENT ON COLUMN label_print_job.rendered_at IS 'ZPL 발급 일시';
+COMMENT ON COLUMN label_print_job.render_id IS '마지막 ZPL 발급 묶음 id(결과 회신 :report는 이 id의 작업만 받음)';
 COMMENT ON COLUMN label_print_job.attempt_count IS '출력 시도 횟수';
 COMMENT ON COLUMN label_print_job.printed_at IS '출력 확인 일시(Browser Print 전송 성공)';
 COMMENT ON COLUMN label_print_job.client_info IS 'Browser Print 버전·장치 이름';

@@ -34,7 +34,7 @@ export const NAV: NavGroup[] = [
       { path: '/contracts', labelKey: 'nav.contracts', screenId: 'ALM-220', wbs: '5.4' },
       { path: '/requests', labelKey: 'nav.requests', screenId: 'ALM-230', wbs: '4.3' },
       { path: '/counts', labelKey: 'nav.inventoryCount', screenId: 'ALM-240', wbs: '4.4', perm: 'count.read' },
-      { path: '/labels', labelKey: 'nav.labels', screenId: 'ALM-250', wbs: '4.5' },
+      { path: '/labels', labelKey: 'nav.labels', screenId: 'ALM-250', wbs: '4.5', perm: 'label.read' },
       { path: '/tax', labelKey: 'nav.propertyTax', screenId: 'ALM-260', wbs: '4.9', perm: 'tax.read' },
     ],
   },

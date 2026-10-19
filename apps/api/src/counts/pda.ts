@@ -8,6 +8,7 @@ import type { PoolClient } from 'pg';
 import { AlmError, E } from '../common/errors';
 import { Check, UUID } from '../common/validate';
 import type { Principal } from '../auth/principal';
+import { defaultTemplateId } from '../labels/labels';
 
 const iso = (d: unknown) => (d instanceof Date ? d.toISOString() : d ? String(d) : undefined);
 const day = (d: unknown) => (d instanceof Date ? d.toISOString().slice(0, 10) : d ? String(d).slice(0, 10) : undefined);
@@ -267,8 +268,8 @@ async function scanOne(c: PoolClient, p: Principal, deviceId: string | undefined
         [randomUUID(), p.tenantId, a.id, p.userId, JSON.stringify({ status: { before: 'MISSING', after: back } }), s.campaignId]);
     }
     if (s.needsRelabel && !(await c.query(`SELECT 1 FROM label_print_job WHERE asset_id = $1 AND status = 'QUEUED'`, [a.id])).rowCount) {
-      const tpl = (await c.query('SELECT id FROM label_template WHERE is_default AND is_active ORDER BY template_code LIMIT 1')).rows[0]?.id;
-      if (tpl) await c.query(`INSERT INTO label_print_job (id, tenant_id, asset_id, template_id, source, requested_by, created_by, client_info)
+      const tpl = await defaultTemplateId(c, p.tenantId);
+      await c.query(`INSERT INTO label_print_job (id, tenant_id, asset_id, template_id, source, requested_by, created_by, client_info)
         VALUES ($1, $2, $3, $4, 'PDA_REQUEST', $5, $5, $6)`, [randomUUID(), p.tenantId, a.id, tpl, p.userId, deviceId ? `PDA ${deviceId}` : 'PDA']);
     }
   }

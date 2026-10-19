@@ -2090,6 +2090,8 @@ model LabelPrintJob {
   rendered AppUser? @relation("label_print_job_rendered_by", fields: [renderedBy], references: [id])
   /// ZPL 발급 일시
   renderedAt DateTime? @map("rendered_at") @db.Timestamptz(6)
+  /// 마지막 ZPL 발급 묶음 id(결과 회신 :report는 이 id의 작업만 받음)
+  renderId String? @map("render_id") @db.Uuid
   /// 출력 시도 횟수
   attemptCount Int @default(0) @map("attempt_count")
   /// 출력 확인 일시(Browser Print 전송 성공)

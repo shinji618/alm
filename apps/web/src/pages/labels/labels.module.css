@@ -1,0 +1,22 @@
+/* ALM-250 라벨. 라벨 카드는 실물처럼 흰 바탕·검은 글자(다크 테마에서도 같음) */
+.bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.toolbar > * { min-width: 0; }
+.paper { align-self: center; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; padding: 12px; }
+.label { margin: 0; aspect-ratio: 2 / 1; background: #fff; color: #000; border: 1px solid #c8c8c8; border-radius: 6px; padding: 8px 10px;
+  display: flex; flex-direction: column; justify-content: space-between; gap: 4px; overflow: hidden; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+.labelRow { display: flex; gap: 8px; align-items: flex-start; min-width: 0; }
+.labelCol { display: flex; flex-direction: column; gap: 2px; min-width: 0; height: 100%; justify-content: space-between; }
+.text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.company { font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tag { font-family: var(--font-mono, ui-monospace, monospace); font-size: 15px; font-weight: 700; white-space: nowrap; }
+.meta { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint, #999); }
+.dotOk { background: var(--ok, #16a34a); }
+.dotWarn { background: var(--warn, #d97706); }
+.dotBad { background: var(--bad, #dc2626); }
+.zpl { width: 100%; min-height: 220px; font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; }
+.sectionTitle { margin: 0; padding: 12px 12px 0; font-size: 14px; }
+@media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }

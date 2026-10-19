@@ -599,6 +599,7 @@ requested_by | ->app_user | | 요청자
 requested_at | ts | NN =now | 요청 일시
 rendered_by | ->app_user | | ZPL을 받아 출력한 사용자
 rendered_at | ts | | ZPL 발급 일시
+render_id | uuid | | 마지막 ZPL 발급 묶음 id(결과 회신 :report는 이 id의 작업만 받음)
 attempt_count | int | NN =0 | 출력 시도 횟수
 printed_at | ts | | 출력 확인 일시(Browser Print 전송 성공)
 client_info | vc(200) | | Browser Print 버전·장치 이름

@@ -20,6 +20,7 @@ import { nextAssetTags } from '../assets/tags';
 import { Batch, each, logRun, Rec, RecError } from './inbound';
 import { categoryFor, RETRY_DAYS } from './assets';
 import { usersWithRole } from './postings';
+import { defaultTemplateId } from '../labels/labels';
 
 export const MAX_GR_UNITS = 500;   // 입고 1행에서 만드는 자산 수 상한(수량 단위 오입력 방지)
 
@@ -169,7 +170,7 @@ async function createReceivedAssets(c: PoolClient, conn: SapConn, po: Record<str
       FROM po_item_asset pia LEFT JOIN asset a ON a.company_id = $2 AND a.sap_asset_no = pia.sap_asset_no AND a.sap_sub_no = pia.sap_sub_no
      WHERE pia.po_item_id = $1 ORDER BY pia.sap_asset_no, pia.sap_sub_no`, [po.id, conn.companyId])).rows
     .filter((p) => !p.goods_receipt_id);
-  const template = (await c.query(`SELECT id FROM label_template WHERE is_default AND is_active ORDER BY template_code LIMIT 1`)).rows[0]?.id as string | undefined;
+  const template = qty > 0 ? await defaultTemplateId(c, conn.tenantId) : undefined;   // 템플릿이 없으면 기본 템플릿을 만든다(4.5)
   const toCreate = qty - Math.min(qty, planned.filter((p) => p.asset_id).length);
   const tags = await nextAssetTags(c, conn.tenantId, toCreate);
   let category: string | undefined;

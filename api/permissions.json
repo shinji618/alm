@@ -504,6 +504,7 @@
   "patchPrinter": "label.config",
   "getTestLabel": "label.print",
   "createLabelJobs": "label.print",
+  "cancelLabelJobs": "label.print",
   "renderLabelJobs": "label.print",
   "reportLabelJobs": "label.print",
   "getSapStatus": "sap.status",

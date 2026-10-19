@@ -52,6 +52,12 @@ export function AssetDetail() {
   const d = a.data;
   const assign = can('asset.assign');
   const editable = (d?.editableFields.length ?? 0) > 0;
+  // 라벨 출력(ALM-250): 대기열에 넣고 라벨 화면으로
+  const printLabel = async () => {
+    try { await api.post('/label-jobs', { assetIds: [id] }); toast.show(t('label.queued'), 'success'); nav('/labels'); } catch (e) {
+      toast.show(e instanceof Error ? e.message : String(e), 'error');
+    }
+  };
   const requestable = !!d && can('request.create') && !['RETIRED', 'DISPOSED'].includes(d.status) && d.openRequests.length === 0;
 
   return (
@@ -74,6 +80,7 @@ export function AssetDetail() {
             {assign && ['IN_STOCK', 'IN_USE'].includes(d.status) && <Button onClick={() => setAction('repairIn')}>{t('asset.detail.repairIn')}</Button>}
             {assign && d.status === 'IN_REPAIR' && <Button onClick={() => setAction('repairOut')}>{t('asset.detail.repairOut')}</Button>}
             {requestable && <Button onClick={() => setAction('request')}>{t('asset.detail.newRequest')}</Button>}
+            {can('label.print') && !['RETIRED', 'DISPOSED'].includes(d.status) && <Button onClick={() => void printLabel()}>{t('label.printLabel')}</Button>}
           </>
         )} />
       {d && d.openRequests.length > 0 && (

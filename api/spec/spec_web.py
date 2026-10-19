@@ -153,7 +153,7 @@ W('공통','GET','/exports/{id}','getExport','내보내기 상태','요청자',N
 # ---------------- dashboard ----------------
 schema('Kpi', 'KPI 1개', '''
 key | enum(activeAssets,nbv,warrantyExpiring,licenseCompliance,countVariance,sapErrors) | Y | KPI
-value | number | Y | 값
+value | number | N | 값(금액 권한이 없거나 라이선스가 없으면 null → 화면 '—')
 unit | enum(count,usd,percent) | Y | 단위
 secondary | number | N | 보조 값(예: NBV 옆 APC)
 link | string | Y | 클릭 시 이동 경로(필터 포함)
@@ -177,23 +177,36 @@ id | uuid | Y | id
 name | string | Y | 이름
 endDate | date | Y | 만료일
 daysLeft | int | Y | 남은 일수
-amount | number | N | 금액
+amount | number | N | 금액(amount.read)
+link | string | Y | 이동 경로
 ''')
 schema('ActionItem', '조치 필요 항목', '''
-kind | enum(SCAN_FAILED,LICENSE_SHORTAGE,UNMANAGED_DEVICE,APPROVAL_PENDING,POSTING_ERROR) | Y | 종류
+kind | enum(SCAN_FAILED,LICENSE_SHORTAGE,UNMANAGED_DEVICE,APPROVAL_PENDING,POSTING_ERROR,COUNT_REVIEW,LABEL_QUEUED) | Y | 종류
 count | int | Y | 건수
 link | string | Y | 이동 경로
 ''')
+schema('ActivityRow', '최근 활동(자산 이력)', '''
+id | uuid | Y | 이력 id
+eventType | string | Y | 이력 유형(asset_event_type)
+occurredAt | datetime | Y | 일시
+channel | string | Y | 경로(UI·PDA·SAP 등)
+assetId | uuid | Y | 자산
+assetTag | string | Y | 자산태그
+description | string | Y | 자산명
+actorName | string | N | 처리자
+''')
 schema('Dashboard', '대시보드 한 번에', '''
 asOf | datetime | Y | 집계 시각(최대 5분 캐시)
-kpis | [Kpi] | Y | KPI 6종
+valuePeriod | string | N | 기준 기간 = SAP 최신 금액 수신 기간(예: 009/2026)
+kpis | [Kpi] | Y | KPI 최대 6종(모듈 권한이 없는 KPI는 빠짐: 라이선스 license.read, 실사 count.read, SAP sap.status)
 stages | [StageCount] | Y | 단계 6개
 categories | [CategoryRow] | Y | 카테고리별
 renewals | [RenewalRow] | Y | 120일 이내 만료
-actions | [ActionItem] | Y | 조치 필요
+actions | [ActionItem] | Y | 조치 필요(0건 제외)
+activity | [ActivityRow] | Y | 최근 활동 7건(범위 안 자산 이력)
 ''')
 W('대시보드','GET','/dashboard','getDashboard','대시보드 위젯 전체','로그인 사용자(범위 내)',None,'Dashboard','200','v_asset_stage, v_asset_value_latest, v_license_compliance, contract, count_item, sap_posting','ALM-010',
-  ['위젯을 한 번에 돌려준다. 5분 캐시, refresh=true면 다시 계산.', '금액(nbv, APC)은 amount.read 권한이 없으면 null.', '갱신 예정의 색 기준(30일 빨강, 60일 주황)은 화면이 daysLeft로 정한다.'],
+  ['위젯을 한 번에 돌려준다. 사용자·사이트별 5분 캐시, refresh=true면 다시 계산.', '자산 범위는 dashboard.read 역할 범위(부서 관리자 = 코스트센터).', '금액(nbv, APC, 계약·라이선스 금액)은 amount.read 권한이 없으면 null.', '갱신 예정의 색 기준(30일 빨강, 60일 주황)은 화면이 daysLeft로 정한다.'],
   params=[('siteId','query','uuid','N','사이트 필터'),('refresh','query','bool','N','캐시 무시')])
 
 # ---------------- assets ----------------
@@ -1080,22 +1093,26 @@ W('실사','POST','/count-campaigns/{id}:close','closeCampaign','캠페인 종�
 # ---------------- labels ----------------
 schema('LabelTemplate', '라벨 템플릿', '''
 id | uuid | Y | id
+version | int | N | 버전(응답)
 templateCode | string(20) | Y | 코드
 name | string(60) | Y | 이름
 layout | enum(QR_CODE128,QR_ONLY,CODE128_ONLY) | Y | 레이아웃
 widthIn | number | Y | 폭
 heightIn | number | Y | 높이
 dpi | int | Y | 해상도
-zpl | string | Y | ZPL(변수: {assetTag} {description} {sapAssetNo} {roomCode} {companyName})
-isDefault | bool | Y | 기본
+zpl | string | Y | ZPL(^XA…^XZ. 변수: {assetTag} {description} {model} {sapAssetNo} {roomCode} {siteCode} {companyName}). 매수 ^PQ는 서버가 넣는다
+isDefault | bool | Y | 기본(하나만)
+isActive | bool | N | 사용(수정 시. 기본 템플릿은 끌 수 없음)
 ''')
 schema('LabelTemplateList', '템플릿 목록', '''
 items | [LabelTemplate] | Y | 템플릿
 ''')
 schema('Printer', '프린터', '''
 id | uuid | Y | id
+version | int | N | 버전(응답)
 name | string(60) | Y | 이름
 siteId | uuid | N | 사이트
+siteCode | string | N | 사이트 코드(응답)
 deviceName | string(100) | N | Browser Print 장치 이름
 connection | enum(USB,NETWORK) | Y | 연결 방식
 host | string(100) | N | IP(NETWORK 참고용)
@@ -1107,8 +1124,17 @@ items | [Printer] | Y | 프린터
 ''')
 schema('LabelJobRow', '출력 대기열·이력 행', '''
 id | uuid | Y | id
-assetTag | string | Y | 자산
+assetId | uuid | Y | 자산 id
+assetTag | string | Y | 자산태그(QR·Code 128 값)
+description | string | N | 자산명
+model | string | N | 모델
+sapAssetNo | string | N | SAP 자산번호(앞 0 제외, 하위번호)
+roomCode | string | N | 룸
+siteCode | string | N | 사이트
+companyName | string | N | 회사명(대문자)
+templateId | uuid | Y | 템플릿 id
 templateName | string | Y | 템플릿
+layout | enum(QR_CODE128,QR_ONLY,CODE128_ONLY) | Y | 레이아웃(화면 미리보기)
 source | enum(ASSET_DETAIL,GOODS_RECEIPT,PDA_REQUEST,BULK) | Y | 출처
 status | enum(QUEUED,RENDERED,PRINTED,FAILED,CANCELLED) | Y | 상태
 copies | int | Y | 매수
@@ -1116,12 +1142,26 @@ attemptCount | int | Y | 출력 시도 횟수
 requestedByName | string | N | 요청자
 requestedAt | datetime | Y | 요청
 renderedByName | string | N | 출력한 사용자
+renderedAt | datetime | N | ZPL 발급
+printerName | string | N | 프린터
 printedAt | datetime | N | 출력 확인
 error | string | N | 오류
+needsCheck | bool | N | RENDERED로 30분 넘게 회신 없음(확인 필요, 다시 출력 가능)
 ''')
 lst('LabelJobRow', '출력 목록')
+schema('LabelJobPage', '출력 대기열·이력', '''
+items | [LabelJobRow] | Y | 행
+page | int | Y | 페이지(1부터)
+pageSize | int | Y | 페이지 크기
+total | int | Y | 전체 건수
+counts | object | Y | 상태별 건수(범위 안 전체) {QUEUED, RENDERED, PRINTED, FAILED, CANCELLED}
+''')
+schema('LabelJobIds', '작업 선택', '''
+jobIds | [uuid] | Y | 작업(최대 500)
+''')
 schema('LabelJobCreate', '출력 대기열 추가', '''
-assetIds | [uuid] | Y | 자산(최대 500)
+assetIds | [uuid] | N | 자산(최대 500). assetIds·assetTags 중 하나는 필수
+assetTags | [string] | N | 자산태그로 추가(화면 도구 바 입력, 최대 500)
 templateId | uuid | N | 템플릿(비면 기본)
 copies | int | N | 매수(기본 1)
 ''')
@@ -1137,6 +1177,7 @@ zpl | string | Y | 치환된 ZPL(매수는 ^PQ로 포함)
 schema('LabelZplBundle', 'ZPL 묶음', '''
 renderId | uuid | Y | 이번 발급 id(결과 회신에 사용)
 deviceName | string | N | 보낼 Browser Print 장치 이름
+printerName | string | Y | 프린터
 items | [LabelZplItem] | Y | 작업별 ZPL. 브라우저는 순서대로 전송
 ''')
 schema('LabelPrintResult', '작업별 출력 결과', '''
@@ -1160,8 +1201,9 @@ W('라벨','POST','/printers','createPrinter','프린터 등록',SA,'Printer','P
 W('라벨','PATCH','/printers/{id}','patchPrinter','프린터 수정',SA,'Printer','Printer','200, 400, 404','printer','ALM-250',[ '-'],params=CI)
 W('라벨','GET','/printers/{id}/test-label','getTestLabel','시험 라벨 ZPL',AM,None,'ZplPreview','200, 404','printer, label_template','ALM-250',
   ['기본 템플릿에 견본 값을 넣은 ZPL을 돌려준다. 브라우저가 Browser Print로 보낸다. 이력은 남기지 않는다.'],params=CI)
-W('라벨','GET','/label-jobs','listLabelJobs','출력 대기열·이력',AM,None,'LabelJobRowList','200','label_print_job','ALM-250',[ '기본 status=QUEUED,FAILED. PDA 재출력 요청(PDA_REQUEST)도 이 대기열에 쌓이고, 자산 관리자가 PC에서 모아서 출력한다.', 'RENDERED로 30분 넘게 결과 회신이 없으면 "확인 필요"로 표시(다시 출력 가능).'],params=[('status','query','string','N','상태'),('source','query','string','N','출처'),('siteId','query','uuid','N','사이트')]+PG)
-W('라벨','POST','/label-jobs','createLabelJobs','대기열 추가',AM,'LabelJobCreate','LabelJobRowList','201, 400','label_print_job','ALM-250',[ '자산 목록의 선택 자산(F-110-03)·재출력에서 호출.'],idem='Idempotency-Key',ok='201')
+W('라벨','GET','/label-jobs','listLabelJobs','출력 대기열·이력',AM,None,'LabelJobPage','200','label_print_job','ALM-250',[ '기본 status=QUEUED,FAILED. PDA 재출력 요청(PDA_REQUEST)도 이 대기열에 쌓이고, 자산 관리자가 PC에서 모아서 출력한다.', 'RENDERED로 30분 넘게 결과 회신이 없으면 "확인 필요"로 표시(다시 출력 가능).'],params=[('status','query','string','N','상태(쉼표, ALL=전체. 기본 QUEUED,FAILED,RENDERED)'),('source','query','string','N','출처(쉼표)'),('siteId','query','uuid','N','사이트'),('q','query','string','N','자산태그·자산명')]+PG)
+W('라벨','POST','/label-jobs','createLabelJobs','대기열 추가',AM,'LabelJobCreate','LabelJobRowList','201, 400','label_print_job','ALM-250',[ '자산 목록의 선택 자산(F-110-03)·재출력에서 호출.', '폐기·범위 밖·없는 자산이 있으면 전체 400. 같은 자산이 이미 QUEUED면 새로 만들지 않고 템플릿·매수를 바꾼다.', '템플릿이 하나도 없으면 기본 템플릿 3종(QR+Code 128 기본, QR, Code 128)을 만든다.'],idem='Idempotency-Key',ok='201')
+W('라벨','POST','/label-jobs:cancel','cancelLabelJobs','대기열에서 빼기',AM,'LabelJobIds','BulkResult','200, 404, 409','label_print_job','ALM-250',[ 'QUEUED·FAILED·RENDERED 작업만 CANCELLED(그 외 409 ALM-E320).'])
 W('라벨','POST','/label-jobs:render','renderLabelJobs','ZPL 받기(출력 시작)',AM,'LabelRender','LabelZplBundle','200, 400, 409','label_print_job, label_template, asset, printer','ALM-250',
   ['QUEUED·FAILED·RENDERED 작업만(그 외 409 ALM-E320). 상태를 RENDERED로 바꾸고 attempt_count를 올린다.',
    '서버는 프린터에 연결하지 않는다. 브라우저가 Zebra Browser Print(PC에 설치, localhost)로 받은 ZPL을 프린터에 보낸 뒤 :report로 결과를 회신한다(결정 A-08).'],idem='Idempotency-Key')

@@ -12,6 +12,7 @@ import { Check, UUID } from '../common/validate';
 import type { Principal } from '../auth/principal';
 import { allowsPlace, assetScope, can, Params } from '../auth/scope';
 import { nextAssetTags, nextNumbers } from './tags';
+import { defaultTemplateId } from '../labels/labels';
 
 export const STATUSES = ['ON_ORDER', 'IN_STOCK', 'IN_USE', 'IN_REPAIR', 'MISSING', 'RETIRED', 'DISPOSED'] as const;
 export const STAGES = ['PLAN', 'PROCURE', 'DEPLOY', 'OPERATE', 'MAINTAIN', 'RETIRE'] as const;
@@ -243,8 +244,8 @@ export async function createAsset(c: PoolClient, p: Principal, body: unknown) {
     : undefined;
   let labelJobId: string | undefined;
   if (v.printLabel) {
-    const t = (await c.query('SELECT id FROM label_template WHERE is_default AND is_active ORDER BY template_code LIMIT 1')).rows[0]?.id;
-    if (t) {
+    const t = await defaultTemplateId(c, p.tenantId);   // 템플릿이 없으면 기본 템플릿을 만든다(4.5)
+    {
       labelJobId = randomUUID();
       await c.query(`INSERT INTO label_print_job (id, tenant_id, asset_id, template_id, source, requested_by, created_by) VALUES ($1, $2, $3, $4, 'ASSET_DETAIL', $5, $5)`,
         [labelJobId, p.tenantId, id, t, p.userId]);

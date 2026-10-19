@@ -1,10 +1,10 @@
 // ALM-110 자산 목록(카테고리별 하위 메뉴). 검색·필터·정렬·페이지는 주소(쿼리 문자열)에 둬서 새로 고침·뒤로 가기·링크 공유가 된다
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { SortingState } from '@tanstack/react-table';
 import { ViewHeader } from '@/components/layout';
-import { AssetTag, Button, DataTable, FilterBar, FilterSelect, Panel, StatusPill, type Column } from '@/components/ui';
+import { AssetTag, Button, DataTable, FilterBar, FilterSelect, Panel, StatusPill, useToast, type Column } from '@/components/ui';
 import { api, qs } from '@/lib/api';
 import { formatDate, formatUsd, type Lang } from '@/lib/format';
 import { STAGE_CODES, STATUS_CODES, stageCodeColorVar, statusCodeTone } from '@/lib/status';
@@ -35,6 +35,20 @@ export function AssetList() {
       return n;
     }, { replace: true });
   }, [setSp]);
+
+  // 라벨 출력 대상 선택(F-110-03): 페이지를 옮겨도 선택을 유지 → [Print labels (n)] → 라벨 대기열(ALM-250)
+  const toast = useToast();
+  const printable = can('label.print');
+  const [selected, setSelected] = useState<string[]>([]);
+  const [queuing, setQueuing] = useState(false);
+  const queueLabels = async () => {
+    setQueuing(true);
+    try {
+      await api.post('/label-jobs', { assetIds: selected });
+      toast.show(t('label.added', { count: selected.length }), 'success');
+      nav('/labels');
+    } catch (e) { toast.show(e instanceof Error ? e.message : String(e), 'error'); } finally { setQueuing(false); }
+  };
 
   const lookups = useAsync((sig) => api.get<Lookups>('/lookups?types=sites,categories', sig), []);
   const query = qs({ q: get('q'), status: get('status'), stage: get('stage'), siteId: get('siteId'), categoryId: get('categoryId'),
@@ -71,9 +85,12 @@ export function AssetList() {
   return (
     <>
       <ViewHeader crumb="ALM-110" title={catLabel ? `${t('nav.assets')} · ${catLabel}` : t('nav.assets')} description={t('asset.list.description')}
-        actions={can('asset.write') ? (
-          <Button variant="primary" onClick={() => nav(`/assets/new${get('categoryId') ? `?categoryId=${get('categoryId')}` : ''}`)}>
-            {catLabel ? t('asset.list.registerIn', { category: catLabel }) : t('asset.list.register')}</Button>) : undefined} />
+        actions={can('asset.write') || printable ? (
+          <>
+            {printable && <Button disabled={!selected.length || queuing} onClick={() => void queueLabels()}>{t('label.printLabels', { count: selected.length })}</Button>}
+            {can('asset.write') && <Button variant="primary" onClick={() => nav(`/assets/new${get('categoryId') ? `?categoryId=${get('categoryId')}` : ''}`)}>
+              {catLabel ? t('asset.list.registerIn', { category: catLabel }) : t('asset.list.register')}</Button>}
+          </>) : undefined} />
       <Panel padded={false}>
         <FilterBar search={get('q')} onSearch={(q) => set({ q })} searchPlaceholder={t('asset.list.search')}
           onClear={hasFilter ? () => setSp(new URLSearchParams(), { replace: true }) : undefined}>
@@ -91,6 +108,11 @@ export function AssetList() {
         ) : (
           <DataTable rows={list.data?.items ?? []} columns={columns} rowId={(r) => r.id} loading={list.loading} sorting={sorting} onSortingChange={onSorting}
             onRowClick={(r) => nav(`/assets/${r.id}`)}
+            selected={printable ? selected.filter((id) => (list.data?.items ?? []).some((r) => r.id === id)) : undefined}
+            onSelectedChange={printable ? (ids) => {
+              const onPage = new Set((list.data?.items ?? []).map((r) => r.id));
+              setSelected((prev) => [...prev.filter((id) => !onPage.has(id)), ...ids]);
+            } : undefined}
             footer={
               <div className={s.pager}>
                 <span className="small muted">{t('asset.list.total', { total })}</span>

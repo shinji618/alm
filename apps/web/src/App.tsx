@@ -4,6 +4,8 @@ import { AppShell, NAV_ITEMS } from '@/components/layout';
 import { Button, ConfirmProvider, EmptyState, ToastProvider } from '@/components/ui';
 import { SessionProvider, useSession, type Me } from '@/lib/session';
 import { DesignGallery } from '@/pages/DesignGallery';
+import { Labels } from '@/pages/labels/Labels';
+import { Dashboard } from '@/pages/dashboard/Dashboard';
 import { Placeholder } from '@/pages/Placeholder';
 import { Login } from '@/pages/Login';
 import { AssetList } from '@/pages/assets/AssetList';
@@ -22,7 +24,7 @@ import { AssetCategories } from '@/pages/admin/AssetCategories';
 import { TaxFilingDetail } from '@/pages/tax/TaxFilingDetail';
 
 // 만든 화면(그 외 메뉴는 아직 자리 화면)
-const BUILT = new Set(['/assets', '/requests', '/counts', '/tax', '/sap', '/admin/companies', '/admin/fin-masters', '/admin/categories', '/admin/dept-managers', '/design']);
+const BUILT = new Set(['/', '/labels', '/assets', '/requests', '/counts', '/tax', '/sap', '/admin/companies', '/admin/fin-masters', '/admin/categories', '/admin/dept-managers', '/design']);
 
 function Routed() {
   const { t } = useTranslation();
@@ -41,6 +43,7 @@ function Routed() {
   return (
     <Routes>
       <Route element={<AppShell counts={Object.fromEntries(Object.entries(counts).map(([k, v]) => [`/${k}`, { count: v }]))} />}>
+        <Route path="/" element={<Dashboard />} />
         <Route path="/design" element={<DesignGallery />} />
         <Route path="/assets" element={<AssetList />} />
         <Route path="/assets/new" element={<AssetCreate />} />
@@ -49,6 +52,7 @@ function Routed() {
         <Route path="/requests/:id" element={<RequestDetail />} />
         <Route path="/counts" element={<CountList />} />
         <Route path="/counts/:id" element={<CountDetail />} />
+        <Route path="/labels" element={<Labels />} />
         <Route path="/tax" element={<TaxHome />} />
         <Route path="/tax/filings/:id" element={<TaxFilingDetail />} />
         <Route path="/sap" element={<SapIntegration />} />
