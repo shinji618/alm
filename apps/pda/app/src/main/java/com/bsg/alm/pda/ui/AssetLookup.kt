@@ -104,7 +104,7 @@ fun AssetLookupScreen(vm: AppViewModel, online: Boolean, pending: Int) {
                 is Lookup.Local -> LocalDetail(s.item)
                 // 실사 중 스캔 화면에서 온 경우에만 실사 확인(PDA-05)으로 이어 준다
                 is Lookup.Found -> AssetDetail(s.asset, onCount = if (vm.lookupBack == Screen.SCAN && room != null) { t -> vm.openConfirm(t) } else null,
-                    onOpen = { t -> vm.lookup(t) })
+                    onOpen = { t -> vm.lookup(t) }, photos = { AssetPhotoSection(vm, s.asset) })
             }
             Spacer(Modifier.height(16.dp))
         }
@@ -120,7 +120,7 @@ private fun Notice(title: String, body: String, color: Color) {
 }
 
 @Composable
-private fun AssetDetail(a: PdaAssetDetail, onCount: ((String) -> Unit)?, onOpen: (String) -> Unit = {}) {
+private fun AssetDetail(a: PdaAssetDetail, onCount: ((String) -> Unit)?, onOpen: (String) -> Unit = {}, photos: (@Composable () -> Unit)? = null) {
     Spacer(Modifier.height(4.dp))
     Text(a.assetTag, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 22.sp)
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -164,6 +164,8 @@ private fun AssetDetail(a: PdaAssetDetail, onCount: ((String) -> Unit)?, onOpen:
         c.countedAt?.let { Field("Counted", dateTime(it)) }
         if (onCount != null && c.result == "PENDING") TextButton(onClick = { onCount(a.assetTag) }) { Text("Open in count (condition & photo)") }
     }
+
+    photos?.invoke()
 
     Section("Identification")
     Field("Serial number", a.serialNo)

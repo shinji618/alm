@@ -157,6 +157,8 @@ isBundle | bool | N | Bundle 자산(구성품을 묶어 SAP에 1건)
 bundle | object | N | 구성품이면 소속 Bundle {assetTag, description, sapAssetNo}
 components | [object] | N | Bundle이면 구성품 {assetTag, description, status, roomCode} (최대 50)
 componentCount | int | N | Bundle의 구성품 수
+canAddPhoto | bool | N | 이 사용자가 PDA에서 자산 사진을 올릴 수 있음(자산 수정 범위 또는 내 실사 대상, 처분 자산 제외)
+photoCount | int | N | 자산 첨부 사진 수
 ''')
 schema('CodeItem', '코드', '''
 id | string | Y | 코드 또는 id
@@ -236,6 +238,12 @@ contentType | enum(image/jpeg,image/png) | Y | MIME
 sizeBytes | int | Y | 크기(최대 5 MB)
 sha256 | string(64) | Y | 파일 해시(업로드 후 검증)
 ownerType | enum(count_item,count_unregistered) | Y | 연결 대상 종류
+''')
+schema('PdaPhotoRequest', 'PDA 자산 사진 업로드 URL 요청(PDA-09)', '''
+fileName | string(200) | Y | 파일명
+contentType | enum(image/jpeg,image/png) | Y | MIME
+sizeBytes | int | Y | 크기(최대 5 MB)
+sha256 | string(64) | Y | 파일 해시(업로드 후 검증)
 ''')
 schema('PresignResponse', '사진 업로드 URL', '''
 attachmentId | uuid | Y | attachment.id. 스캔·미등록 전송에 사용
@@ -537,6 +545,14 @@ ep(P,'GET','/pda/assets/{assetTag}','pdaGetAsset','자산 조회(바코드 → �
     '전체 정보: 사용자의 asset.read 범위 안 자산, 또는 내게 배정된 실사(COUNTING·REVIEW) 캠페인의 대상 자산. 그 밖은 limited=true로 태그·상태·사이트만.',
     '금액(acquisitionValue·netBookValue)은 amount.read가 있을 때만. 없는 태그는 404 ALM-E404.'],
    params=[('assetTag','path','string(30)','Y','자산태그(바코드 값)')])
+ep(P,'POST','/pda/assets/{assetTag}/photos:presign','pdaPresignAssetPhoto','자산 사진 업로드 URL 발급','PDA','PdaPhotoRequest','PresignResponse','200, 400, 401, 403, 404, 413, 429','attachment','PDA-09',
+   ['자산 조회 화면에서 찍은 사진을 그 자산의 첨부(owner_type asset, kind PHOTO)로 올린다. 웹 자산 상세의 첨부 탭에 보인다.',
+    '권한: 자산 수정(asset.write) 범위 안이거나 내게 배정된 실사(COUNTING·REVIEW) 대상 자산(Bundle은 구성품이 내 대상). 처분 자산은 403.',
+    '최대 5 MB, JPEG·PNG. 1시간 안에 완료하지 않은 업로드가 20건이면 429.'],
+   params=[('assetTag','path','string(30)','Y','자산태그')], ok='200')
+ep(P,'POST','/pda/attachments/{id}:complete','pdaCompletePhoto','자산 사진 업로드 완료','PDA',None,'Attachment','200, 401, 404, 409','attachment, asset_event','PDA-09',
+   ['S3 객체의 크기·SHA-256이 신고한 값과 같으면 자산에 연결(linked_at)하고 자산 이력(UPDATED, 채널 PDA)을 남긴다. 다르거나 아직 없으면 409 ALM-E111.',
+    '멱등. 올린 사람만(아니면 404).'], params=[('id','path','uuid','Y','첨부 id')], ok='200')
 ep(P,'GET','/pda/rooms','pdaListRooms','룸 목록','PDA',None,'PdaRoomList','200, 401','room, site','PDA-03',
    ['캠페인 범위의 사이트에 있는 활성 룸 전체(다른 룸에서 발견한 자산 기록용).'],
    params=[('campaignId','query','uuid','Y','캠페인')])

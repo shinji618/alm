@@ -19,6 +19,7 @@ import com.bsg.alm.pda.sync.SyncWorker
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import java.io.File
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -187,6 +188,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun lookup(raw: String) = viewModelScope.launch {
         val tag = raw.trim()
         if (tag.isEmpty()) return@launch
+        if (!tag.equals(photoTag, ignoreCase = true)) { assetPhotos.value.filter { it.state == AssetPhoto.FAILED }.forEach { File(it.path).delete() }; assetPhotos.value = emptyList(); photoTag = tag }
         lookup.value = Lookup.Loading(tag)
         val r = runCatching { repo.asset(tag) }
         lookup.value = r.fold({ Lookup.Found(it) }) { e ->
@@ -198,6 +200,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         tone(lookup.value is Lookup.Found || lookup.value is Lookup.Local)
+    }
+
+    // ---------------- PDA-09 자산 사진 → 자산 첨부 ----------------
+    /** 이 조회에서 찍은 사진(올리는 중·완료·실패). 다른 자산을 조회하면 비운다 */
+    val assetPhotos = MutableStateFlow<List<AssetPhoto>>(emptyList())
+    private var photoTag: String? = null
+
+    fun addAssetPhoto(tag: String, f: File) {
+        assetPhotos.value = assetPhotos.value + AssetPhoto(f.path, AssetPhoto.UPLOADING)
+        upload(tag, f.path)
+    }
+    fun retryAssetPhoto(tag: String, path: String) {
+        assetPhotos.value = assetPhotos.value.map { if (it.path == path) it.copy(state = AssetPhoto.UPLOADING, error = null) else it }
+        upload(tag, path)
+    }
+    fun discardAssetPhoto(path: String) { File(path).delete(); assetPhotos.value = assetPhotos.value.filterNot { it.path == path } }
+
+    private fun upload(tag: String, path: String) = viewModelScope.launch {
+        val r = runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { repo.uploadAssetPhoto(tag, File(path)) } }
+        assetPhotos.value = assetPhotos.value.map {
+            if (it.path != path) it else r.fold({ a -> it.copy(state = AssetPhoto.DONE, fileName = a.fileName) }, { e -> it.copy(state = AssetPhoto.FAILED, error = errorText(e)) })
+        }
+        r.onSuccess {
+            toast("Photo attached to $tag")
+            (lookup.value as? Lookup.Found)?.let { f -> if (f.asset.assetTag.equals(tag, true)) lookup.value = Lookup.Found(f.asset.copy(photoCount = f.asset.photoCount + 1)) }
+        }.onFailure { e -> if (e is com.bsg.alm.pda.auth.AuthManager.NotSignedIn) go(Screen.LOGIN) else toast("Photo not uploaded: ${errorText(e)}") }
     }
 
     // ---------------- 미등록 ----------------
@@ -245,4 +273,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() { beep?.release() }
+}
+
+/** PDA-09에서 찍은 자산 사진 한 장의 전송 상태 */
+data class AssetPhoto(val path: String, val state: String, val error: String? = null, val fileName: String? = null) {
+    companion object { const val UPLOADING = "UPLOADING"; const val DONE = "DONE"; const val FAILED = "FAILED" }
 }

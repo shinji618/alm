@@ -61,6 +61,14 @@ class Api(private val settings: Settings, private val auth: AuthManager) {
         return authed(serializer()) { Request.Builder().url(u).get() }
     }
 
+    /** PDA-09 자산 사진: 업로드 URL 발급(자산태그는 경로 한 칸) → upload → completePhoto */
+    suspend fun assetPhotoPresign(tag: String, body: PdaPhotoRequest): PresignResponse {
+        val u = "${settings.apiBase}/pda/assets".toHttpUrl().newBuilder().addPathSegment(tag).addPathSegment("photos:presign").build()
+        val payload = json.encodeToString(PdaPhotoRequest.serializer(), body).toRequestBody(JSON)
+        return authed(serializer()) { Request.Builder().url(u).post(payload) }
+    }
+    suspend fun completePhoto(attachmentId: String): PdaAttachment = send("POST", "/pda/attachments/$attachmentId:complete", emptyMap<String, String>())
+
     /** 사진을 S3에 직접 올린다(발급받은 URL·헤더 그대로) */
     suspend fun upload(p: PresignResponse, file: File, contentType: String) = withContext(Dispatchers.IO) {
         val b = Request.Builder().url(p.uploadUrl).put(file.readBytes().toRequestBody(contentType.toMediaType()))

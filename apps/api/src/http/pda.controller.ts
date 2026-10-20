@@ -113,6 +113,23 @@ export class PdaController {
   @Operation('pdaGetAsset')
   asset(@Ctx() ctx: AlmContext, @Param('assetTag') tag: string) { return this.db.withTx(txOf(ctx), (c) => pda.pdaGetAsset(c, ctx.principal!, tag)); }
 
+  // PDA-09 자산 사진 → 자산 첨부(2026-10-20)
+  @Post('assets/:assetTag/photos\\:presign')
+  @HttpCode(200)
+  @Operation('pdaPresignAssetPhoto')
+  presignAssetPhoto(@Ctx() ctx: AlmContext, @Param('assetTag') tag: string, @Body() body: unknown) {
+    const store = needStore(this.files);
+    return this.db.withTx(txOf(ctx), (c) => pda.pdaPresignAssetPhoto(c, store, ctx.principal!, tag, body));
+  }
+
+  @Post('attachments/:id\\:complete')
+  @HttpCode(200)
+  @Operation('pdaCompletePhoto')
+  completePhoto(@Ctx() ctx: AlmContext, @Param('id') id: string) {
+    const store = needStore(this.files);
+    return this.db.withTx(txOf(ctx), (c) => pda.pdaCompletePhoto(c, store, ctx.principal!, id));
+  }
+
   @Get('rooms')
   @Operation('pdaListRooms')
   rooms(@Ctx() ctx: AlmContext, @Query() q: Record<string, string>) {

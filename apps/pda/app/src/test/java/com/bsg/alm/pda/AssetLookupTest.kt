@@ -34,6 +34,17 @@ class AssetLookupTest {
         assertEquals("Part of bundle AT-000200. Managed in ALM only — SAP sees the bundle (1000060) as one asset.", bundleNote("AT-000200", "1000060"))
     }
 
+    @Test fun photoFieldsAndUploadDtos() {
+        val a = json.decodeFromString(PdaAssetDetail.serializer(), """{"assetTag":"AT-000101","status":"IN_STOCK","canAddPhoto":true,"photoCount":2}""")
+        assertTrue(a.canAddPhoto); assertEquals(2, a.photoCount)
+        val old = json.decodeFromString(PdaAssetDetail.serializer(), """{"assetTag":"AT-1","status":"IN_STOCK"}""")
+        assertTrue(!old.canAddPhoto); assertEquals(0, old.photoCount)
+        assertEquals("""{"fileName":"p.jpg","contentType":"image/jpeg","sizeBytes":10,"sha256":"ab"}""",
+            json.encodeToString(com.bsg.alm.pda.net.PdaPhotoRequest.serializer(), com.bsg.alm.pda.net.PdaPhotoRequest("p.jpg", "image/jpeg", 10, "ab")))
+        val r = json.decodeFromString(com.bsg.alm.pda.net.PdaAttachment.serializer(), """{"id":"x","fileName":"p.jpg","kind":"PHOTO","sizeBytes":10,"source":"ASSET"}""")
+        assertEquals("PHOTO", r.kind)
+    }
+
     @Test fun labels() {
         assertEquals("In use", statusLabel("IN_USE")); assertEquals("Checked out", eventLabel("ASSIGNED")); assertEquals("X_NEW", eventLabel("X_NEW"))
     }

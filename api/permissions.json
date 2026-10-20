@@ -568,6 +568,8 @@
   "pdaGetWorklist": "count.scan",
   "pdaGetTagIndex": "count.scan",
   "pdaGetAsset": "count.scan",
+  "pdaPresignAssetPhoto": "count.scan",
+  "pdaCompletePhoto": "count.scan",
   "pdaListRooms": "count.scan",
   "pdaGetCodes": "count.scan",
   "pdaUpdateTask": "count.scan",

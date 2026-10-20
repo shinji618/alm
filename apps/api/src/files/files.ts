@@ -130,6 +130,15 @@ export async function presignPda(c: PoolClient, store: FileStore, p: Principal, 
   return issue(c, store, p, { ownerType, ownerId: null, kind: 'PHOTO', ...f }, TTL.pdaPut, now);
 }
 
+// PDA 자산 사진(PDA-09, 2026-10-20): 자산 조회 화면에서 찍은 사진을 그 자산의 첨부로. 대상 권한은 호출한 쪽(counts/pda)이 판정한다.
+//   발급 때 owner_id를 채우고, 업로드 완료 확인(completeWeb과 같은 검사) 때 연결한다
+export async function presignAssetPhoto(c: PoolClient, store: FileStore, p: Principal, assetId: string, body: unknown, now = new Date()): Promise<PresignOut> {
+  const chk = new Check(body);
+  const b = chk.obj();
+  const f = checkFile(chk, b, LIMITS.pda, new Set(['image/jpeg', 'image/png']));
+  return issue(c, store, p, { ownerType: 'asset', ownerId: assetId, kind: 'PHOTO', ...f }, TTL.pdaPut, now);
+}
+
 async function issue(c: PoolClient, store: FileStore, p: Principal,
   a: { ownerType: OwnerType; ownerId: string | null; kind: string; fileName: string; contentType: string; size: number; sha: string }, ttl: number, now: Date): Promise<PresignOut> {
   const id = randomUUID();

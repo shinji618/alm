@@ -84,6 +84,10 @@ import kotlinx.serialization.Serializable
     val warrantyEndDate: String? = null, val acquisitionValue: Double? = null, val netBookValue: Double? = null, val lastCountedAt: String? = null,
     val lastCountedRoomCode: String? = null, val lastCountCampaign: String? = null, val count: PdaCountState? = null, val events: List<PdaAssetEvent> = emptyList(),
     val isBundle: Boolean = false, val componentCount: Int? = null, val bundle: PdaBundleRef? = null, val components: List<PdaComponent> = emptyList(),
+    val canAddPhoto: Boolean = false, val photoCount: Int = 0,
 )
+// PDA-09 자산 사진 → 자산 첨부(2026-10-20)
+@Serializable data class PdaPhotoRequest(val fileName: String, val contentType: String, val sizeBytes: Long, val sha256: String)
+@Serializable data class PdaAttachment(val id: String, val fileName: String, val kind: String? = null, val uploadedBy: String? = null, val createdAt: String? = null)
 
 @Serializable data class Problem(val code: String? = null, val detail: String? = null, val message: String? = null, val title: String? = null)

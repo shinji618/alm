@@ -30,9 +30,10 @@ const cfg: Config = {
 const fakeCognito = {
   verifyAccess: async (t: string) => { const [, u, c] = t.split(':'); if (!u) throw new Error('bad'); return { sub: 's', username: u, client_id: c, token_use: 'access', exp: 0 }; },
 };
+let fakeHead: { size: number; sha256b64?: string } | null = null;
 const files: FileStore = {
   presignPut: async (key) => ({ url: `https://s3.test/${key}`, headers: {} }), presignGet: async (key) => `https://s3.test/${key}?get`,
-  head: async () => null, scanStatus: async () => undefined, remove: async () => undefined,
+  head: async () => fakeHead, scanStatus: async () => undefined, remove: async () => undefined,
 };
 
 async function raw(who: string, method: string, path: string, body?: unknown, extra: Record<string, string> = {}) {
@@ -340,4 +341,43 @@ test('자산태그 번호 범위(ADM-055): 기본 AT, Prefix 범위를 카테고
   assert.equal(zz.body.isDefault, true);
   assert.equal((await call('am', 'GET', '/admin/number-ranges')).body.items.filter((x: { isDefault: boolean }) => x.isDefault).length, 1);
   assert.equal((await call('am', 'DELETE', `/admin/number-ranges/${at.id}`)).status, 409, 'AT 자산이 있음');
+});
+
+
+test('PDA-09 자산 사진: 내 실사 대상 자산은 사진을 올려 자산 첨부로, 범위 밖은 403, 업로드 확인 뒤 연결·이력', { skip }, async () => {
+  const pda = async (method: string, path: string, body?: unknown, who = 'c1') => {
+    const r = await fetch(`${base}${path}`, { method, headers: { authorization: `Bearer at:T-BUN_${who}:pda`, 'x-device-id': 'TC58-9', 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body) });
+    const text = await r.text();
+    return { status: r.status, body: text ? JSON.parse(text) : undefined } as { status: number; body: any };   // eslint-disable-line @typescript-eslint/no-explicit-any
+  };
+  await owner.query(`UPDATE count_campaign SET status = 'COUNTING' WHERE campaign_code = 'PIB1'`);
+  const sha = 'a'.repeat(64);
+  const photo = { fileName: 'IMG_0001.jpg', contentType: 'image/jpeg', sizeBytes: 1234, sha256: sha };
+  const before = await pda('GET', '/pda/assets/AT-000101');
+  assert.deepEqual([before.body.canAddPhoto, before.body.photoCount], [true, 0]);
+  assert.equal((await pda('POST', '/pda/assets/AT-000001/photos:presign', photo)).status, 403, '실사 대상도 수정 범위도 아님');
+  assert.equal((await pda('POST', '/pda/assets/NOPE-9/photos:presign', photo)).status, 404);
+  assert.equal((await pda('POST', '/pda/assets/AT-000101/photos:presign', { ...photo, contentType: 'application/pdf' })).status, 400);
+  assert.equal((await pda('POST', '/pda/assets/AT-000101/photos:presign', { ...photo, sizeBytes: 6 * 1024 * 1024 })).status, 413);
+  const ps = await pda('POST', '/pda/assets/at-000101/photos:presign', photo);
+  assert.equal(ps.status, 200, JSON.stringify(ps.body));
+  assert.match(ps.body.uploadUrl, /tenant\/.+\/asset\//);
+  fakeHead = null;
+  assert.equal((await pda('POST', `/pda/attachments/${ps.body.attachmentId}:complete`)).status, 409, '아직 업로드 안 됨');
+  fakeHead = { size: 1234, sha256b64: Buffer.from(sha, 'hex').toString('base64') };
+  const done = await pda('POST', `/pda/attachments/${ps.body.attachmentId}:complete`);
+  assert.equal(done.status, 200, JSON.stringify(done.body));
+  assert.deepEqual([done.body.fileName, done.body.kind, done.body.uploadedBy], ['IMG_0001.jpg', 'PHOTO', 'Counter']);
+  assert.equal((await pda('POST', `/pda/attachments/${ps.body.attachmentId}:complete`)).status, 200, '멱등');
+  const ev = (await owner.query(`SELECT channel, changes FROM asset_event WHERE asset_id = $1 AND changes ? 'photoAdded'`, [ids.c1])).rows;
+  assert.deepEqual(ev.map((e) => [e.channel, e.changes.photoAdded]), [['PDA', 'IMG_0001.jpg']], '이력은 한 번');
+  const web = await call('am', 'GET', `/assets/${ids.c1}/attachments`);
+  assert.ok(web.body.items.some((x: { fileName: string }) => x.fileName === 'IMG_0001.jpg'), '웹 첨부 탭');
+  assert.equal((await pda('GET', '/pda/assets/AT-000101')).body.photoCount, 1);
+  assert.equal((await pda('POST', `/pda/attachments/${ps.body.attachmentId}:complete`, undefined, 'am')).status, 403, 'PDA는 실사 담당만');
+  await owner.query(`UPDATE count_campaign SET status = 'CLOSED' WHERE campaign_code = 'PIB1'`);
+  const off = await pda('GET', '/pda/assets/AT-000101');
+  assert.equal(off.body.limited, true, '실사가 끝나면 범위 밖');
+  assert.equal((await pda('POST', '/pda/assets/AT-000101/photos:presign', photo)).status, 403);
 });

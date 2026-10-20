@@ -317,6 +317,108 @@ paths:
       security:
       - pdaAuth:
         - pda
+  /pda/assets/{assetTag}/photos:presign:
+    post:
+      operationId: pdaPresignAssetPhoto
+      summary: 자산 사진 업로드 URL 발급
+      tags:
+      - PDA
+      description: 'PDA-09 · 테이블: attachment
+
+
+        - 자산 조회 화면에서 찍은 사진을 그 자산의 첨부(owner_type asset, kind PHOTO)로 올린다. 웹 자산 상세의 첨부 탭에 보인다.
+
+        - 권한: 자산 수정(asset.write) 범위 안이거나 내게 배정된 실사(COUNTING·REVIEW) 대상 자산(Bundle은 구성품이 내 대상). 처분 자산은 403.
+
+        - 최대 5 MB, JPEG·PNG. 1시간 안에 완료하지 않은 업로드가 20건이면 429.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/DeviceId'
+      - name: assetTag
+        in: path
+        required: true
+        description: 자산태그
+        schema:
+          type: string
+          maxLength: 30
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresignResponse'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '413':
+          $ref: '#/components/responses/E413'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: count.scan
+      x-scope:
+        COUNTER: TASK
+      security:
+      - pdaAuth:
+        - pda
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PdaPhotoRequest'
+  /pda/attachments/{id}:complete:
+    post:
+      operationId: pdaCompletePhoto
+      summary: 자산 사진 업로드 완료
+      tags:
+      - PDA
+      description: 'PDA-09 · 테이블: attachment, asset_event
+
+
+        - S3 객체의 크기·SHA-256이 신고한 값과 같으면 자산에 연결(linked_at)하고 자산 이력(UPDATED, 채널 PDA)을 남긴다. 다르거나 아직 없으면 409 ALM-E111.
+
+        - 멱등. 올린 사람만(아니면 404).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/DeviceId'
+      - name: id
+        in: path
+        required: true
+        description: 첨부 id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Attachment'
+        '401':
+          $ref: '#/components/responses/E401'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: count.scan
+      x-scope:
+        COUNTER: TASK
+      security:
+      - pdaAuth:
+        - pda
   /pda/rooms:
     get:
       operationId: pdaListRooms
@@ -10702,6 +10804,12 @@ components:
         componentCount:
           type: integer
           description: Bundle의 구성품 수
+        canAddPhoto:
+          type: boolean
+          description: 이 사용자가 PDA에서 자산 사진을 올릴 수 있음(자산 수정 범위 또는 내 실사 대상, 처분 자산 제외)
+        photoCount:
+          type: integer
+          description: 자산 첨부 사진 수
       required:
       - assetTag
       - status
@@ -11051,6 +11159,32 @@ components:
       - sizeBytes
       - sha256
       - ownerType
+    PdaPhotoRequest:
+      type: object
+      description: PDA 자산 사진 업로드 URL 요청(PDA-09)
+      properties:
+        fileName:
+          type: string
+          maxLength: 200
+          description: 파일명
+        contentType:
+          type: string
+          enum:
+          - image/jpeg
+          - image/png
+          description: MIME
+        sizeBytes:
+          type: integer
+          description: 크기(최대 5 MB)
+        sha256:
+          type: string
+          maxLength: 64
+          description: 파일 해시(업로드 후 검증)
+      required:
+      - fileName
+      - contentType
+      - sizeBytes
+      - sha256
     PresignResponse:
       type: object
       description: 사진 업로드 URL

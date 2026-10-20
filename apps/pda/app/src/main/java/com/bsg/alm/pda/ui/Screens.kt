@@ -79,6 +79,7 @@ import com.bsg.alm.pda.core.ScanMode
 import com.bsg.alm.pda.data.CodeEntity
 import com.bsg.alm.pda.data.Photo
 import com.bsg.alm.pda.data.QueueItem
+import com.bsg.alm.pda.net.PdaAssetDetail
 import com.bsg.alm.pda.data.TaskEntity
 import com.bsg.alm.pda.data.WorkItem
 import com.bsg.alm.pda.scan.ScanEvent
@@ -327,6 +328,58 @@ fun PhotoStrip(vm: AppViewModel, photos: MutableList<Photo>, max: Int = 5) {
             if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) { perm.launch(Manifest.permission.CAMERA); return@OutlinedButton }
             val (uri, f) = Photos.newCaptureUri(ctx, vm.repo.photoDir()); pendingRaw = f; take.launch(uri)
         }) { Icon(Icons.Default.PhotoCamera, null); Text(" Photo") }
+    }
+}
+
+// ---------------- PDA-09 자산 사진 → 자산 첨부(2026-10-20) ----------------
+/** 조회한 자산에 사진을 찍어 바로 올린다(웹 자산 상세 첨부 탭). 실패한 사진은 눌러서 다시 올리거나 길게 눌러 지운다 */
+@Composable
+fun AssetPhotoSection(vm: AppViewModel, a: PdaAssetDetail) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val photos by vm.assetPhotos.collectAsState()
+    var pendingRaw by remember { mutableStateOf<File?>(null) }
+    val take = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        val raw = pendingRaw ?: return@rememberLauncherForActivityResult
+        pendingRaw = null
+        if (ok) scope.launch {
+            runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Photos.shrink(raw, vm.repo.photoDir()) } }
+                .onSuccess { vm.addAssetPhoto(a.assetTag, it) }.onFailure { vm.toast(it.message ?: "Photo failed") }
+        } else raw.delete()
+    }
+    val perm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (!granted) vm.toast("Camera permission is needed for photos") }
+    Text("Photos (${a.photoCount})", fontWeight = FontWeight.Bold, color = Blue, modifier = Modifier.padding(top = 14.dp, bottom = 2.dp))
+    HorizontalDivider()
+    if (!a.canAddPhoto) {
+        Text("You can view this asset but not add photos (only assets in your count or assets you manage).", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
+        return
+    }
+    Text("Photos are attached to the asset right away and appear on the asset's Attachments tab on the web. Needs a connection.", color = Muted, fontSize = 13.sp,
+        modifier = Modifier.padding(vertical = 6.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        photos.forEach { p ->
+            val bmp = remember(p.path, p.state) { runCatching { BitmapFactory.decodeFile(p.path, BitmapFactory.Options().apply { inSampleSize = 8 }) }.getOrNull() }
+            Box(Modifier.size(64.dp).background(Color(0x11000000)).clickable(enabled = p.state == AssetPhoto.FAILED) { vm.retryAssetPhoto(a.assetTag, p.path) },
+                contentAlignment = Alignment.Center) {
+                if (bmp != null) Image(bmp.asImageBitmap(), "Photo", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                when (p.state) {
+                    AssetPhoto.UPLOADING -> CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                    AssetPhoto.DONE -> Text("✓", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp,
+                        modifier = Modifier.background(Ok, RoundedCornerShape(12.dp)).padding(horizontal = 6.dp))
+                    else -> Text("Retry", color = Color.White, fontSize = 12.sp, modifier = Modifier.background(Bad, RoundedCornerShape(6.dp)).padding(horizontal = 4.dp))
+                }
+            }
+        }
+        OutlinedButton(onClick = {
+            if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) { perm.launch(Manifest.permission.CAMERA); return@OutlinedButton }
+            val (uri, f) = Photos.newCaptureUri(ctx, vm.repo.photoDir()); pendingRaw = f; take.launch(uri)
+        }) { Icon(Icons.Default.PhotoCamera, null); Text(" Take photo") }
+    }
+    photos.filter { it.state == AssetPhoto.FAILED }.forEach { p ->
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(p.error ?: "Upload failed", color = Bad, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            TextButton(onClick = { vm.discardAssetPhoto(p.path) }) { Text("Discard") }
+        }
     }
 }
 

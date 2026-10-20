@@ -6,6 +6,8 @@ import com.bsg.alm.pda.auth.AuthManager
 import com.bsg.alm.pda.core.Settings
 import com.bsg.alm.pda.net.Api
 import com.bsg.alm.pda.net.ApiException
+import com.bsg.alm.pda.net.PdaAttachment
+import com.bsg.alm.pda.net.PdaPhotoRequest
 import com.bsg.alm.pda.net.PresignRequest
 import com.bsg.alm.pda.net.ScanBatch
 import com.bsg.alm.pda.net.ScanIn
@@ -311,4 +313,15 @@ class Repository(private val ctx: Context, private val settings: Settings, val a
     suspend fun localAsset(tag: String): WorkItem? = dao.itemByTagAny(userId, tag)
 
     fun photoDir(): File = File(ctx.cacheDir, "photos").apply { mkdirs() }
+
+    /** PDA-09 자산 사진: 바로 올린다(온라인 전용). 성공하면 기기 사본을 지운다. 실패하면 파일을 남겨 다시 시도할 수 있게 */
+    suspend fun uploadAssetPhoto(tag: String, f: File): PdaAttachment {
+        val bytes = f.readBytes()
+        val sha = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        val ps = api.assetPhotoPresign(tag, PdaPhotoRequest(f.name, "image/jpeg", bytes.size.toLong(), sha))
+        api.upload(ps, f, "image/jpeg")
+        val a = api.completePhoto(ps.attachmentId)
+        f.delete()
+        return a
+    }
 }

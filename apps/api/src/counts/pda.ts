@@ -9,6 +9,7 @@ import { AlmError, E } from '../common/errors';
 import { Check, UUID } from '../common/validate';
 import type { Principal } from '../auth/principal';
 import { defaultTemplateId } from '../labels/labels';
+import { completeWeb, FileStore, presignAssetPhoto } from '../files/files';
 import { assetScope, can, Params } from '../auth/scope';
 
 const iso = (d: unknown) => (d instanceof Date ? d.toISOString() : d ? String(d) : undefined);
@@ -362,8 +363,18 @@ export async function pdaGetAsset(c: PoolClient, p: Principal, tag: string) {
       LEFT JOIN app_user u ON u.id = a.assigned_user_id LEFT JOIN v_asset_stage st ON st.asset_id = a.id LEFT JOIN v_asset_value_latest vl ON vl.asset_id = a.id
      WHERE upper(a.asset_tag) = upper($1)`, [t])).rows[0];
   if (!a) throw E.notFound('ALM에 없는 자산태그입니다');
+  const { inScope, mine, bundleMine, canPhoto } = await access(c, p, a);
+  if (!inScope && !mine && !bundleMine) {
+    return { assetTag: a.asset_tag, status: a.status, siteCode: a.site_code ?? undefined, limited: true };
+  }
+  return clean({ ...(await fullDetail(c, p, a, mine)), canAddPhoto: canPhoto,
+    photoCount: Number((await c.query(`SELECT count(*) AS n FROM attachment WHERE owner_type = 'asset' AND owner_id = $1 AND kind = 'PHOTO' AND linked_at IS NOT NULL`, [a.id])).rows[0].n) });
+}
+
+/** PDA에서 이 자산을 볼 수 있는지(상세)·사진을 올릴 수 있는지 */
+async function access(c: PoolClient, p: Principal, a: Record<string, any>) {
   const ps = new Params([a.id]);
-  const inScope = (await c.query(`SELECT 1 FROM asset a WHERE a.id = $1 AND ${assetScope(p, 'asset.read', ps)}`, ps.values)).rowCount;
+  const inScope = !!(await c.query(`SELECT 1 FROM asset a WHERE a.id = $1 AND ${assetScope(p, 'asset.read', ps)}`, ps.values)).rowCount;
   const mine = (await c.query(`SELECT cc.campaign_code, er.room_code AS expected_room, ci.result, ci.counted_at FROM count_item ci
       JOIN count_campaign cc ON cc.id = ci.campaign_id AND cc.status IN ('COUNTING', 'REVIEW') JOIN room er ON er.id = ci.expected_room_id
      WHERE ci.asset_id = $1 AND EXISTS (SELECT 1 FROM count_task t WHERE t.campaign_id = ci.campaign_id AND t.assignee_id = $2)
@@ -372,9 +383,14 @@ export async function pdaGetAsset(c: PoolClient, p: Principal, tag: string) {
   const bundleMine = !inScope && !mine && a.is_bundle && !!(await c.query(`SELECT 1 FROM count_item ci JOIN asset x ON x.id = ci.asset_id AND x.parent_asset_id = $1
       JOIN count_campaign cc ON cc.id = ci.campaign_id AND cc.status IN ('COUNTING', 'REVIEW')
      WHERE EXISTS (SELECT 1 FROM count_task t WHERE t.campaign_id = ci.campaign_id AND t.assignee_id = $2) LIMIT 1`, [a.id, p.userId])).rowCount;
-  if (!inScope && !mine && !bundleMine) {
-    return { assetTag: a.asset_tag, status: a.status, siteCode: a.site_code ?? undefined, limited: true };
-  }
+  // 사진: 자산 수정 범위 안이거나 내 실사 대상(Bundle은 구성품이 내 대상). 처분된 자산은 안 됨
+  const ws = new Params([a.id]);
+  const writable = !!(await c.query(`SELECT 1 FROM asset a WHERE a.id = $1 AND ${assetScope(p, 'asset.write', ws)}`, ws.values)).rowCount;
+  const canPhoto = a.status !== 'DISPOSED' && (writable || !!mine || bundleMine);
+  return { inScope, mine, bundleMine, canPhoto };
+}
+
+async function fullDetail(c: PoolClient, p: Principal, a: Record<string, any>, mine: Record<string, any> | undefined) {
   const last = (await c.query(`SELECT ci.counted_at, cc.campaign_code, fr.room_code FROM count_item ci JOIN count_campaign cc ON cc.id = ci.campaign_id
       LEFT JOIN room fr ON fr.id = coalesce(ci.found_room_id, ci.expected_room_id) WHERE ci.asset_id = $1 AND ci.counted_at IS NOT NULL
      ORDER BY ci.counted_at DESC LIMIT 1`, [a.id])).rows[0];
@@ -400,4 +416,32 @@ export async function pdaGetAsset(c: PoolClient, p: Principal, tag: string) {
     count: mine ? clean({ campaignCode: mine.campaign_code, expectedRoomCode: mine.expected_room, result: mine.result, countedAt: iso(mine.counted_at) }) : undefined,
     events: events.map((e) => clean({ eventType: e.event_type, occurredAt: iso(e.occurred_at), channel: e.channel, actorName: e.display_name })),
   });
+}
+
+// ---------------- PDA-09 자산 사진(2026-10-20) ----------------
+//   조회 화면에서 사진을 찍어 그 자산의 첨부로 올린다(웹 자산 상세 첨부 탭에 보임). 권한: 자산 수정 범위 또는 내 실사 대상.
+//   흐름: :presign(owner_id = 자산) → S3 PUT → :complete(크기·체크섬 확인 후 연결, 자산 이력 UPDATED·PDA)
+const MAX_PENDING = 20;
+export async function pdaPresignAssetPhoto(c: PoolClient, store: FileStore, p: Principal, tag: string, body: unknown) {
+  const t = (tag ?? '').trim();
+  if (!t || t.length > 30) throw E.notFound('ALM 자산태그가 아닙니다');
+  const a = (await c.query('SELECT id, asset_tag, status, is_bundle FROM asset WHERE upper(asset_tag) = upper($1)', [t])).rows[0];
+  if (!a) throw E.notFound('ALM에 없는 자산태그입니다');
+  if (!(await access(c, p, a)).canPhoto) throw new AlmError(403, 'ALM-E401', '이 자산에 사진을 올릴 권한이 없습니다(자산 수정 권한 또는 내 실사 대상)');
+  const pending = Number((await c.query(`SELECT count(*) AS n FROM attachment WHERE owner_type = 'asset' AND owner_id = $1 AND created_by = $2 AND linked_at IS NULL
+     AND created_at > now() - interval '1 hour'`, [a.id, p.userId])).rows[0].n);
+  if (pending >= MAX_PENDING) throw new AlmError(429, 'ALM-E429', '올리는 중인 사진이 너무 많습니다. 잠시 뒤 다시 시도하세요');
+  return presignAssetPhoto(c, store, p, a.id, body);
+}
+
+export async function pdaCompletePhoto(c: PoolClient, store: FileStore, p: Principal, id: string) {
+  if (!UUID.test(id)) throw E.notFound('첨부를 찾을 수 없습니다');
+  const before = (await c.query(`SELECT owner_type, owner_id, linked_at, file_name FROM attachment WHERE id = $1`, [id])).rows[0];
+  if (!before || before.owner_type !== 'asset') throw E.notFound('첨부를 찾을 수 없습니다');
+  const out = await completeWeb(c, store, p, id);
+  if (!before.linked_at) {
+    await c.query(`INSERT INTO asset_event (id, tenant_id, asset_id, event_type, actor_id, channel, changes) VALUES ($1, $2, $3, 'UPDATED', $4, 'PDA', $5)`,
+      [randomUUID(), p.tenantId, before.owner_id, p.userId, JSON.stringify({ photoAdded: before.file_name })]);
+  }
+  return out;
 }
