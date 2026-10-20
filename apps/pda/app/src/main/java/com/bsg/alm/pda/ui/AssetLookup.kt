@@ -38,6 +38,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import kotlinx.coroutines.delay
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -66,7 +68,10 @@ fun AssetLookupScreen(vm: AppViewModel, online: Boolean, pending: Int) {
     var input by remember { mutableStateOf("") }
     val focus = remember { FocusRequester() }
     val camera = rememberLauncherForActivityResult(ScanContract()) { r -> r.contents?.let { vm.scanner.emit(ScanEvent(it, "CAMERA")) } }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    // 키보드 입력형 스캐너를 위해 칸에 포커스는 두되, 화면 키보드는 숨긴다(상세를 가리지 않게). 칸을 누르면 다시 나온다
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() }; delay(150); keyboard?.hide() }
+    LaunchedEffect(state) { if (state !is Lookup.Idle) keyboard?.hide() }
     Column(Modifier.fillMaxSize()) {
         Header("PDA-09", "Asset lookup", null, online, pending, onBack = { vm.go(vm.lookupBack) })
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -80,6 +85,7 @@ fun AssetLookupScreen(vm: AppViewModel, online: Boolean, pending: Int) {
                     keyboardActions = KeyboardActions(onSearch = {
                         if (input.isNotBlank()) vm.scanner.emit(ScanEvent(input.trim(), if (vm.settings.scanMode == ScanMode.KEYBOARD) "TRIGGER" else "MANUAL"))
                         input = ""
+                        keyboard?.hide()
                     }))
                 Spacer(Modifier.size(8.dp))
                 IconButton(onClick = { camera.launch(ScanOptions().setBeepEnabled(true).setOrientationLocked(true).setPrompt("Scan asset tag")) }) {

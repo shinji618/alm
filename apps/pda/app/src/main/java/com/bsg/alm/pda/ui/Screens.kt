@@ -62,6 +62,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -83,6 +84,7 @@ import com.bsg.alm.pda.data.WorkItem
 import com.bsg.alm.pda.scan.ScanEvent
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
@@ -214,7 +216,10 @@ fun ScanScreen(vm: AppViewModel, online: Boolean, pending: Int) {
     val camera = rememberLauncherForActivityResult(ScanContract()) { r -> r.contents?.let { vm.scanner.emit(ScanEvent(it, "CAMERA")) } }
     val r = room ?: return
     val counted = items.count { it.localResult != null || it.result != "PENDING" }
-    LaunchedEffect(r.roomId) { runCatching { focus.requestFocus() } }
+    // 키보드 입력형 스캐너용 포커스는 두고 화면 키보드는 숨긴다(결과·목록을 가리지 않게). 칸을 누르면 다시 나온다
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(r.roomId) { runCatching { focus.requestFocus() }; delay(150); keyboard?.hide() }
+    LaunchedEffect(last) { if (last != null) keyboard?.hide() }
     Column(Modifier.fillMaxSize()) {
         Header("PDA-04", r.roomCode, r.name, online, pending, onBack = { vm.go(Screen.ROOM) }) {
             TextButton(onClick = { vm.go(Screen.STATUS) }) { Text("Status", color = Color.White) }
@@ -249,6 +254,7 @@ fun ScanScreen(vm: AppViewModel, online: Boolean, pending: Int) {
                     keyboardActions = KeyboardActions(onDone = {
                         if (input.isNotBlank()) vm.scanner.emit(ScanEvent(input.trim(), if (vm.settings.scanMode == ScanMode.KEYBOARD) "TRIGGER" else "MANUAL"))
                         input = ""
+                        keyboard?.hide()
                     }))
                 Spacer(Modifier.size(8.dp))
                 IconButton(onClick = { camera.launch(ScanOptions().setBeepEnabled(true).setOrientationLocked(true).setPrompt("Scan asset tag")) }) {
