@@ -172,7 +172,17 @@ useful_life_years | int | | 내용연수 경과 판정 기준(년)
 is_ci | bool | NN =false | 등록 시 CMDB CI 자동 생성
 is_active | bool | NN =true | 사용 여부
 tax_property_type | E:TaxPropertyType | | 재산세 구분(자산클래스보다 우선). 비면 자산클래스 구분
+number_range_id | ->asset_number_range | | 자산태그 번호 범위. 비면 상위 카테고리 → 기본 범위
 ''', uniques=[('tenant_id','category_code')], screens='ALM-110, 112')
+t('org','asset_number_range','자산태그 번호 범위','자산태그 앞 2자리(Prefix)와 번호 구간. 카테고리에 지정해 자동 채번. 태그 = PREFIX-nnnnnn', '''
+prefix | vc(2) | NN | 태그 앞 2자리(영문 대문자·숫자)
+name | vc(60) | NN | 이름
+from_no | int | NN =1 | 시작 번호(1~999999)
+to_no | int | NN =999999 | 끝 번호(1~999999)
+next_no | int | NN =1 | 다음 번호. 이미 쓰인 번호는 채번 때 건너뜀
+is_default | bool | NN =false | 기본 범위(카테고리·상위에 지정이 없을 때). 테넌트에 하나
+is_active | bool | NN =true | 사용 여부. 끄면 이 범위로 채번하지 않음
+''', uniques=[('tenant_id','prefix')], screens='ADM-055')
 t('org','model','모델','제조사·모델 마스터', '''
 category_id | ->category | NN | 카테고리
 manufacturer | vc(60) | NN | 제조사

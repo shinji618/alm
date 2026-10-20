@@ -38,7 +38,8 @@
     "byCategory": "By category",
     "categories": "Asset categories",
     "categoryCount": "{{name}} ({{count}} assets)",
-    "assetImport": "Bulk asset upload"
+    "assetImport": "Bulk asset upload",
+    "numberRanges": "Asset tag number ranges"
   },
   "common": {
     "clear": "Clear",
@@ -171,7 +172,8 @@
       "submit": "Register",
       "done": "Registered {{tag}}",
       "request": "New asset request {{no}} sent for approval",
-      "label": "Label queued"
+      "label": "Label queued",
+      "tagHint": "Asset tag: {{prefix}}-nnnnnn (assigned automatically)"
     },
     "detail": {
       "crumb": "ALM-111",
@@ -1083,7 +1085,12 @@
     "usage": "{{assets}} asset(s) and {{models}} model(s) use this category. In use or with active sub-categories it cannot be deactivated.",
     "delete": "Delete",
     "deleteMsg": "Delete category {{name}}? Its models are deleted too. Categories used by assets cannot be deleted.",
-    "deleted": "Category {{code}} deleted"
+    "deleted": "Category {{code}} deleted",
+    "tagPrefix": "Tag prefix",
+    "inherited": "(inherited)",
+    "numberRange": "Asset tag number range",
+    "numberRangeHint": "New assets in this category get tags from this range.",
+    "rangeInherit": "Parent category or default"
   },
   "label": {
     "description": "Print asset labels on Zebra printers through Zebra Browser Print on this PC. The server never connects to printers.",
@@ -1285,7 +1292,7 @@
     "downloadResults": "Download results (CSV)",
     "unknownColumns": "Ignored columns: {{cols}}",
     "filter": "Show",
-    "autoTag": "(next AT-number)",
+    "autoTag": "(auto number)",
     "changes": "Changes: {{cols}}",
     "filters": {
       "all": "All",
@@ -1342,5 +1349,38 @@
       "NOT_BUNDLE": "Not an active bundle asset",
       "BUNDLE_COMPONENT": "Cannot be a component of this bundle: {{message}}"
     }
+  },
+  "nr": {
+    "prefix": "Prefix",
+    "name": "Name",
+    "range": "Range",
+    "nextTag": "Next tag",
+    "used": "Used",
+    "remaining": "Remaining",
+    "categories": "Categories",
+    "default": "Default",
+    "allOthers": "All categories without a range",
+    "exhausted": "Used up",
+    "nearlyFull": "Running low",
+    "description": "Asset tags are a 2-character prefix and a 6-digit number (e.g. NB-000123). Define prefixes and number ranges here and assign them to categories; sub-categories inherit the parent's range, and categories without one use the default range.",
+    "add": "Add number range",
+    "edit": "Edit number range",
+    "warn": "Number ranges running low or used up: {{prefixes}}. Raise the end number or assign another range.",
+    "howTo": "Assign a range to a category in",
+    "prefixHint": "2 characters: capital letters or digits (e.g. NB). Cannot be changed later.",
+    "numHint": "1–999,999",
+    "toHint": "Must not be below the start number",
+    "nextHint": "Between the start number and the end number + 1",
+    "fromNo": "From number",
+    "toNo": "To number",
+    "nextNo": "Next number",
+    "nextNoHint": "Numbers already used by assets are skipped automatically.",
+    "fromLocked": "Cannot be changed after numbers are issued.",
+    "preview": "Tags",
+    "setDefault": "Default range (for categories without a range)",
+    "usage": "{{used}} asset(s) use this range. Categories: {{categories}}.",
+    "delete": "Delete",
+    "deleteMsg": "Delete number range {{prefix}}?",
+    "deleted": "Number range {{prefix}} deleted"
   }
 }

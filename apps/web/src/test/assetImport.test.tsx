@@ -44,7 +44,7 @@ describe('bulk asset upload (ADM-060)', () => {
     expect(screen.getByText('Not an active category code')).toBeInTheDocument();
     expect(screen.getByText('Ignored on update (use a transfer or check-out request, or SAP): companyCode')).toBeInTheDocument();
     expect(screen.getByText('Ignored columns: Color')).toBeInTheDocument();
-    expect(screen.getAllByText('(next AT-number)')).toHaveLength(2);
+    expect(screen.getAllByText('(auto number)')).toHaveLength(2);
 
     await user.click(screen.getByRole('button', { name: 'Errors' }));
     expect(screen.queryByText('Renamed')).not.toBeInTheDocument();

@@ -10,12 +10,13 @@ import { useSession } from '@/lib/session';
 import type { Lookups } from '../assets/types';
 import { PROPERTY_TYPES } from '../tax/types';
 import { notifyCategoriesChanged } from '@/lib/events';
+import type { NumberRange } from './NumberRanges';
 import s from '../assets/assets.module.css';
 
 export interface CategoryRow {
   id: string; version: number; categoryCode: string; name: string; parentId?: string; parentName?: string; defaultAssetClassId?: string;
   assetClassCode?: string; assetClassName?: string; usefulLifeYears?: number; isCi: boolean; taxPropertyType?: string; isActive: boolean;
-  assetCount: number; modelCount: number;
+  assetCount: number; modelCount: number; numberRangeId?: string; numberRangePrefix?: string; tagPrefix?: string;
 }
 
 export function AssetCategories() {
@@ -34,6 +35,7 @@ export function AssetCategories() {
     { key: 'usefulLifeYears', label: t('cat.life'), align: 'right', render: (x) => x.usefulLifeYears ?? '—' },
     { key: 'isCi', label: t('cat.isCi'), render: (x) => t(x.isCi ? 'common.yes' : 'common.no') },
     { key: 'taxPropertyType', label: t('cat.taxType'), render: (x) => (x.taxPropertyType ? t(`tax.ptype.${x.taxPropertyType}`) : <span className="faint">{t('cat.fromClass')}</span>) },
+    { key: 'tagPrefix', label: t('cat.tagPrefix'), render: (x) => (x.tagPrefix ? <span><span className="mono">{x.tagPrefix}-</span>{!x.numberRangePrefix && <span className="faint small"> {t('cat.inherited')}</span>}</span> : '—') },
     { key: 'assetCount', label: t('cat.assets'), align: 'right' },
     { key: 'isActive', label: t('cat.status'), render: (x) => <StatusPill tone={x.isActive ? 'ok' : 'neutral'}>{t(x.isActive ? 'cat.active' : 'cat.inactive')}</StatusPill> },
   ], [t]);
@@ -61,8 +63,9 @@ function CategoryDrawer({ row, all, onClose, onSaved }: { row?: CategoryRow; all
   const [delError, setDelError] = useState<string>();
   // 자산클래스는 /lookups(SAP에서 받은 활성 클래스만)
   const lk = useAsync((sig) => api.get<Lookups>('/lookups?types=assetClasses', sig), []);
+  const nr = useAsync((sig) => api.get<{ items: NumberRange[] }>('/admin/number-ranges', sig), []);
   const [f, setF] = useState({ code: row?.categoryCode ?? '', name: row?.name ?? '', parentId: row?.parentId ?? '', classId: row?.defaultAssetClassId ?? '',
-    life: row?.usefulLifeYears ? String(row.usefulLifeYears) : '', isCi: row?.isCi ?? false, taxType: row?.taxPropertyType ?? '', isActive: row?.isActive ?? true });
+    life: row?.usefulLifeYears ? String(row.usefulLifeYears) : '', isCi: row?.isCi ?? false, taxType: row?.taxPropertyType ?? '', isActive: row?.isActive ?? true, rangeId: row?.numberRangeId ?? '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((v) => ({ ...v, [k]: e.target.value }));
@@ -77,7 +80,7 @@ function CategoryDrawer({ row, all, onClose, onSaved }: { row?: CategoryRow; all
     setErrors(e);
     if (Object.keys(e).length) return;
     const body = { name: f.name.trim(), parentId: f.parentId || null, defaultAssetClassId: f.classId || null, usefulLifeYears: f.life ? Number(f.life) : null,
-      isCi: f.isCi, taxPropertyType: f.taxType || null };
+      isCi: f.isCi, taxPropertyType: f.taxType || null, numberRangeId: f.rangeId || null };
     setSaving(true);
     try {
       if (row) await api.patch(`/admin/categories/${row.id}`, { ...body, isActive: f.isActive });
@@ -116,6 +119,9 @@ function CategoryDrawer({ row, all, onClose, onSaved }: { row?: CategoryRow; all
         <SelectField label={t('cat.assetClass')} value={f.classId} error={errors.defaultAssetClassId} onChange={set('classId')} hint={t('cat.classHint')}
           options={[{ value: '', label: '—' }, ...classes.map((x) => ({ value: x.id, label: `${x.code} · ${x.label}` })),
             ...(row?.defaultAssetClassId && !classes.some((x) => x.id === row.defaultAssetClassId) ? [{ value: row.defaultAssetClassId, label: `${row.assetClassCode ?? '?'} (${t('cat.classUnavailable')})` }] : [])]} />
+        <SelectField label={t('cat.numberRange')} value={f.rangeId} error={errors.numberRangeId} onChange={set('rangeId')} hint={t('cat.numberRangeHint')}
+          options={[{ value: '', label: t('cat.rangeInherit') }, ...(nr.data?.items ?? []).filter((x) => x.isActive || x.id === row?.numberRangeId)
+            .map((x) => ({ value: x.id, label: `${x.prefix}- · ${x.name}${x.isDefault ? ` (${t('nr.default')})` : ''}` }))]} />
         <TextField label={t('cat.life')} type="number" min={1} max={50} value={f.life} error={errors.usefulLifeYears} hint={t('cat.lifeHint')} onChange={set('life')} />
         <SelectField label={t('cat.taxType')} value={f.taxType} error={errors.taxPropertyType} onChange={set('taxType')}
           options={[{ value: '', label: t('cat.fromClass') }, ...PROPERTY_TYPES.map((x) => ({ value: x, label: t(`tax.ptype.${x}`) }))]} />

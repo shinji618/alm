@@ -435,6 +435,7 @@ CREATE TABLE category (
   is_ci boolean NOT NULL DEFAULT false,
   is_active boolean NOT NULL DEFAULT true,
   tax_property_type tax_property_type,
+  number_range_id uuid,
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -452,12 +453,47 @@ COMMENT ON COLUMN category.useful_life_years IS '내용연수 경과 판정 기�
 COMMENT ON COLUMN category.is_ci IS '등록 시 CMDB CI 자동 생성';
 COMMENT ON COLUMN category.is_active IS '사용 여부';
 COMMENT ON COLUMN category.tax_property_type IS '재산세 구분(자산클래스보다 우선). 비면 자산클래스 구분';
+COMMENT ON COLUMN category.number_range_id IS '자산태그 번호 범위. 비면 상위 카테고리 → 기본 범위';
 COMMENT ON COLUMN category.created_at IS '생성 일시';
 COMMENT ON COLUMN category.created_by IS '생성자';
 COMMENT ON COLUMN category.updated_at IS '변경 일시';
 COMMENT ON COLUMN category.updated_by IS '변경자';
 COMMENT ON COLUMN category.version IS '낙관적 잠금';
 COMMENT ON TABLE category IS '카테고리 — 자산 분류(노트북, 서버 등). 계층 구조';
+
+-- 자산태그 번호 범위: 자산태그 앞 2자리(Prefix)와 번호 구간. 카테고리에 지정해 자동 채번. 태그 = PREFIX-nnnnnn
+CREATE TABLE asset_number_range (
+  id uuid PRIMARY KEY,
+  tenant_id uuid NOT NULL,
+  prefix varchar(2) NOT NULL,
+  name varchar(60) NOT NULL,
+  from_no integer NOT NULL DEFAULT 1,
+  to_no integer NOT NULL DEFAULT 999999,
+  next_no integer NOT NULL DEFAULT 1,
+  is_default boolean NOT NULL DEFAULT false,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by uuid,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by uuid,
+  version integer NOT NULL DEFAULT 1,
+  UNIQUE (tenant_id, prefix)
+);
+COMMENT ON COLUMN asset_number_range.id IS '기본키';
+COMMENT ON COLUMN asset_number_range.tenant_id IS '테넌트';
+COMMENT ON COLUMN asset_number_range.prefix IS '태그 앞 2자리(영문 대문자·숫자)';
+COMMENT ON COLUMN asset_number_range.name IS '이름';
+COMMENT ON COLUMN asset_number_range.from_no IS '시작 번호(1~999999)';
+COMMENT ON COLUMN asset_number_range.to_no IS '끝 번호(1~999999)';
+COMMENT ON COLUMN asset_number_range.next_no IS '다음 번호. 이미 쓰인 번호는 채번 때 건너뜀';
+COMMENT ON COLUMN asset_number_range.is_default IS '기본 범위(카테고리·상위에 지정이 없을 때). 테넌트에 하나';
+COMMENT ON COLUMN asset_number_range.is_active IS '사용 여부. 끄면 이 범위로 채번하지 않음';
+COMMENT ON COLUMN asset_number_range.created_at IS '생성 일시';
+COMMENT ON COLUMN asset_number_range.created_by IS '생성자';
+COMMENT ON COLUMN asset_number_range.updated_at IS '변경 일시';
+COMMENT ON COLUMN asset_number_range.updated_by IS '변경자';
+COMMENT ON COLUMN asset_number_range.version IS '낙관적 잠금';
+COMMENT ON TABLE asset_number_range IS '자산태그 번호 범위 — 자산태그 앞 2자리(Prefix)와 번호 구간. 카테고리에 지정해 자동 채번. 태그 = PREFIX-nnnnnn';
 
 -- 모델: 제조사·모델 마스터
 CREATE TABLE model (
@@ -2722,6 +2758,8 @@ ALTER TABLE room ADD CONSTRAINT fk_room_site_id FOREIGN KEY (site_id) REFERENCES
 ALTER TABLE category ADD CONSTRAINT fk_category_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE category ADD CONSTRAINT fk_category_parent_id FOREIGN KEY (parent_id) REFERENCES category(id);
 ALTER TABLE category ADD CONSTRAINT fk_category_default_asset_class_id FOREIGN KEY (default_asset_class_id) REFERENCES asset_class(id);
+ALTER TABLE category ADD CONSTRAINT fk_category_number_range_id FOREIGN KEY (number_range_id) REFERENCES asset_number_range(id);
+ALTER TABLE asset_number_range ADD CONSTRAINT fk_asset_number_range_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE model ADD CONSTRAINT fk_model_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE model ADD CONSTRAINT fk_model_category_id FOREIGN KEY (category_id) REFERENCES category(id);
 ALTER TABLE vendor ADD CONSTRAINT fk_vendor_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
@@ -2931,6 +2969,8 @@ ALTER TABLE room ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p_room_tenant ON room USING (tenant_id = current_setting('app.tenant_id')::uuid);
 ALTER TABLE category ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p_category_tenant ON category USING (tenant_id = current_setting('app.tenant_id')::uuid);
+ALTER TABLE asset_number_range ENABLE ROW LEVEL SECURITY;
+CREATE POLICY p_asset_number_range_tenant ON asset_number_range USING (tenant_id = current_setting('app.tenant_id')::uuid);
 ALTER TABLE model ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p_model_tenant ON model USING (tenant_id = current_setting('app.tenant_id')::uuid);
 ALTER TABLE vendor ENABLE ROW LEVEL SECURITY;
@@ -3241,6 +3281,7 @@ CREATE TRIGGER tr_asset_class_audit AFTER INSERT OR UPDATE OR DELETE ON asset_cl
 CREATE TRIGGER tr_site_audit AFTER INSERT OR UPDATE OR DELETE ON site FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_room_audit AFTER INSERT OR UPDATE OR DELETE ON room FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_category_audit AFTER INSERT OR UPDATE OR DELETE ON category FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_asset_number_range_audit AFTER INSERT OR UPDATE OR DELETE ON asset_number_range FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_model_audit AFTER INSERT OR UPDATE OR DELETE ON model FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_vendor_audit AFTER INSERT OR UPDATE OR DELETE ON vendor FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_asset_audit AFTER INSERT OR UPDATE OR DELETE ON asset FOR EACH ROW EXECUTE FUNCTION audit_row();

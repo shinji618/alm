@@ -9,16 +9,18 @@ import { PROPERTY_TYPES, type PropertyType } from '../tax/reference';
 
 const CODE = /^[A-Za-z0-9_.-]+$/;
 const uuidOk = (id: string) => /^[0-9a-f-]{36}$/i.test(id);
-const SELECT = `SELECT cat.*, p.name AS parent_name, ac.class_code, ac.name AS class_name,
+const SELECT = `SELECT cat.*, p.name AS parent_name, ac.class_code, ac.name AS class_name, nr.prefix AS range_prefix,
     (SELECT count(*) FROM asset a WHERE a.category_id = cat.id AND a.status NOT IN ('RETIRED', 'DISPOSED')) AS assets,
     (SELECT count(*) FROM model m WHERE m.category_id = cat.id AND m.is_active) AS models
-  FROM category cat LEFT JOIN category p ON p.id = cat.parent_id LEFT JOIN asset_class ac ON ac.id = cat.default_asset_class_id`;
+  FROM category cat LEFT JOIN category p ON p.id = cat.parent_id LEFT JOIN asset_class ac ON ac.id = cat.default_asset_class_id
+  LEFT JOIN asset_number_range nr ON nr.id = cat.number_range_id`;
 
 const row = (r: Record<string, any>) => ({
   id: r.id, version: r.version, categoryCode: r.category_code, name: r.name, parentId: r.parent_id ?? undefined, parentName: r.parent_name ?? undefined,
   defaultAssetClassId: r.default_asset_class_id ?? undefined, assetClassCode: r.class_code ?? undefined, assetClassName: r.class_name ?? undefined,
   usefulLifeYears: r.useful_life_years ?? undefined, isCi: r.is_ci, taxPropertyType: r.tax_property_type ?? undefined, isActive: r.is_active,
   assetCount: Number(r.assets ?? 0), modelCount: Number(r.models ?? 0),
+  numberRangeId: r.number_range_id ?? undefined, numberRangePrefix: r.range_prefix ?? undefined,
 });
 
 export async function listCategories(c: PoolClient, q: Record<string, string | undefined>) {
@@ -27,7 +29,22 @@ export async function listCategories(c: PoolClient, q: Record<string, string | u
   if (q.q?.trim()) { args.push(`%${q.q.trim().slice(0, 40).replace(/[\\%_]/g, (m) => `\\${m}`)}%`); w.push(`(cat.category_code ILIKE $1 OR cat.name ILIKE $1)`); }
   if (q.active === 'true') w.push('cat.is_active');
   const rows = (await c.query(`${SELECT} ${w.length ? `WHERE ${w.join(' AND ')}` : ''} ORDER BY cat.is_active DESC, cat.category_code`, args)).rows;
-  return { items: rows.map(row) };
+  const eff = await effectivePrefixes(c);
+  return { items: rows.map((r) => ({ ...row(r), tagPrefix: eff.get(r.id as string) })) };
+}
+
+/** 카테고리별 실제 채번 Prefix(지정 → 상위 → 기본 범위) */
+export async function effectivePrefixes(c: PoolClient): Promise<Map<string, string>> {
+  const cats = (await c.query('SELECT cat.id, cat.parent_id, nr.prefix FROM category cat LEFT JOIN asset_number_range nr ON nr.id = cat.number_range_id AND nr.is_active')).rows;
+  const def = (await c.query('SELECT prefix FROM asset_number_range WHERE is_default AND is_active LIMIT 1')).rows[0]?.prefix ?? 'AT';
+  const by = new Map(cats.map((x) => [x.id as string, x]));
+  const out = new Map<string, string>();
+  for (const x of cats) {
+    let cur: Record<string, any> | undefined = x, hops = 0;
+    while (cur && !cur.prefix && hops++ < 20) cur = cur.parent_id ? by.get(cur.parent_id) : undefined;
+    out.set(x.id, cur?.prefix ?? def);
+  }
+  return out;
 }
 
 function read(body: unknown, partial: boolean) {
@@ -42,6 +59,7 @@ function read(body: unknown, partial: boolean) {
     isCi: has('isCi') ? k.bool(b, 'isCi') : undefined,
     taxType: has('taxPropertyType') ? (b.taxPropertyType === null ? null : (k.oneOf(b, 'taxPropertyType', PROPERTY_TYPES) as PropertyType | undefined)) : undefined,
     isActive: partial && has('isActive') ? k.bool(b, 'isActive') : undefined,
+    rangeId: has('numberRangeId') ? (b.numberRangeId === null ? null : k.uuid(b, 'numberRangeId')) : undefined,
   };
   if (partial && has('categoryCode')) k.fail('categoryCode', '코드는 바꿀 수 없습니다');
   k.done();
@@ -55,6 +73,14 @@ async function checkClass(c: PoolClient, id: string | null | undefined) {
   if (!cls?.is_active || cls.is_manual) {
     throw new AlmError(400, 'ALM-E100', '입력 값을 확인하세요: defaultAssetClassId SAP에서 받은 활성 자산클래스만 쓸 수 있습니다',
       { errors: [{ field: 'defaultAssetClassId', code: 'ALM-E100', message: 'SAP 자산클래스가 아님' }] });
+  }
+}
+
+/** 자산태그 번호 범위는 사용 중인 것만(ADM-055) */
+async function checkRange(c: PoolClient, id: string | null | undefined) {
+  if (!id) return;
+  if (!(await c.query('SELECT 1 FROM asset_number_range WHERE id = $1 AND is_active', [id])).rowCount) {
+    throw E.badRequest('입력 값을 확인하세요: numberRangeId 사용 중인 번호 범위가 아닙니다', { errors: [{ field: 'numberRangeId', code: 'ALM-E100', message: '없음' }] });
   }
 }
 
@@ -76,10 +102,11 @@ export async function createCategory(c: PoolClient, tenantId: string, actorId: s
   if ((await c.query('SELECT 1 FROM category WHERE category_code = $1', [v.code])).rowCount) throw E.duplicate(`카테고리 ${v.code}가 이미 있습니다`);
   await checkParent(c, v.parentId);
   await checkClass(c, v.classId);
+  await checkRange(c, v.rangeId);
   const id = randomUUID();
-  await c.query(`INSERT INTO category (id, tenant_id, category_code, name, parent_id, default_asset_class_id, useful_life_years, is_ci, tax_property_type, created_by, updated_by)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)`,
-  [id, tenantId, v.code, v.name, v.parentId ?? null, v.classId ?? null, v.life ?? null, v.isCi ?? false, v.taxType ?? null, actorId]);
+  await c.query(`INSERT INTO category (id, tenant_id, category_code, name, parent_id, default_asset_class_id, useful_life_years, is_ci, tax_property_type, created_by, updated_by,
+      number_range_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11)`,
+  [id, tenantId, v.code, v.name, v.parentId ?? null, v.classId ?? null, v.life ?? null, v.isCi ?? false, v.taxType ?? null, actorId, v.rangeId ?? null]);
   return row((await c.query(`${SELECT} WHERE cat.id = $1`, [id])).rows[0]);
 }
 
@@ -90,6 +117,7 @@ export async function patchCategory(c: PoolClient, id: string, actorId: string, 
   const v = read(body, true);
   await checkParent(c, v.parentId, id);
   await checkClass(c, v.classId);
+  await checkRange(c, v.rangeId);
   if (v.isActive === false && cur.is_active) {
     const kids = Number((await c.query('SELECT count(*) AS n FROM category WHERE parent_id = $1 AND is_active', [id])).rows[0].n);
     if (Number(cur.assets) || kids) {
@@ -105,6 +133,7 @@ export async function patchCategory(c: PoolClient, id: string, actorId: string, 
   if (v.isCi !== undefined) put('is_ci', v.isCi);
   if (v.taxType !== undefined) put('tax_property_type', v.taxType);
   if (v.isActive !== undefined) put('is_active', v.isActive);
+  if (v.rangeId !== undefined) put('number_range_id', v.rangeId);
   if (sets.length) {
     args.push(actorId);
     await c.query(`UPDATE category SET ${sets.join(', ')}, updated_at = now(), updated_by = $${args.length}, version = version + 1 WHERE id = $1`, args);

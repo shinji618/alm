@@ -241,7 +241,7 @@ export async function createAsset(c: PoolClient, p: Principal, body: unknown, op
   // 모델(선택): 모델 마스터 id, 또는 직접 입력(마스터에 있으면 그 모델로 연결, 없으면 글자 그대로)
   const model = v.modelId ? { modelId: v.modelId, modelText: null } : await resolveModel(c, v.categoryId!, v.modelName);
   const id = randomUUID();
-  const tag = opts.assetTag ?? (await nextAssetTags(c, p.tenantId, 1))[0];
+  const tag = opts.assetTag ?? (await nextAssetTags(c, p.tenantId, 1, v.categoryId))[0];
   await c.query(`INSERT INTO asset (id, tenant_id, asset_tag, description, category_id, model_id, serial_no, status, source, company_id, site_id, room_id,
       cost_center_id, asset_class_id, assigned_user_id, assigned_at, purchase_date, purchase_cost, warranty_end_date, hostname, notes, created_by, updated_by, model_text)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'MANUAL', $9, $10, $11, $12, $13, $14, CASE WHEN $14::uuid IS NULL THEN NULL ELSE now() END, $15, $16, $17, $18, $19, $20, $20, $21)`,

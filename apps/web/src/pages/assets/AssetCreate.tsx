@@ -106,6 +106,7 @@ export function AssetCreate() {
             {f.isBundle ? `${t('asset.bundle.fieldHint')} ${componentIds.length ? t('asset.bundle.componentsSelected', { count: componentIds.length }) : ''} ${t('asset.bundle.rules')}` : t('asset.bundle.fieldHint')}
           </div>
           <SelectField label={t('asset.field.category')} required value={f.categoryId} error={fe('categoryId')} options={opt(L.categories)}
+            hint={category?.extra?.tagPrefix ? t('asset.create.tagHint', { prefix: category.extra.tagPrefix as string }) : undefined}
             onChange={(e) => set('categoryId', e.target.value)} />
           {/* 모델(선택): 직접 입력. 카테고리 모델은 제안 목록으로(맞으면 서버가 모델 마스터에 연결) */}
           <TextField label={t('asset.field.model')} maxLength={100} list="asset-model-options" autoComplete="off" value={f.modelName} error={fe('modelName') ?? fe('modelId')}

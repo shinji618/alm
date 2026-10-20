@@ -50,6 +50,7 @@ model Tenant {
   sites Site[] @relation("site_tenant_id")
   rooms Room[] @relation("room_tenant_id")
   categories Category[] @relation("category_tenant_id")
+  assetNumberRanges AssetNumberRange[] @relation("asset_number_range_tenant_id")
   models Model[] @relation("model_tenant_id")
   vendors Vendor[] @relation("vendor_tenant_id")
   assets Asset[] @relation("asset_tenant_id")
@@ -548,6 +549,9 @@ model Category {
   isActive Boolean @default(true) @map("is_active")
   /// 재산세 구분(자산클래스보다 우선). 비면 자산클래스 구분
   taxPropertyType TaxPropertyType? @map("tax_property_type")
+  /// 자산태그 번호 범위. 비면 상위 카테고리 → 기본 범위
+  numberRangeId String? @map("number_range_id") @db.Uuid
+  numberRange AssetNumberRange? @relation("category_number_range_id", fields: [numberRangeId], references: [id])
   /// 생성 일시
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   /// 생성자
@@ -566,6 +570,41 @@ model Category {
   taxClassMaps TaxClassMap[] @relation("tax_class_map_category_id")
   @@unique([tenantId, categoryCode])
   @@map("category")
+}
+
+/// 자산태그 번호 범위 — 자산태그 앞 2자리(Prefix)와 번호 구간. 카테고리에 지정해 자동 채번. 태그 = PREFIX-nnnnnn
+model AssetNumberRange {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("asset_number_range_tenant_id", fields: [tenantId], references: [id])
+  /// 태그 앞 2자리(영문 대문자·숫자)
+  prefix String @db.VarChar(2)
+  /// 이름
+  name String @db.VarChar(60)
+  /// 시작 번호(1~999999)
+  fromNo Int @default(1) @map("from_no")
+  /// 끝 번호(1~999999)
+  toNo Int @default(999999) @map("to_no")
+  /// 다음 번호. 이미 쓰인 번호는 채번 때 건너뜀
+  nextNo Int @default(1) @map("next_no")
+  /// 기본 범위(카테고리·상위에 지정이 없을 때). 테넌트에 하나
+  isDefault Boolean @default(false) @map("is_default")
+  /// 사용 여부. 끄면 이 범위로 채번하지 않음
+  isActive Boolean @default(true) @map("is_active")
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  categories Category[] @relation("category_number_range_id")
+  @@unique([tenantId, prefix])
+  @@map("asset_number_range")
 }
 
 /// 모델 — 제조사·모델 마스터

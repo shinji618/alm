@@ -1753,7 +1753,7 @@ paths:
       description: 'ALM-112 · 테이블: asset, number_sequence, asset_request, label_print_job, asset_event
 
 
-        - 자산태그는 AT-nnnnnn 자동 채번.
+        - 자산태그는 카테고리의 번호 범위(ADM-055, 없으면 상위 → 기본 AT)로 PP-nnnnnn 자동 채번. 범위를 다 쓰면 409 ALM-E319.
 
         - registerInSap(SAP 등록 체크)이면 자산클래스·구매가가 필수이고, 신규 자산 요청(NEW_ASSET)을 만들어 승인 단계(부서 관리자 → 자산회계)로 보낸다. 최종 승인 뒤 IF-AA-03으로 SAP 자산을 만든다. 체크하지 않으면 ALM에만 등록한다(자동 판단 없음).
 
@@ -8291,6 +8291,170 @@ paths:
       security:
       - webAuth:
         - web
+  /admin/number-ranges:
+    get:
+      operationId: listNumberRanges
+      summary: 자산태그 번호 범위 목록
+      tags:
+      - WEB
+      description: 'ADM-055 · 테이블: asset_number_range, category, asset
+
+
+        - 자산태그 = Prefix(2자리) + - + 6자리. 카테고리에 지정한 범위 → 상위 카테고리 → 기본 범위 순으로 자동 채번한다.
+
+        - 범위가 하나도 없으면 기본 범위 AT를 만든다(기존 AT-번호 다음부터).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NumberRangeList'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: master.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
+      security:
+      - webAuth:
+        - web
+    post:
+      operationId: createNumberRange
+      summary: 자산태그 번호 범위 등록
+      tags:
+      - WEB
+      description: 'ADM-055 · 테이블: asset_number_range, audit_log
+
+
+        - Prefix 중복 409 ALM-E321.
+
+        - 끝 번호 ≥ 시작 번호, 다음 번호는 시작~끝+1.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '201':
+          description: 생성
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NumberRange'
+        '400':
+          $ref: '#/components/responses/E400'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: master.write
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NumberRangeInput'
+  /admin/number-ranges/{id}:
+    patch:
+      operationId: patchNumberRange
+      summary: 자산태그 번호 범위 수정
+      tags:
+      - WEB
+      description: 'ADM-055 · 테이블: asset_number_range, audit_log
+
+
+        - Prefix는 바꿀 수 없다(400). 시작 번호는 채번 전에만(409 ALM-E322).
+
+        - 끝 번호는 이미 쓰인 번호보다 작게 못 한다(400).
+
+        - 기본 범위는 끄거나 기본 해제할 수 없다(다른 범위를 기본으로 지정, 409).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NumberRange'
+        '400':
+          $ref: '#/components/responses/E400'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: master.write
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NumberRangeInput'
+    delete:
+      operationId: deleteNumberRange
+      summary: 자산태그 번호 범위 삭제
+      tags:
+      - WEB
+      description: 'ADM-055 · 테이블: asset_number_range, audit_log
+
+
+        - 기본 범위, 카테고리에 지정된 범위, 이 구간의 태그를 쓴 자산이 있으면 409 ALM-E318(사용 안 함으로).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: 성공(본문 없음)
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: master.write
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+      security:
+      - webAuth:
+        - web
   /admin/asset-import/template:
     get:
       operationId: getAssetImportTemplate
@@ -12562,6 +12726,16 @@ components:
         modelCount:
           type: integer
           description: 활성 모델 수
+        numberRangeId:
+          type: string
+          format: uuid
+          description: 지정한 자산태그 번호 범위
+        numberRangePrefix:
+          type: string
+          description: 지정한 범위의 Prefix
+        tagPrefix:
+          type: string
+          description: 실제 채번 Prefix(지정 → 상위 카테고리 → 기본 범위). 목록에서만
       required:
       - id
       - version
@@ -17943,6 +18117,134 @@ components:
         isActive:
           type: boolean
           description: 수정 시만
+        numberRangeId:
+          type: string
+          format: uuid
+          description: 자산태그 번호 범위(사용 중인 범위만, null이면 상위 카테고리 → 기본 범위)
+    NumberRange:
+      type: object
+      description: 자산태그 번호 범위(ADM-055)
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: id
+        version:
+          type: integer
+          description: 버전
+        prefix:
+          type: string
+          maxLength: 2
+          description: 태그 앞 2자리(영문 대문자·숫자). 만든 뒤 바꾸지 않음
+        name:
+          type: string
+          maxLength: 60
+          description: 이름
+        fromNo:
+          type: integer
+          description: 시작 번호(1~999999)
+        toNo:
+          type: integer
+          description: 끝 번호(1~999999)
+        nextNo:
+          type: integer
+          description: 저장된 다음 번호
+        nextTag:
+          type: string
+          description: 다음에 매길 태그(이미 쓰인 번호 건너뜀). 다 쓰면 없음
+        sample:
+          type: string
+          description: '구간 표시 (예: NB-000001 ~ NB-999999)'
+        used:
+          type: integer
+          description: 이 구간의 태그를 쓴 자산 수
+        remaining:
+          type: integer
+          description: 남은 번호 수
+        nearlyFull:
+          type: boolean
+          description: 남은 번호가 5% 또는 100개 이하
+        exhausted:
+          type: boolean
+          description: 다 씀(이 범위 카테고리는 자동 채번 등록 불가)
+        isDefault:
+          type: boolean
+          description: 기본 범위(카테고리·상위에 지정이 없을 때)
+        isActive:
+          type: boolean
+          description: 사용
+        categories:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: 이 범위를 지정한 카테고리 {id, code, name}
+      required:
+      - id
+      - version
+      - prefix
+      - name
+      - fromNo
+      - toNo
+      - nextNo
+      - sample
+      - used
+      - remaining
+      - nearlyFull
+      - exhausted
+      - isDefault
+      - isActive
+      - categories
+    NumberRangeList:
+      type: object
+      description: 자산태그 번호 범위 목록
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/NumberRange'
+          description: 행
+        page:
+          type: integer
+          description: 페이지(1부터)
+        pageSize:
+          type: integer
+          description: 페이지 크기
+        total:
+          type: integer
+          description: 전체 건수
+      required:
+      - items
+      - page
+      - pageSize
+      - total
+    NumberRangeInput:
+      type: object
+      description: 자산태그 번호 범위 등록·수정(수정은 보낸 필드만)
+      properties:
+        prefix:
+          type: string
+          maxLength: 2
+          description: 등록 시 필수. 영문 대문자·숫자 2자리. 수정 불가
+        name:
+          type: string
+          maxLength: 60
+          description: 등록 시 필수
+        fromNo:
+          type: integer
+          description: 시작 번호(기본 1). 채번 전에만 바꿀 수 있음
+        toNo:
+          type: integer
+          description: 끝 번호(기본 999999). 이미 쓰인 번호보다 작게 못 함
+        nextNo:
+          type: integer
+          description: 다음 번호(시작~끝+1). 이미 쓰인 번호는 채번 때 건너뜀
+        isDefault:
+          type: boolean
+          description: true면 기본 범위로(다른 범위의 기본 표시는 해제)
+        isActive:
+          type: boolean
+          description: 수정 시만. 기본 범위는 끌 수 없음
     DeptManager:
       type: object
       description: 부서 관리자 지정

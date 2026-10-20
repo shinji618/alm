@@ -4,6 +4,7 @@ import type { PoolClient } from 'pg';
 import { Check } from '../common/validate';
 import type { Principal } from '../auth/principal';
 import { assetScope, can, Params, scopeRows } from '../auth/scope';
+import { effectivePrefixes } from '../admin/categories';
 
 const TYPES = ['companies', 'sites', 'rooms', 'costCenters', 'assetClasses', 'categories', 'models', 'vendors', 'users', 'codes'] as const;
 type T = (typeof TYPES)[number];
@@ -75,9 +76,11 @@ export async function lookups(c: PoolClient, p: Principal, q: Record<string, str
       // 메뉴 'All assets' 옆 숫자: 범위 안 전체 자산 수(카테고리 없는 자산·비활성 카테고리 자산 포함)
       out.assetTotal = [...counts.values()].reduce((n, x) => n + x, 0);
     }
+    const prefixes = await effectivePrefixes(c);   // 자산태그 Prefix(번호 범위, ADM-055) — 등록 화면 안내용
     out.categories = items((await c.query(`SELECT id, category_code, name, parent_id, default_asset_class_id, useful_life_years FROM category
       WHERE is_active ORDER BY category_code`)).rows,
     (r) => ({ id: r.id, code: r.category_code, label: r.name, parentId: r.parent_id, extra: { defaultAssetClassId: r.default_asset_class_id, usefulLifeYears: r.useful_life_years,
+      tagPrefix: prefixes.get(r.id),
       ...(q.counts === 'true' && can(p, 'asset.read') ? { assetCount: counts.get(r.id) ?? 0 } : {}) } }));
   }
   if (has('models')) {

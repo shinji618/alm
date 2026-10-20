@@ -38,7 +38,8 @@
     "byCategory": "카테고리별",
     "categories": "자산 카테고리",
     "categoryCount": "{{name}} (자산 {{count}}개)",
-    "assetImport": "자산 일괄 업로드"
+    "assetImport": "자산 일괄 업로드",
+    "numberRanges": "자산태그 번호 범위"
   },
   "common": {
     "clear": "초기화",
@@ -171,7 +172,8 @@
       "submit": "등록",
       "done": "{{tag}} 등록했습니다",
       "request": "신규 자산 요청 {{no}}을(를) 승인으로 보냈습니다",
-      "label": "라벨 출력 대기열에 넣었습니다"
+      "label": "라벨 출력 대기열에 넣었습니다",
+      "tagHint": "자산태그: {{prefix}}-nnnnnn (자동 채번)"
     },
     "detail": {
       "crumb": "ALM-111",
@@ -1083,7 +1085,12 @@
     "usage": "이 카테고리를 쓰는 자산 {{assets}}건, 모델 {{models}}건. 쓰는 자산이나 활성 하위 카테고리가 있으면 사용 안 함으로 바꿀 수 없습니다.",
     "delete": "삭제",
     "deleteMsg": "{{name}} 카테고리를 삭제할까요? 이 카테고리의 모델도 함께 삭제됩니다. 자산이 있는 카테고리는 삭제할 수 없습니다.",
-    "deleted": "{{code}} 카테고리를 삭제했습니다"
+    "deleted": "{{code}} 카테고리를 삭제했습니다",
+    "tagPrefix": "태그 Prefix",
+    "inherited": "(상속)",
+    "numberRange": "자산태그 번호 범위",
+    "numberRangeHint": "이 카테고리의 새 자산은 이 범위로 태그를 매깁니다.",
+    "rangeInherit": "상위 카테고리 또는 기본"
   },
   "label": {
     "description": "이 PC의 Zebra Browser Print로 Zebra 프린터에 자산 라벨을 출력합니다. 서버는 프린터에 연결하지 않습니다.",
@@ -1342,5 +1349,38 @@
       "NOT_BUNDLE": "활성 Bundle 자산이 아닙니다",
       "BUNDLE_COMPONENT": "이 Bundle의 구성품이 될 수 없습니다: {{message}}"
     }
+  },
+  "nr": {
+    "prefix": "Prefix",
+    "name": "이름",
+    "range": "번호 구간",
+    "nextTag": "다음 태그",
+    "used": "사용",
+    "remaining": "남은 번호",
+    "categories": "카테고리",
+    "default": "기본",
+    "allOthers": "범위가 없는 모든 카테고리",
+    "exhausted": "소진",
+    "nearlyFull": "부족",
+    "description": "자산태그는 앞 2자리 Prefix와 6자리 번호입니다(예: NB-000123). 여기서 Prefix와 번호 구간을 정의하고 카테고리에 지정합니다. 하위 카테고리는 상위 카테고리의 범위를 따르고, 범위가 없는 카테고리는 기본 범위를 씁니다.",
+    "add": "번호 범위 추가",
+    "edit": "번호 범위 수정",
+    "warn": "남은 번호가 적거나 다 쓴 범위: {{prefixes}}. 끝 번호를 늘리거나 다른 범위를 지정하세요.",
+    "howTo": "카테고리에 범위를 지정하는 곳:",
+    "prefixHint": "영문 대문자·숫자 2자리(예: NB). 만든 뒤 바꿀 수 없습니다.",
+    "numHint": "1~999,999",
+    "toHint": "시작 번호보다 작을 수 없습니다",
+    "nextHint": "시작 번호 ~ 끝 번호+1 사이",
+    "fromNo": "시작 번호",
+    "toNo": "끝 번호",
+    "nextNo": "다음 번호",
+    "nextNoHint": "자산이 이미 쓴 번호는 자동으로 건너뜁니다.",
+    "fromLocked": "번호를 매긴 뒤에는 바꿀 수 없습니다.",
+    "preview": "태그",
+    "setDefault": "기본 범위(범위가 없는 카테고리용)",
+    "usage": "이 범위를 쓴 자산 {{used}}건. 카테고리: {{categories}}.",
+    "delete": "삭제",
+    "deleteMsg": "번호 범위 {{prefix}}를 삭제할까요?",
+    "deleted": "번호 범위 {{prefix}}를 삭제했습니다"
   }
 }

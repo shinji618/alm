@@ -291,3 +291,53 @@ test('자동 채번은 이미 쓰인 AT-번호를 건너뜀(일괄 업로드로 
   assert.equal(b.status, 201, JSON.stringify(b.body));
   assert.equal(b.body.asset.assetTag, `AT-${String(n + 3).padStart(6, '0')}`);
 });
+
+test('자산태그 번호 범위(ADM-055): 기본 AT, Prefix 범위를 카테고리에 지정(하위 상속), 쓰인 번호 건너뜀, 소진 409', { skip }, async () => {
+  const list0 = await call('am', 'GET', '/admin/number-ranges');
+  assert.equal(list0.status, 200, JSON.stringify(list0.body));
+  const at = list0.body.items.find((x: { prefix: string }) => x.prefix === 'AT');
+  assert.equal(at.isDefault, true);
+  const maxAt = Number((await owner.query(`SELECT max(substring(asset_tag FROM 4)::int) AS n FROM asset WHERE asset_tag ~ '^AT-[0-9]{6}$'`)).rows[0].n);
+  assert.equal(at.nextTag, `AT-${String(maxAt + 1).padStart(6, '0')}`);
+  assert.equal((await call('kim', 'GET', '/admin/number-ranges')).status, 403);
+  assert.equal((await call('am', 'POST', '/admin/number-ranges', { prefix: 'N-', name: 'x' })).status, 400);
+  assert.equal((await call('am', 'POST', '/admin/number-ranges', { prefix: 'at', name: 'x' })).status, 409);
+  assert.equal((await call('am', 'POST', '/admin/number-ranges', { prefix: 'NX', name: 'x', fromNo: 10, toNo: 5 })).status, 400);
+  const nb = await call('am', 'POST', '/admin/number-ranges', { prefix: 'nb', name: 'Notebooks', fromNo: 1, toNo: 3 });
+  assert.equal(nb.status, 201, JSON.stringify(nb.body));
+  assert.deepEqual([nb.body.prefix, nb.body.nextTag, nb.body.sample, nb.body.remaining, nb.body.nearlyFull], ['NB', 'NB-000001', 'NB-000001 ~ NB-000003', 3, true]);
+  assert.equal((await call('am', 'PATCH', `/admin/categories/${ids.nb}`, { numberRangeId: nb.body.id })).body.numberRangePrefix, 'NB');
+  const sub = await call('am', 'POST', '/admin/categories', { categoryCode: 'NB-SUB', name: 'Notebook sub', parentId: ids.nb });
+  assert.equal(sub.status, 201, JSON.stringify(sub.body));
+  const cats = await call('am', 'GET', '/admin/categories');
+  assert.equal(cats.body.items.find((x: { id: string }) => x.id === sub.body.id).tagPrefix, 'NB', '상위 상속');
+  const lk = await call('am', 'GET', '/lookups?types=categories');
+  assert.equal(lk.body.categories.find((x: { id: string }) => x.id === sub.body.id).extra.tagPrefix, 'NB');
+
+  const base = { categoryId: sub.body.id, description: 'NB test', companyId: ids.co, roomId: ids.r1, costCenterId: ids.cc, printLabel: false };
+  assert.equal((await call('am', 'POST', '/assets', base)).body.asset.assetTag, 'NB-000001');
+  await owner.query(`INSERT INTO asset (id, tenant_id, asset_tag, description, category_id, source, company_id, site_id, room_id, cost_center_id)
+    VALUES (gen_random_uuid(), $1, 'NB-000002', 'uploaded', $2, 'MANUAL', $3, $4, $5, $6)`, [tenantId, ids.nb, ids.co, ids.s1, ids.r1, ids.cc]);
+  assert.equal((await call('am', 'POST', '/assets', base)).body.asset.assetTag, 'NB-000003', '적힌 태그 건너뜀');
+  const full = await call('am', 'POST', '/assets', base);
+  assert.deepEqual([full.status, full.body.code], [409, 'ALM-E319']);
+  const l1 = (await call('am', 'GET', '/admin/number-ranges')).body.items.find((x: { prefix: string }) => x.prefix === 'NB');
+  assert.deepEqual([l1.used, l1.remaining, l1.exhausted, l1.categories.map((x: { code: string }) => x.code)], [3, 0, true, ['NB']]);
+
+  assert.equal((await call('am', 'PATCH', `/admin/number-ranges/${nb.body.id}`, { toNo: 2 })).status, 400, '쓰인 번호보다 작게 못 함');
+  assert.equal((await call('am', 'PATCH', `/admin/number-ranges/${nb.body.id}`, { fromNo: 2 })).status, 409, '채번 뒤 시작 번호 못 바꿈');
+  assert.equal((await call('am', 'PATCH', `/admin/number-ranges/${nb.body.id}`, { prefix: 'NC' })).status, 400);
+  const more = await call('am', 'PATCH', `/admin/number-ranges/${nb.body.id}`, { toNo: 999 });
+  assert.deepEqual([more.status, more.body.nextTag], [200, 'NB-000004']);
+  assert.equal((await call('am', 'POST', '/assets', base)).body.asset.assetTag, 'NB-000004');
+  assert.equal((await call('am', 'DELETE', `/admin/number-ranges/${nb.body.id}`)).status, 409, '카테고리에 지정됨');
+  assert.equal((await call('am', 'PATCH', `/admin/number-ranges/${at.id}`, { isActive: false })).status, 409, '기본 범위는 못 끔');
+  // 범위를 끄면 상위 → 기본(AT)으로
+  assert.equal((await call('am', 'PATCH', `/admin/number-ranges/${nb.body.id}`, { isActive: false })).status, 200);
+  assert.match((await call('am', 'POST', '/assets', base)).body.asset.assetTag, /^AT-\d{6}$/);
+  // 새 기본 범위
+  const zz = await call('am', 'POST', '/admin/number-ranges', { prefix: 'ZZ', name: 'Other', isDefault: true });
+  assert.equal(zz.body.isDefault, true);
+  assert.equal((await call('am', 'GET', '/admin/number-ranges')).body.items.filter((x: { isDefault: boolean }) => x.isDefault).length, 1);
+  assert.equal((await call('am', 'DELETE', `/admin/number-ranges/${at.id}`)).status, 409, 'AT 자산이 있음');
+});

@@ -9,6 +9,7 @@ import * as cfg from '../admin/config';
 import * as companies from '../admin/companies';
 import * as fin from '../admin/finmasters';
 import * as cats from '../admin/categories';
+import * as ranges from '../admin/numberRanges';
 import * as dm from '../admin/deptmanagers';
 import * as imp from '../admin/assetImport';
 import { AlmContext, Ctx, Operation, txOf } from './context';
@@ -148,6 +149,34 @@ export class AdminController {
   @Operation('patchCategory')
   patchCategory(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) {
     return this.db.withTx(txOf(ctx), (c) => cats.patchCategory(c, id, ctx.principal!.userId, body));
+  }
+
+  // ---- 자산태그 번호 범위(ADM-055) ----
+  @Get('number-ranges')
+  @Operation('listNumberRanges')
+  listNumberRanges(@Ctx() ctx: AlmContext) {
+    return this.db.withTx(txOf(ctx), (c) => ranges.listNumberRanges(c, ctx.principal!.tenantId));
+  }
+
+  @Post('number-ranges')
+  @HttpCode(201)
+  @Operation('createNumberRange')
+  createNumberRange(@Ctx() ctx: AlmContext, @Body() body: unknown) {
+    const p = ctx.principal!;
+    return this.db.withTx(txOf(ctx), (c) => ranges.createNumberRange(c, p.tenantId, p.userId, body));
+  }
+
+  @Patch('number-ranges/:id')
+  @Operation('patchNumberRange')
+  patchNumberRange(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) {
+    return this.db.withTx(txOf(ctx), (c) => ranges.patchNumberRange(c, id, ctx.principal!.userId, body));
+  }
+
+  @Delete('number-ranges/:id')
+  @HttpCode(204)
+  @Operation('deleteNumberRange')
+  async deleteNumberRange(@Ctx() ctx: AlmContext, @Param('id') id: string) {
+    await this.db.withTx(txOf(ctx), (c) => ranges.deleteNumberRange(c, id));
   }
 
   // ---- 자산 일괄 업로드(ADM-060) ----

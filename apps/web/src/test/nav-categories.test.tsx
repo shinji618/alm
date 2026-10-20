@@ -59,7 +59,7 @@ describe('Asset categories admin (ADM-050)', () => {
     await user.type(within(d).getByLabelText(/^Replacement life/), '7');
     await user.click(within(d).getByRole('button', { name: 'Save' }));
     await vi.waitFor(() => expect(posts[0]).toEqual({ categoryCode: 'FUR', name: 'Furniture', parentId: null, defaultAssetClassId: 'c3000', usefulLifeYears: 7,
-      isCi: false, taxPropertyType: null }));
+      isCi: false, taxPropertyType: null, numberRangeId: null }));
   }, 20000);
 });
 

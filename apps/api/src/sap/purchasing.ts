@@ -172,8 +172,9 @@ async function createReceivedAssets(c: PoolClient, conn: SapConn, po: Record<str
     .filter((p) => !p.goods_receipt_id);
   const template = qty > 0 ? await defaultTemplateId(c, conn.tenantId) : undefined;   // 템플릿이 없으면 기본 템플릿을 만든다(4.5)
   const toCreate = qty - Math.min(qty, planned.filter((p) => p.asset_id).length);
-  const tags = await nextAssetTags(c, conn.tenantId, toCreate);
-  let category: string | undefined;
+  // 입고만으로는 자산클래스를 모른다 → 'SAP 미분류'(자산 관리자가 고친다. IF-AA-01이 오면 클래스가 채워짐). 태그는 그 카테고리의 번호 범위에서
+  const category = toCreate > 0 ? await categoryFor(c, conn.tenantId, null) : undefined;
+  const tags = await nextAssetTags(c, conn.tenantId, toCreate, category);
 
   for (let i = 0; i < qty; i++) {
     const p = planned[i];
@@ -187,8 +188,6 @@ async function createReceivedAssets(c: PoolClient, conn: SapConn, po: Record<str
       await event(c, conn, assetId, 'UPDATED', { goodsReceipt: doc, linked: true });
     } else {
       assetId = randomUUID();
-      // 입고만으로는 자산클래스를 모른다 → 'SAP 미분류'(자산 관리자가 고친다. IF-AA-01이 오면 클래스가 채워짐)
-      category ??= await categoryFor(c, conn.tenantId, null);
       await c.query(`INSERT INTO asset (id, tenant_id, asset_tag, description, category_id, status, source, company_id, cost_center_id,
           sap_asset_no, sap_sub_no, purchase_date, purchase_cost, po_item_id, goods_receipt_id)
         VALUES ($1, $2, $3, $4, $5, 'IN_STOCK', 'GOODS_RECEIPT', $6, $7, $8, $9, $10, $11, $12, $13)`,

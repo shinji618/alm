@@ -459,7 +459,7 @@ AF = [('q','query','string','N','태그·시리얼·호스트명·IP·사용자 
 W('자산','GET','/assets','listAssets','자산 목록','로그인 사용자(범위 내)',None,'AssetSummaryList','200, 400','asset, v_asset_stage, v_asset_value_latest','ALM-110',
   ['EMPLOYEE는 본인 할당 자산만. 그 외 역할은 회사코드·사이트 범위.', '5만 건에서 2초 이내(인덱스: status, room, cost_center, 사용자, 태그·시리얼 trigram).', '기본 정렬 -updatedAt.'], params=AF)
 W('자산','POST','/assets','createAsset','자산 등록','ASSET_MANAGER','AssetCreate','AssetCreated','201, 400, 403, 422','asset, number_sequence, asset_request, label_print_job, asset_event','ALM-112',
-  ['자산태그는 AT-nnnnnn 자동 채번.', 'registerInSap(SAP 등록 체크)이면 자산클래스·구매가가 필수이고, 신규 자산 요청(NEW_ASSET)을 만들어 승인 단계(부서 관리자 → 자산회계)로 보낸다. 최종 승인 뒤 IF-AA-03으로 SAP 자산을 만든다. 체크하지 않으면 ALM에만 등록한다(자동 판단 없음).', 'IN_USE면 asset_assignment 행도 만든다.'], idem='Idempotency-Key', ok='201')
+  ['자산태그는 카테고리의 번호 범위(ADM-055, 없으면 상위 → 기본 AT)로 PP-nnnnnn 자동 채번. 범위를 다 쓰면 409 ALM-E319.', 'registerInSap(SAP 등록 체크)이면 자산클래스·구매가가 필수이고, 신규 자산 요청(NEW_ASSET)을 만들어 승인 단계(부서 관리자 → 자산회계)로 보낸다. 최종 승인 뒤 IF-AA-03으로 SAP 자산을 만든다. 체크하지 않으면 ALM에만 등록한다(자동 판단 없음).', 'IN_USE면 asset_assignment 행도 만든다.'], idem='Idempotency-Key', ok='201')
 W('자산','GET','/assets/{id}','getAsset','자산 상세','로그인 사용자(범위 내)',None,'AssetDetail','200, 403, 404','asset, v_asset_stage, v_asset_value_latest, asset_request','ALM-111',[ '응답 ETag = version.'],params=[ID()])
 W('자산','PATCH','/assets/{id}','patchAsset','자산 수정','ASSET_MANAGER','AssetPatch','AssetChangeResult','200, 400, 403, 409, 422','asset, asset_event, asset_request','ALM-111',
   ['If-Match: version 필수. 다르면 409 ALM-E310(다른 사람이 먼저 수정).', 'SAP 기준 필드(자산클래스, 취득가, 코스트센터)는 여기서 못 바꾼다(422 ALM-E211). 코스트센터는 할당 또는 이관 요청으로.', '자본화 자산의 시리얼·룸·자산명 변경은 ALM에 바로 반영하고 ASSET_CHANGE 요청을 자동 생성해 SAP에 보낸다.'],
@@ -1638,6 +1638,9 @@ taxPropertyType | enum(EQUIPMENT,LEASEHOLD,VEHICLE,CIP,LEASED_IN,REAL_PROPERTY,I
 isActive | bool | Y | 사용
 assetCount | int | Y | 이 카테고리의 자산(폐기·처분 제외)
 modelCount | int | Y | 활성 모델 수
+numberRangeId | uuid | N | 지정한 자산태그 번호 범위
+numberRangePrefix | string | N | 지정한 범위의 Prefix
+tagPrefix | string | N | 실제 채번 Prefix(지정 → 상위 카테고리 → 기본 범위). 목록에서만
 ''')
 schema('CategoryRowList', '자산 카테고리 목록', '''
 items | [CategoryRow] | Y | 행
@@ -1651,6 +1654,35 @@ usefulLifeYears | int | N | 1~50(null이면 해제)
 isCi | bool | N | CMDB CI 자동 생성
 taxPropertyType | enum(EQUIPMENT,LEASEHOLD,VEHICLE,CIP,LEASED_IN,REAL_PROPERTY,INTANGIBLE,EXCLUDED) | N | 재산세 구분(null이면 자산클래스 구분)
 isActive | bool | N | 수정 시만
+numberRangeId | uuid | N | 자산태그 번호 범위(사용 중인 범위만, null이면 상위 카테고리 → 기본 범위)
+''')
+schema('NumberRange', '자산태그 번호 범위(ADM-055)', '''
+id | uuid | Y | id
+version | int | Y | 버전
+prefix | string(2) | Y | 태그 앞 2자리(영문 대문자·숫자). 만든 뒤 바꾸지 않음
+name | string(60) | Y | 이름
+fromNo | int | Y | 시작 번호(1~999999)
+toNo | int | Y | 끝 번호(1~999999)
+nextNo | int | Y | 저장된 다음 번호
+nextTag | string | N | 다음에 매길 태그(이미 쓰인 번호 건너뜀). 다 쓰면 없음
+sample | string | Y | 구간 표시 (예: NB-000001 ~ NB-999999)
+used | int | Y | 이 구간의 태그를 쓴 자산 수
+remaining | int | Y | 남은 번호 수
+nearlyFull | bool | Y | 남은 번호가 5% 또는 100개 이하
+exhausted | bool | Y | 다 씀(이 범위 카테고리는 자동 채번 등록 불가)
+isDefault | bool | Y | 기본 범위(카테고리·상위에 지정이 없을 때)
+isActive | bool | Y | 사용
+categories | [object] | Y | 이 범위를 지정한 카테고리 {id, code, name}
+''')
+lst('NumberRange', '자산태그 번호 범위 목록')
+schema('NumberRangeInput', '자산태그 번호 범위 등록·수정(수정은 보낸 필드만)', '''
+prefix | string(2) | N | 등록 시 필수. 영문 대문자·숫자 2자리. 수정 불가
+name | string(60) | N | 등록 시 필수
+fromNo | int | N | 시작 번호(기본 1). 채번 전에만 바꿀 수 있음
+toNo | int | N | 끝 번호(기본 999999). 이미 쓰인 번호보다 작게 못 함
+nextNo | int | N | 다음 번호(시작~끝+1). 이미 쓰인 번호는 채번 때 건너뜀
+isDefault | bool | N | true면 기본 범위로(다른 범위의 기본 표시는 해제)
+isActive | bool | N | 수정 시만. 기본 범위는 끌 수 없음
 ''')
 schema('DeptManager', '부서 관리자 지정', '''
 id | uuid | Y | user_role.id (지정 id)
@@ -1714,6 +1746,14 @@ W('관리','POST','/admin/categories','createCategory','자산 카테고리 등�
   [ '코드 중복 409 ALM-E321. 기본 자산클래스는 SAP에서 받은 활성 클래스만(400).', '상위 카테고리는 활성이어야 하고 순환할 수 없다.'],ok='201')
 W('관리','PATCH','/admin/categories/{id}','patchCategory','자산 카테고리 수정',MA,'CategoryInput','CategoryRow','200, 400, 404, 409','category, audit_log','ADM-050',
   [ '보낸 필드만. 코드는 바꿀 수 없다(400).', '쓰는 자산(폐기·처분 제외)이나 활성 하위 카테고리가 있으면 비활성화 불가(409 ALM-E318).'],params=[ID()])
+W('관리','GET','/admin/number-ranges','listNumberRanges','자산태그 번호 범위 목록',MA+', ASSET_ACCOUNTANT, AUDITOR',None,'NumberRangeList','200','asset_number_range, category, asset','ADM-055',
+  [ '자산태그 = Prefix(2자리) + - + 6자리. 카테고리에 지정한 범위 → 상위 카테고리 → 기본 범위 순으로 자동 채번한다.', '범위가 하나도 없으면 기본 범위 AT를 만든다(기존 AT-번호 다음부터).'])
+W('관리','POST','/admin/number-ranges','createNumberRange','자산태그 번호 범위 등록',MA,'NumberRangeInput','NumberRange','201, 400, 409','asset_number_range, audit_log','ADM-055',
+  [ 'Prefix 중복 409 ALM-E321.', '끝 번호 ≥ 시작 번호, 다음 번호는 시작~끝+1.'],ok='201')
+W('관리','PATCH','/admin/number-ranges/{id}','patchNumberRange','자산태그 번호 범위 수정',MA,'NumberRangeInput','NumberRange','200, 400, 404, 409','asset_number_range, audit_log','ADM-055',
+  [ 'Prefix는 바꿀 수 없다(400). 시작 번호는 채번 전에만(409 ALM-E322).', '끝 번호는 이미 쓰인 번호보다 작게 못 한다(400).', '기본 범위는 끄거나 기본 해제할 수 없다(다른 범위를 기본으로 지정, 409).'],params=[ID()])
+W('관리','DELETE','/admin/number-ranges/{id}','deleteNumberRange','자산태그 번호 범위 삭제',MA,None,None,'204, 404, 409','asset_number_range, audit_log','ADM-055',
+  [ '기본 범위, 카테고리에 지정된 범위, 이 구간의 태그를 쓴 자산이 있으면 409 ALM-E318(사용 안 함으로).'],params=[ID()],ok='204')
 W('관리','DELETE','/admin/categories/{id}','deleteCategory','자산 카테고리 삭제',MA,None,None,'204, 404, 409','category, model, tax_class_map, audit_log','ADM-050',
   [ '이 카테고리로 등록된 자산(상태 무관)이 있으면 409 ALM-E318(메시지에 건수·자산태그 5건).', '하위 카테고리, 구매요청·실사 미등록 기록이 있어도 409(사용 안 함으로 바꾸도록 안내).',
     '카테고리의 모델과 재산세 내용연수 구분 매핑은 함께 지운다. 삭제는 감사 로그에 남는다.'],params=[ID()],ok='204')
