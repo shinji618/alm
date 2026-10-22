@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { Client, Pool } from 'pg';
 import { migrate, loadMigrations } from '../src/ops/migrate';
-import { seed } from '../src/ops/seed';
+import { parseSeed, seed } from '../src/ops/seed';
 import { Db } from '../src/db/pool';
 import { PrincipalCache } from '../src/auth/principal';
 import { catalog } from '../src/auth/permissions';
@@ -167,6 +167,13 @@ test('SAP 토큰: 형식 오류·클라이언트 인증·허용 IP(ST21)·성공
   const post = await call('/oauth/token', { form: { grant_type: 'client_credentials', client_id: 'sapclient1', client_secret: 'good' } });
   assert.equal(post.status, 200);
   assert.equal((await owner.query(`SELECT count(*)::int AS n FROM sap_connection WHERE last_call_at IS NOT NULL`)).rows[0].n, 1);
+  // SM59 기본 인증(사용자 12자): 연결 별칭 → clientId(대소문자 무시)
+  await owner.query(`UPDATE sap_connection SET client_alias = 'CHN-DEV100' WHERE oauth_client_id = 'sapclient1'`);
+  const alias = await call('/oauth/token', { form: { grant_type: 'client_credentials', scope: 'sap.api' }, auth: basic('chn-dev100', 'good') });
+  assert.equal(alias.status, 200, JSON.stringify(alias.body));
+  assert.equal(alias.body.access_token, 'tok-sapclient1');
+  assert.equal((await call('/oauth/token', { form: { grant_type: 'client_credentials' }, auth: basic('CHN-DEV100', 'wrong') })).status, 401);
+  assert.equal((await call('/oauth/token', { form: { grant_type: 'client_credentials' }, auth: basic('CHN-NONE', 'good') })).status, 401, '없는 별칭');
 });
 
 test('SAP 토큰: 클라이언트당 분당 10회 제한 429', { skip }, async () => {
@@ -203,5 +210,11 @@ test('seed: 회사코드·SAP 연결 등록(멱등) → auth_sap_client로 조�
   assert.ok(c);
   assert.deepEqual([c!.systemId, c!.companyCode, c!.tenantCode, c!.allowedCidrs], ['S4D-100', '2000', 'CHN', ['108.79.59.91/32']]);
   assert.equal(await sapConnection(app, 'sapclient3'), undefined, '같은 시스템·회사코드는 client_id 교체');
+  // 별칭만 추가: 허용 IP는 그대로
+  await seed(owner, { ...input, sapConnections: [{ systemId: 'S4D-100', companyCode: '2000', clientId: 'sapclient3b', clientAlias: 'CHN-S4D100' }] });
+  const { sapClientByAlias } = await import('../src/auth/sap');
+  assert.equal(await sapClientByAlias(app, 'chn-s4d100'), 'sapclient3b');
+  assert.deepEqual((await sapConnection(app, 'sapclient3b'))!.allowedCidrs, ['108.79.59.91/32'], '허용 IP 유지');
+  assert.throws(() => parseSeed(JSON.stringify({ ...input, sapConnections: [{ ...input.sapConnections[0], clientAlias: 'way-too-long-alias' }] })), /clientAlias/);
   await assert.rejects(seed(owner, { ...input, sapConnections: [{ systemId: 'S4D-100', companyCode: '9999', clientId: 'x' }] }), /9999/);
 });

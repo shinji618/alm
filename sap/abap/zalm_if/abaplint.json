@@ -1,0 +1,27 @@
+{
+  "global": {
+    "files": "/src/**/*.*"
+  },
+  "dependencies": [
+    {
+      "folder": "/deps",
+      "files": "/src/**/*.*"
+    }
+  ],
+  "syntax": {
+    "version": "v750",
+    "errorNamespace": "^(Z|Y|LCL_|TY_|LIF_)"
+  },
+  "rules": {
+    "check_syntax": true,
+    "parser_error": true,
+    "unknown_types": true,
+    "check_variables": true,
+    "xml_consistency": true,
+    "unused_variables": false,
+    "check_text_elements": true,
+    "method_parameter_names": false,
+    "keyword_case": false,
+    "line_length": false
+  }
+}

@@ -723,10 +723,11 @@ t('sap','sap_connection','SAP 연결','SAP 시스템과 API 클라이언트. 비
 system_id | vc(10) | NN | 시스템 ID-클라이언트 (예: PRD-100)
 company_id | ->company | NN | 회사코드
 oauth_client_id | vc(100) | NN | OAuth 클라이언트 ID
+client_alias | vc(12) | | 클라이언트 별칭(SM59 기본 인증 사용자 12자 제한). /oauth/token에서 clientId 대신 받는다. 전체에서 유일
 last_call_at | ts | | 마지막 호출
 is_active | bool | NN =true | 사용 여부
 allowed_cidrs | json | | SAP 출구 IP 대역(예: ["203.0.113.10/32"]). 비면 WAF 전역 목록만 적용
-''', uniques=[('tenant_id','system_id','company_id'),('oauth_client_id',)], screens='ALM-310')
+''', uniques=[('tenant_id','system_id','company_id'),('oauth_client_id',),('client_alias',)], screens='ALM-310')
 
 t('sap','sap_run_request','SAP 실행 요청','화면의 수동 실행 요청(F-310-04). SAP 잡이 GET /sap/run-requests로 가져가 실행', '''
 interface_id | vc(10) | NN | 실행할 수신 IF (IF-MD-01, IF-AA-01, IF-AA-02, IF-MM-01, IF-RC-01)

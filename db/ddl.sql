@@ -2190,6 +2190,7 @@ CREATE TABLE sap_connection (
   system_id varchar(10) NOT NULL,
   company_id uuid NOT NULL,
   oauth_client_id varchar(100) NOT NULL,
+  client_alias varchar(12),
   last_call_at timestamptz,
   is_active boolean NOT NULL DEFAULT true,
   allowed_cidrs jsonb,
@@ -2199,13 +2200,15 @@ CREATE TABLE sap_connection (
   updated_by uuid,
   version integer NOT NULL DEFAULT 1,
   UNIQUE (tenant_id, system_id, company_id),
-  UNIQUE (oauth_client_id)
+  UNIQUE (oauth_client_id),
+  UNIQUE (client_alias)
 );
 COMMENT ON COLUMN sap_connection.id IS '기본키';
 COMMENT ON COLUMN sap_connection.tenant_id IS '테넌트';
 COMMENT ON COLUMN sap_connection.system_id IS '시스템 ID-클라이언트 (예: PRD-100)';
 COMMENT ON COLUMN sap_connection.company_id IS '회사코드';
 COMMENT ON COLUMN sap_connection.oauth_client_id IS 'OAuth 클라이언트 ID';
+COMMENT ON COLUMN sap_connection.client_alias IS '클라이언트 별칭(SM59 기본 인증 사용자 12자 제한). /oauth/token에서 clientId 대신 받는다. 전체에서 유일';
 COMMENT ON COLUMN sap_connection.last_call_at IS '마지막 호출';
 COMMENT ON COLUMN sap_connection.is_active IS '사용 여부';
 COMMENT ON COLUMN sap_connection.allowed_cidrs IS 'SAP 출구 IP 대역(예: ["203.0.113.10/32"]). 비면 WAF 전역 목록만 적용';
@@ -3257,8 +3260,16 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
     FROM sap_connection c JOIN tenant t ON t.id = c.tenant_id
    WHERE c.oauth_client_id = p_client_id AND c.is_active AND t.is_active
 $$;
-REVOKE ALL ON FUNCTION auth_idp_by_domain(text), auth_tenant_by_username(text), auth_sap_client(text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION auth_idp_by_domain(text), auth_tenant_by_username(text), auth_sap_client(text) TO alm_app;
+-- SAP: 클라이언트 별칭(SM59 기본 인증 사용자, 12자) → client_id. 대소문자 무시(2026-10-21, 13 런북 7-2)
+CREATE FUNCTION auth_sap_alias(p_alias text)
+RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT c.oauth_client_id
+    FROM sap_connection c JOIN tenant t ON t.id = c.tenant_id
+   WHERE upper(c.client_alias) = upper(p_alias) AND c.is_active AND t.is_active
+$$;
+REVOKE ALL ON FUNCTION auth_idp_by_domain(text), auth_tenant_by_username(text), auth_sap_client(text), auth_sap_alias(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION auth_idp_by_domain(text), auth_tenant_by_username(text), auth_sap_client(text), auth_sap_alias(text) TO alm_app;
 
 -- 추가만 되는 로그 테이블(앱 계정에서 수정·삭제 회수)
 REVOKE UPDATE, DELETE, TRUNCATE ON asset_event FROM alm_app;

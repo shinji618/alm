@@ -20,6 +20,13 @@ export async function sapConnection(db: Db, clientId: string): Promise<SapConn |
     allowedCidrs: Array.isArray(r.allowed_cidrs) ? r.allowed_cidrs.filter((x): x is string => typeof x === 'string') : [] };
 }
 
+/** SM59 기본 인증용 별칭(12자 이내) → Cognito clientId. 별칭 형식이 아니거나 없으면 undefined */
+export const ALIAS = /^[A-Za-z0-9][A-Za-z0-9_-]{2,11}$/;
+export async function sapClientByAlias(db: Db, alias: string): Promise<string | undefined> {
+  if (!ALIAS.test(alias)) return undefined;
+  return (await db.query<{ id: string | null }>('SELECT auth_sap_alias($1) AS id', [alias]))[0]?.id ?? undefined;
+}
+
 // 허용 IP(CIDR 목록). 목록이 비면 WAF 허용 목록만 적용(결정 S-09)
 export function ipAllowed(ip: string | undefined, cidrs: string[]): boolean {
   if (!cidrs.length) return true;

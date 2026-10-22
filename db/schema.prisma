@@ -2490,6 +2490,8 @@ model SapConnection {
   company Company @relation("sap_connection_company_id", fields: [companyId], references: [id])
   /// OAuth 클라이언트 ID
   oauthClientId String @map("oauth_client_id") @db.VarChar(100)
+  /// 클라이언트 별칭(SM59 기본 인증 사용자 12자 제한). /oauth/token에서 clientId 대신 받는다. 전체에서 유일
+  clientAlias String? @map("client_alias") @db.VarChar(12)
   /// 마지막 호출
   lastCallAt DateTime? @map("last_call_at") @db.Timestamptz(6)
   /// 사용 여부
@@ -2508,6 +2510,7 @@ model SapConnection {
   version Int @default(1)
   @@unique([tenantId, systemId, companyId])
   @@unique([oauthClientId])
+  @@unique([clientAlias])
   @@map("sap_connection")
 }
 

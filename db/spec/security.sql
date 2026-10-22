@@ -114,5 +114,13 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
     FROM sap_connection c JOIN tenant t ON t.id = c.tenant_id
    WHERE c.oauth_client_id = p_client_id AND c.is_active AND t.is_active
 $$;
-REVOKE ALL ON FUNCTION auth_idp_by_domain(text), auth_tenant_by_username(text), auth_sap_client(text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION auth_idp_by_domain(text), auth_tenant_by_username(text), auth_sap_client(text) TO alm_app;
+-- SAP: 클라이언트 별칭(SM59 기본 인증 사용자, 12자) → client_id. 대소문자 무시(2026-10-21, 13 런북 7-2)
+CREATE FUNCTION auth_sap_alias(p_alias text)
+RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT c.oauth_client_id
+    FROM sap_connection c JOIN tenant t ON t.id = c.tenant_id
+   WHERE upper(c.client_alias) = upper(p_alias) AND c.is_active AND t.is_active
+$$;
+REVOKE ALL ON FUNCTION auth_idp_by_domain(text), auth_tenant_by_username(text), auth_sap_client(text), auth_sap_alias(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION auth_idp_by_domain(text), auth_tenant_by_username(text), auth_sap_client(text), auth_sap_alias(text) TO alm_app;

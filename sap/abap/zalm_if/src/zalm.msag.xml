@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<abapGit version="v1.0.0" serializer="LCL_OBJECT_MSAG" serializer_version="v1.0.0">
+ <asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">
+  <asx:values>
+   <T100A>
+    <ARBGB>ZALM</ARBGB>
+    <MASTERLANG>E</MASTERLANG>
+    <STEXT>ALM interface</STEXT>
+   </T100A>
+   <T100>
+    <T100>
+     <SPRSL>E</SPRSL>
+     <ARBGB>ZALM</ARBGB>
+     <MSGNR>000</MSGNR>
+     <TEXT>&amp;1&amp;2&amp;3&amp;4</TEXT>
+    </T100>
+    <T100>
+     <SPRSL>E</SPRSL>
+     <ARBGB>ZALM</ARBGB>
+     <MSGNR>001</MSGNR>
+     <TEXT>SM59 destination &amp;1 cannot be opened</TEXT>
+    </T100>
+    <T100>
+     <SPRSL>E</SPRSL>
+     <ARBGB>ZALM</ARBGB>
+     <MSGNR>002</MSGNR>
+     <TEXT>Token request failed: HTTP &amp;1 &amp;2</TEXT>
+    </T100>
+    <T100>
+     <SPRSL>E</SPRSL>
+     <ARBGB>ZALM</ARBGB>
+     <MSGNR>003</MSGNR>
+     <TEXT>HTTP &amp;1 &amp;2 (attempt &amp;3)</TEXT>
+    </T100>
+    <T100>
+     <SPRSL>E</SPRSL>
+     <ARBGB>ZALM</ARBGB>
+     <MSGNR>004</MSGNR>
+     <TEXT>Connection to ALM failed after &amp;1 attempts: &amp;2</TEXT>
+    </T100>
+    <T100>
+     <SPRSL>E</SPRSL>
+     <ARBGB>ZALM</ARBGB>
+     <MSGNR>100</MSGNR>
+     <TEXT>Record &amp;1 skipped: required field &amp;2 is empty</TEXT>
+    </T100>
+    <T100>
+     <SPRSL>E</SPRSL>
+     <ARBGB>ZALM</ARBGB>
+     <MSGNR>200</MSGNR>
+     <TEXT>Posting &amp;1: &amp;2</TEXT>
+    </T100>
+   </T100>
+  </asx:values>
+ </asx:abap>
+</abapGit>

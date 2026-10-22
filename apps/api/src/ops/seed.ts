@@ -27,7 +27,7 @@ export interface SeedInput {
   // 회사코드: 원래 SAP 마스터 수신(IF-MD-01)으로 들어온다. 그 전 시험용으로만 넣는다(있으면 이름만 갱신)
   companies?: { code: string; name: string }[];
   // SAP 연결: client_id는 cognito-admin createSapClient로 발급한 값(비밀은 넣지 않음). 연결 관리 화면(7.x) 전까지 사용
-  sapConnections?: { systemId: string; companyCode: string; clientId: string; allowedCidrs?: string[] }[];
+  sapConnections?: { systemId: string; companyCode: string; clientId: string; clientAlias?: string; allowedCidrs?: string[] }[];
   // ALM 마스터(사이트·룸·카테고리·모델·공급사·라벨 템플릿): 마스터 화면(5.x) 전 DEV·QA 시험용. 키가 같으면 갱신
   masters?: MasterSeed;
 }
@@ -62,6 +62,7 @@ export function parseSeed(raw: string | undefined): SeedInput {
   for (const c of s.sapConnections ?? []) {
     if (!/^[A-Z0-9]{3}-\d{3}$/.test(c.systemId)) throw new Error(`sapConnections.systemId: ${c.systemId}는 SID-클라이언트(예: S4D-100)`);
     if (!/^[A-Za-z0-9_-]{1,100}$/.test(c.clientId)) throw new Error('sapConnections.clientId: Cognito 앱 클라이언트 ID');
+    if (c.clientAlias !== undefined && !/^[A-Z0-9][A-Z0-9_-]{2,11}$/.test(c.clientAlias)) throw new Error('sapConnections.clientAlias: 대문자·숫자·_- 3~12자(SM59 기본 인증 사용자, 예: BSG-S4H100)');
     for (const cidr of c.allowedCidrs ?? []) if (!/^[0-9a-fA-F.:]+(\/\d{1,3})?$/.test(cidr)) throw new Error(`sapConnections.allowedCidrs: ${cidr}`);
   }
   return s;
@@ -113,16 +114,18 @@ export async function seed(c: Client, s: SeedInput): Promise<{ tenantId: string;
       const co = (await c.query('SELECT id FROM company WHERE tenant_id = $1 AND company_code = $2', [tenantId, sc.companyCode])).rows[0];
       if (!co) throw new Error(`sapConnections: 회사코드 ${sc.companyCode}가 없다(companies에 함께 넣는다)`);
       await c.query(
-        `INSERT INTO sap_connection (id, tenant_id, system_id, company_id, oauth_client_id, allowed_cidrs) VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO sap_connection (id, tenant_id, system_id, company_id, oauth_client_id, allowed_cidrs, client_alias) VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (tenant_id, system_id, company_id) DO UPDATE SET oauth_client_id = EXCLUDED.oauth_client_id,
-           allowed_cidrs = EXCLUDED.allowed_cidrs, is_active = true, updated_at = now()`,
-        [randomUUID(), tenantId, sc.systemId, co.id, sc.clientId, JSON.stringify(sc.allowedCidrs ?? [])]);
+           allowed_cidrs = coalesce(EXCLUDED.allowed_cidrs, sap_connection.allowed_cidrs), client_alias = coalesce(EXCLUDED.client_alias, sap_connection.client_alias),
+           is_active = true, updated_at = now()`,
+        // allowedCidrs·clientAlias를 빼면 기존 값을 그대로 둔다(별칭만 추가할 때 허용 IP가 지워지지 않게)
+        [randomUUID(), tenantId, sc.systemId, co.id, sc.clientId, sc.allowedCidrs ? JSON.stringify(sc.allowedCidrs) : null, sc.clientAlias ?? null]);
     }
     const mc = s.masters ? await seedMasters(c, tenantId, s.masters) : undefined;
     await seedFieldMappings(c, tenantId);   // 기본 필드 매핑(비어 있을 때만)
     await c.query('COMMIT');
     log.info('seed done', { tenant: t.code, tenantId, domains: s.domains ?? [], masters: mc, users: (s.users ?? []).map((u) => u.email.replace(/^(.).*@/, '$1***@')),
-      companies: (s.companies ?? []).map((x) => x.code), sapConnections: (s.sapConnections ?? []).map((x) => `${x.systemId}/${x.companyCode}`) });
+      companies: (s.companies ?? []).map((x) => x.code), sapConnections: (s.sapConnections ?? []).map((x) => `${x.systemId}/${x.companyCode}${x.clientAlias ? ` (${x.clientAlias})` : ''}`) });
     return { tenantId, users: s.users?.length ?? 0 };
   } catch (e) {
     await c.query('ROLLBACK').catch(() => undefined);

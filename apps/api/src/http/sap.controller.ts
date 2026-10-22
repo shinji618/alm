@@ -3,7 +3,7 @@ import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Req, Res
 import type { Response } from 'express';
 import { Db } from '../db/pool';
 import { Cognito } from '../auth/cognito';
-import { ipAllowed, sapConnection, SapConn } from '../auth/sap';
+import { ipAllowed, sapClientByAlias, sapConnection, SapConn } from '../auth/sap';
 import { securityEvent } from '../auth/login';
 import { TtlCache } from '../common/cache';
 import { LIMITS, SharedLimiter } from '../common/shared';
@@ -54,6 +54,8 @@ export class SapController {
     const wait = await this.limiter.hit(`sap-token:${id.slice(0, 64)}`, LIMITS.sapToken);   // 09 6.6: 클라이언트당 분당 10회(모든 작업 합계)
     if (wait) { res.setHeader('Retry-After', String(wait)); return oauthError(res, req, 429, 'slow_down', '토큰 발급 호출이 너무 많습니다', 'ALM-E429'); }
 
+    // SM59 기본 인증은 사용자 12자 제한: 연결 별칭(client_alias)이면 clientId로 바꾼다(Cognito clientId는 26자라 겹치지 않음)
+    if (id.length <= 12) id = (await sapClientByAlias(this.db, id)) ?? id;
     const conn = await sapConnection(this.db, id);
     if (!conn) {
       // 테넌트를 알 수 없으므로 CloudWatch에만(09 7장)
