@@ -139,9 +139,11 @@ CLASS zcl_alm_cfg IMPLEMENTATION.
 
 
   METHOD get_list.
+    " 한 열만 읽을 때 INTO TABLE @DATA( )는 릴리스에 따라 구조(LOW 필드) 행이 되므로 행 유형을 명시한다
     DATA lv_param TYPE zalm_cfg-param.
+    DATA lt_low TYPE STANDARD TABLE OF zalm_cfg-low WITH EMPTY KEY.
     lv_param = iv_param.
-    SELECT low FROM zalm_cfg INTO TABLE @DATA(lt_low)
+    SELECT low FROM zalm_cfg INTO TABLE @lt_low
       WHERE param = @lv_param AND low <> @space
       ORDER BY low.
     LOOP AT lt_low INTO DATA(lv_low).
