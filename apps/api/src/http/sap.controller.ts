@@ -21,7 +21,9 @@ import type { PoolClient } from 'pg';
 import { CONFIG, COGNITO, DB, LIMITER, MAILER, SAP_CONNS } from './tokens';
 
 // RFC 6749 5.2 오류(SAP OAuth 클라이언트가 읽음) + ALM 공통 오류 필드
+//   401에는 WWW-Authenticate: Basic을 붙인다(RFC 6749 5.2). SAP HTTP 클라이언트(SM59 기본 인증)는 이 도전을 받아야 자격 증명을 보낸다
 function oauthError(res: Response, req: AlmRequest, status: number, error: string, description: string, code: string) {
+  if (status === 401) res.setHeader('WWW-Authenticate', 'Basic realm="ALM SAP", charset="UTF-8"');
   return res.status(status).type('application/json').json({
     error, error_description: description,
     type: `https://alm.bsgapps.com/errors/${code}`, title: error, status, code, detail: description, correlationId: req.alm.correlationId,

@@ -707,7 +707,9 @@ paths:
 
         - 내부적으로 Cognito 앱 클라이언트 토큰을 발급한다. 토큰의 client_id로 sap_connection → 테넌트·회사코드를 정한다.
 
-        - SM59 기본 인증의 사용자 필드는 12자라 Cognito client_id(26자)가 들어가지 않는다. Basic 사용자에 연결 별칭(sap_connection.client_alias, 3~12자, 대소문자 무시)을 넣으면 client_id로 바꿔 처리한다(2026-10-21, WBS 7.3).'
+        - SM59 기본 인증의 사용자 필드는 12자라 Cognito client_id(26자)가 들어가지 않는다. Basic 사용자에 연결 별칭(sap_connection.client_alias, 3~12자, 대소문자 무시)을 넣으면 client_id로 바꿔 처리한다(2026-10-21, WBS 7.3).
+
+        - 401에는 WWW-Authenticate: Basic realm="ALM SAP"을 붙인다. SAP HTTP 클라이언트(SM59 기본 인증)는 처음에 자격 증명 없이 보내고 이 도전을 받은 뒤 다시 보낸다(2026-10-22 DEV 시험에서 확인).'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
       responses:

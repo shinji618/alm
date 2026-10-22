@@ -151,6 +151,7 @@ test('SAP 토큰: 형식 오류·클라이언트 인증·허용 IP(ST21)·성공
   assert.equal((await call('/oauth/token', { form: { grant_type: 'client_credentials', scope: 'admin' }, auth: basic('sapclient1', 'good') })).body.error, 'invalid_scope');
   const none = await call('/oauth/token', { form: { grant_type: 'client_credentials' } });
   assert.equal(none.status, 401); assert.equal(none.body.error, 'invalid_client');
+  assert.match(none.headers.get('www-authenticate') ?? '', /^Basic realm=/, 'SM59 기본 인증은 도전을 받아야 자격 증명을 보냄');
   const unknown = await call('/oauth/token', { form: { grant_type: 'client_credentials' }, auth: basic('nobody', 'good') });
   assert.equal(unknown.status, 401);
   const bad = await call('/oauth/token', { form: { grant_type: 'client_credentials', scope: 'sap.api' }, auth: basic('sapclient1', 'wrong') });

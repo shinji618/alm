@@ -579,7 +579,8 @@ Q = 'sap'
 ep(Q,'POST','/oauth/token','sapToken','토큰 발급(Client Credentials)','없음(client_id/secret)',None,'TokenResponse','200, 400, 401','sap_connection','공통',
    ['요청은 application/x-www-form-urlencoded: grant_type=client_credentials, scope=sap.api. 클라이언트 인증은 HTTP Basic(client_secret_basic, 권장 — SAP SM59 로그온 정보에 저장) 또는 본문의 client_id·client_secret(client_secret_post).',
     '내부적으로 Cognito 앱 클라이언트 토큰을 발급한다. 토큰의 client_id로 sap_connection → 테넌트·회사코드를 정한다.',
-    'SM59 기본 인증의 사용자 필드는 12자라 Cognito client_id(26자)가 들어가지 않는다. Basic 사용자에 연결 별칭(sap_connection.client_alias, 3~12자, 대소문자 무시)을 넣으면 client_id로 바꿔 처리한다(2026-10-21, WBS 7.3).'])
+    'SM59 기본 인증의 사용자 필드는 12자라 Cognito client_id(26자)가 들어가지 않는다. Basic 사용자에 연결 별칭(sap_connection.client_alias, 3~12자, 대소문자 무시)을 넣으면 client_id로 바꿔 처리한다(2026-10-21, WBS 7.3).',
+    '401에는 WWW-Authenticate: Basic realm="ALM SAP"을 붙인다. SAP HTTP 클라이언트(SM59 기본 인증)는 처음에 자격 증명 없이 보내고 이 도전을 받은 뒤 다시 보낸다(2026-10-22 DEV 시험에서 확인).'])
 ep(Q,'GET','/sap/ping','sapPing','연결 확인','SAP',None,'SapPing','200, 401','sap_connection','SM59 테스트',
    ['SM59 연결 테스트·배치 시작 전 확인용. 부하 없음.'])
 ep(Q,'POST','/sap/master-data','sapPostMasterData','조직·코드 마스터 수신','SAP','MasterDataRequest','BatchResult','200, 207, 400, 401, 409','company, plant, cost_center, profit_center, asset_class','IF-MD-01',
