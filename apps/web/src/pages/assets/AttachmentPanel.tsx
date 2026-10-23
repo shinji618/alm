@@ -45,6 +45,8 @@ export function AttachmentPanel({ ownerType, ownerId, listPath, canWrite }: { ow
   const toast = useToast();
   const confirm = useConfirm();
   const input = useRef<HTMLInputElement>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const docInput = useRef<HTMLInputElement>(null);
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [over, setOver] = useState(false);
   const list = useAsync((sig) => api.get<{ items: AttachmentRow[] }>(listPath, sig), [listPath]);
@@ -113,7 +115,14 @@ export function AttachmentPanel({ ownerType, ownerId, listPath, canWrite }: { ow
         </ul>
       )}
 
-      <h3>{t('asset.att.photos')} <span className="muted small">({photos.length})</span></h3>
+      <div className={s.attHead}>
+        <h3>{t('asset.att.photos')} <span className="muted small">({photos.length})</span></h3>
+        {canWrite && <>
+          <Button size="sm" onClick={() => photoInput.current?.click()}>{t('asset.att.addPhoto')}</Button>
+          <input ref={photoInput} type="file" multiple hidden aria-label={t('asset.att.addPhoto')} accept={[...IMAGES, '.heic'].join(',')}
+            onChange={(e) => { pick(e.target.files); e.target.value = ''; }} />
+        </>}
+      </div>
       {photos.length ? (
         <div className={s.thumbs}>
           {photos.map((x) => (
@@ -130,7 +139,14 @@ export function AttachmentPanel({ ownerType, ownerId, listPath, canWrite }: { ow
         </div>
       ) : <EmptyState message={t('asset.att.noPhotos')} />}
 
-      <h3>{t('asset.att.documents')} <span className="muted small">({docs.length})</span></h3>
+      <div className={s.attHead}>
+        <h3>{t('asset.att.documents')} <span className="muted small">({docs.length})</span></h3>
+        {canWrite && <>
+          <Button size="sm" onClick={() => docInput.current?.click()}>{t('asset.att.addDoc')}</Button>
+          <input ref={docInput} type="file" multiple hidden aria-label={t('asset.att.addDoc')} accept={[...DOCS, '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.csv', '.txt'].join(',')}
+            onChange={(e) => { pick(e.target.files); e.target.value = ''; }} />
+        </>}
+      </div>
       <DataTable rows={docs} loading={list.loading} rowId={(x) => x.id} empty={<EmptyState message={t('asset.detail.noAttachments')} />}
         columns={[
           { key: 'fileName', label: t('asset.attachmentCol.name'), render: (x) => <button type="button" className="link" onClick={() => void open(x)}>{x.fileName}</button> },

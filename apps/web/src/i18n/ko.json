@@ -280,6 +280,8 @@
       "putFailed": "저장소 업로드 실패(HTTP {{status}})",
       "photos": "사진",
       "documents": "문서",
+      "addPhoto": "사진 추가",
+      "addDoc": "문서 추가",
       "noPhotos": "사진이 없습니다.",
       "open": "{{name}} 크게 보기",
       "fromCount": "실사",

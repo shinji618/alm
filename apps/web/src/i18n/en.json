@@ -280,6 +280,8 @@
       "putFailed": "Storage upload failed (HTTP {{status}})",
       "photos": "Photos",
       "documents": "Documents",
+      "addPhoto": "Add photos",
+      "addDoc": "Add documents",
       "noPhotos": "No photos.",
       "open": "Open {{name}}",
       "fromCount": "Count",

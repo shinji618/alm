@@ -11,6 +11,8 @@
   border: 1px dashed var(--line); border-radius: 8px; background: var(--sunk); margin-bottom: 12px; }
 .dropOver { border-color: var(--accent); background: var(--accent-soft); }
 .uploads { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 4px; }
+.attHead { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+.attHead h3 { margin: 0; }
 .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .thumb { margin: 0; display: grid; gap: 6px; }
 .thumbBtn { padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); cursor: zoom-in; aspect-ratio: 4 / 3; overflow: hidden;

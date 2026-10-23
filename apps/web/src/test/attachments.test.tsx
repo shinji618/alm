@@ -43,6 +43,12 @@ describe('asset attachments (ALM-111)', () => {
     expect(await screen.findByText('Security scan in progress')).toBeInTheDocument();
     expect(screen.getByText('Count')).toBeInTheDocument();
     expect(screen.getByText('3.0 MB')).toBeInTheDocument();
+    // 사진·문서 구역마다 추가 버튼(2026-10-22): 문서 쪽은 문서 형식만 고르게
+    expect(screen.getByRole('button', { name: 'Add photos' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add documents' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Add documents')).toHaveAttribute('accept', expect.stringContaining('application/pdf'));
+    expect(screen.getByLabelText('Add documents').getAttribute('accept')).not.toContain('image/jpeg');
+    expect(screen.getByLabelText('Add photos').getAttribute('accept')).toContain('image/jpeg');
 
     const file = new File(['hello'], 'front.jpg', { type: 'image/jpeg' });
     await user.upload(screen.getByLabelText('Add photos or files'), file);
