@@ -47,6 +47,12 @@
     </item>
     <item>
      <ID>S</ID>
+     <KEY>P_PER</KEY>
+     <ENTRY>        Period (AA02, 0 = auto)</ENTRY>
+     <LENGTH>31</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
      <KEY>P_REQ</KEY>
      <ENTRY>        Run request id (IF-OP-01)</ENTRY>
      <LENGTH>33</LENGTH>
@@ -61,7 +67,7 @@
      <ID>S</ID>
      <KEY>P_VAR</KEY>
      <ENTRY>        Variant (MD01/AA01/AA02)</ENTRY>
-     <LENGTH>31</LENGTH>
+     <LENGTH>32</LENGTH>
     </item>
     <item>
      <ID>S</ID>

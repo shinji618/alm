@@ -20,7 +20,9 @@
 *&   - 결과는 ZALM_IF_LOG(IF_ID = IF-AA-01)·SLG1. 유형별 요약: 반영 a / 변경 없음 b / 오류 c
 *& AA02 (IF-AA-02, 08 5.3, D-06 초안 산식)
 *&   - 대상: 회사코드의 삭제 표시 아닌 자산 전체(매일 전체, 같은 값이면 ALM이 SKIPPED). 상각영역 01만
-*&   - 기간: 올해 회계연도(GET_CURRENT_YEAR)의 ANLC 행, period = max(ANLC-PERAF, 1). ANLC 행이 없으면 금액 0으로 명시(T30)
+*&   - 기간: 올해 회계연도(GET_CURRENT_YEAR)의 ANLC 행. period = 화면 P_PER(1~16, 마감 실행은 이 값을 지정), 0이면 ANLC-PERAF가 있으면 그 값,
+*&     S/4HANA 호환 뷰처럼 PERAF가 없으면 현재 전기 기간. ANLC 행이 없으면 금액 0으로 명시(T30)
+*&   - ANLC 필드는 모두 이름으로 읽는다(ASSIGN COMPONENT): 릴리스에 따라 없는 필드(PERAF 등)가 있어도 활성화·실행이 깨지지 않게
 *&   - acquisitionValue = KANSW + ANSWL, accumDepreciation = KNAFA + NAFAG(음수), netBookValue = 둘의 합
 *&     계획외·특별 상각 등을 더해야 하면 ZALM_CFG AA02_DEP_EXTRA(여러 행, 예: KMAFA MAFAG KSAFA SAFAG)에 ANLC 필드명을 넣는다(AW01N과 맞추기)
 *&   - 내용연수·상각키: ANLB(상각영역 01, 오늘 유효) NDJAR·NDPER·AFASL
@@ -43,7 +45,10 @@ PARAMETERS: p_api   TYPE rfcdest DEFAULT 'ZALM_API' OBLIGATORY,
             p_req   TYPE c LENGTH 8,
             p_full  AS CHECKBOX DEFAULT ' ',
             p_close AS CHECKBOX DEFAULT ' ',
+            p_per   TYPE i DEFAULT 0,
             p_dry   AS CHECKBOX DEFAULT ' '.
+
+TYPES gty_amount TYPE p LENGTH 13 DECIMALS 2.
 
 TYPES:
   BEGIN OF gty_company,
@@ -178,10 +183,10 @@ CLASS lcl_run DEFINITION FINAL.
     METHODS sel_values
       IMPORTING iv_bukrs        TYPE bukrs
       RETURNING VALUE(rt_value) TYPE gtt_value.
-    METHODS anlc_sum
-      IMPORTING is_anlc       TYPE anlc
+    METHODS anlc_val
+      IMPORTING is_anlc       TYPE any
                 iv_field      TYPE csequence
-      RETURNING VALUE(rv_sum) TYPE anlc-kansw.
+      RETURNING VALUE(rv_val) TYPE gty_amount.
     METHODS save_log.
     METHODS finish.
     METHODS sel_assets
@@ -654,12 +659,12 @@ CLASS lcl_run IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD anlc_sum.
-    " ANLC 필드명으로 금액을 읽는다(ZALM_CFG AA02_DEP_EXTRA에 적은 이름). 없는 필드는 0
+  METHOD anlc_val.
+    " ANLC 필드명으로 금액·숫자를 읽는다. 없는 필드는 0
     FIELD-SYMBOLS <lv_val> TYPE any.
     ASSIGN COMPONENT iv_field OF STRUCTURE is_anlc TO <lv_val>.
     IF sy-subrc = 0.
-      rv_sum = <lv_val>.
+      rv_val = <lv_val>.
     ENDIF.
   ENDMETHOD.
 
@@ -682,7 +687,7 @@ CLASS lcl_run IMPLEMENTATION.
       mo_log->add( iv_type = 'E' iv_text = |회사코드 { iv_bukrs }의 현재 회계연도를 알 수 없습니다(GET_CURRENT_YEAR)| ).
       RETURN.
     ENDIF.
-    mo_log->add( |회계연도 { lv_curry }, 현재 기간 { lv_currp }, 상각영역 01| ).
+    mo_log->add( |회계연도 { lv_curry }, 현재 전기 기간 { lv_currp }, 상각영역 01, 보낼 기간: { COND string( WHEN p_per > 0 THEN |화면 지정 { p_per }| ELSE `ANLC-PERAF(없으면 현재 전기 기간)` ) }| ).
 
     SELECT bukrs, anln1, anln2 FROM anla
       WHERE bukrs = @iv_bukrs AND xloev = @space
@@ -710,16 +715,25 @@ CLASS lcl_run IMPLEMENTATION.
                                       fiscal_year = lv_curry period = 1 dep_area = '01' ).
       READ TABLE lt_anlc INTO DATA(ls_c) WITH KEY bukrs = ls_a-bukrs anln1 = ls_a-anln1 anln2 = ls_a-anln2 BINARY SEARCH.
       IF sy-subrc = 0.
-        DATA(lv_extra) = CONV anlc-kansw( 0 ).
+        DATA(lv_extra) = CONV decfloat34( 0 ).
         LOOP AT lt_extra INTO DATA(lv_f).
-          lv_extra = lv_extra + anlc_sum( is_anlc = ls_c iv_field = lv_f ).
+          lv_extra = lv_extra + anlc_val( is_anlc = ls_c iv_field = lv_f ).
         ENDLOOP.
-        ls_rec-period = nmax( val1 = CONV i( ls_c-peraf ) val2 = 1 ).
-        ls_rec-acquisition_value = ls_c-kansw + ls_c-answl.
-        ls_rec-accum_depreciation = ls_c-knafa + ls_c-nafag + lv_extra.
+        DATA(lv_kansw) = anlc_val( is_anlc = ls_c iv_field = 'KANSW' ).
+        DATA(lv_answl) = anlc_val( is_anlc = ls_c iv_field = 'ANSWL' ).
+        DATA(lv_knafa) = anlc_val( is_anlc = ls_c iv_field = 'KNAFA' ).
+        DATA(lv_nafag) = anlc_val( is_anlc = ls_c iv_field = 'NAFAG' ).
+        IF p_per > 0.
+          ls_rec-period = p_per.
+        ELSE.
+          DATA(lv_peraf) = CONV i( anlc_val( is_anlc = ls_c iv_field = 'PERAF' ) ).
+          ls_rec-period = COND #( WHEN lv_peraf > 0 THEN lv_peraf ELSE nmax( val1 = CONV i( lv_currp ) val2 = 1 ) ).
+        ENDIF.
+        ls_rec-acquisition_value = lv_kansw + lv_answl.
+        ls_rec-accum_depreciation = lv_knafa + lv_nafag + lv_extra.
         IF p_dry = abap_true AND lv_shown < 10.
           lv_shown = lv_shown + 1.
-          mo_log->add( |  { ls_a-anln1 }-{ ls_a-anln2 } 기간 { ls_rec-period }: KANSW { ls_c-kansw } + ANSWL { ls_c-answl } = { ls_rec-acquisition_value } / KNAFA { ls_c-knafa } + NAFAG { ls_c-nafag }{
+          mo_log->add( |  { ls_a-anln1 }-{ ls_a-anln2 } 기간 { ls_rec-period }: KANSW { lv_kansw } + ANSWL { lv_answl } = { ls_rec-acquisition_value } / KNAFA { lv_knafa } + NAFAG { lv_nafag }{
                        COND string( WHEN lt_extra IS NOT INITIAL THEN | + 추가 { lv_extra }| ) } = { ls_rec-accum_depreciation }| ).
         ENDIF.
       ELSE.
@@ -863,6 +877,9 @@ ENDCLASS.
 AT SELECTION-SCREEN.
   IF p_var <> 'MD01' AND p_var <> 'AA01' AND p_var <> 'AA02'.
     MESSAGE '변형은 MD01(조직·코드 마스터), AA01(자산 마스터 델타), AA02(자산 금액)입니다. MM01은 이어서 추가합니다' TYPE 'E'.
+  ENDIF.
+  IF p_per < 0 OR p_per > 16.
+    MESSAGE '기간은 0(자동) 또는 1~16입니다' TYPE 'E'.
   ENDIF.
   IF p_close = abap_true AND p_var <> 'AA02'.
     MESSAGE '마감 실행(isClosing)은 AA02에서만 씁니다' TYPE 'E'.
