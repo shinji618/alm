@@ -1622,6 +1622,39 @@ version | int | Y | 낙관적 잠금
 schema('AssetClassRowList', '자산클래스 목록', '''
 items | [AssetClassRow] | Y | 행
 ''')
+schema('SapMasterSummaryItem', 'SAP 마스터 종류별 건수', '''
+type | enum(COMPANY,PLANT,PROFIT_CENTER,COST_CENTER,ASSET_CLASS) | Y | 종류
+total | int | Y | 전체
+active | int | Y | 사용
+inactive | int | Y | 비활성(마지막 수신에 없어 IF-MD-01이 끔)
+updatedAt | datetime | N | 가장 최근 변경
+''')
+schema('SapMasterLastRun', 'IF-MD-01 마지막 수신', '''
+batchId | string | Y | 배치 ID
+status | enum(SUCCESS,PARTIAL,FAILED) | Y | 결과
+recordCount | int | Y | 받은 건수
+successCount | int | Y | 성공
+errorCount | int | Y | 오류
+startedAt | datetime | Y | 시작
+''')
+schema('SapMasterSummary', 'SAP 마스터 요약', '''
+items | [SapMasterSummaryItem] | Y | 종류별 건수(회사·플랜트·프로핏센터·코스트센터·자산클래스 순)
+lastRun | SapMasterLastRun | N | 마지막 IF-MD-01 수신(없으면 생략)
+''')
+schema('SapMasterRow', 'SAP 마스터 행', '''
+id | uuid | Y | id
+code | string | Y | 코드(회사코드·플랜트·프로핏센터·코스트센터·자산클래스)
+name | string | Y | 이름
+companyCode | string(4) | N | 회사코드(플랜트·코스트센터)
+controllingArea | string(4) | N | 관리 영역(프로핏센터·코스트센터)
+detail | string | N | 통화(회사)·주소(플랜트)·세그먼트(프로핏센터)·책임자(코스트센터)·LOW_VALUE/CAPITALIZED(자산클래스)
+isActive | bool | Y | 사용
+updatedAt | datetime | N | 마지막 변경
+usage | int | N | 쓰는 건수(회사·코스트센터·자산클래스=자산, 플랜트=사이트; 폐기·처분 제외)
+''')
+schema('SapMasterRowList', 'SAP 마스터 목록', '''
+items | [SapMasterRow] | Y | 행
+''')
 schema('CategoryRow', '자산 카테고리(관리)', '''
 id | uuid | Y | id
 version | int | Y | 버전
@@ -1740,6 +1773,11 @@ W('관리','PATCH','/admin/cost-centers/{id}','patchCostCenter','코스트센터
   [ 'SAP 연계를 끈 회사만(409 ALM-E322).', '폐기·처분이 아닌 자산이 쓰고 있으면 비활성화 불가(409 ALM-E318).'],params=[ID()])
 W('관리','GET','/admin/asset-classes','listAssetClasses','자산클래스 목록(조회)',MA+', ASSET_ACCOUNTANT, AUDITOR',None,'AssetClassRowList','200','asset_class','관리',
   [ '자산클래스는 SAP에서 받은 것만 쓴다(IF-MD-01, 2026-10-18). ALM에서 만들거나 고치지 않는다.', '예전에 ALM에서 만든 클래스(isManual=true)는 표시만 하고 등록·카테고리에서 고를 수 없다(/lookups에서 빠짐).'])
+W('관리','GET','/admin/sap-masters/summary','getSapMasterSummary','SAP 마스터 요약',MA+', ASSET_ACCOUNTANT, AUDITOR',None,'SapMasterSummary','200','company, plant, profit_center, cost_center, asset_class, sap_if_run','ADM-035',
+  [ 'IF-MD-01로 받은 마스터의 종류별 건수와 마지막 수신 결과. 읽기 전용.'])
+W('관리','GET','/admin/sap-masters/{type}','listSapMasters','SAP 마스터 목록(조회)',MA+', ASSET_ACCOUNTANT, AUDITOR',None,'SapMasterRowList','200, 400, 404','company, plant, profit_center, cost_center, asset_class','ADM-035',
+  [ 'type = COMPANY, PLANT, PROFIT_CENTER, COST_CENTER, ASSET_CLASS(그 밖은 404). SAP 연계 회사의 코스트센터와 SAP에서 받은 자산클래스(isManual 제외)만 나온다.', 'active=true/false로 거른다. 수정 API는 없다(SAP에서 관리).'],
+  params=[('type','path','string','Y','마스터 종류'),('active','query','bool','N','사용 여부')])
 W('관리','GET','/admin/categories','listCategories','자산 카테고리 목록',MA+', ASSET_ACCOUNTANT, AUDITOR',None,'CategoryRowList','200','category, asset_class, asset, model','ADM-050',
   [ '카테고리는 ALM에서 정의한다(메뉴·조회·모델·CMDB·교체 내용연수).', 'q는 코드·이름, active=true면 활성만.'],params=[('q','query','string','N','검색'),('active','query','bool','N','활성만')])
 W('관리','POST','/admin/categories','createCategory','자산 카테고리 등록',MA,'CategoryInput','CategoryRow','201, 400, 409','category, audit_log','ADM-050',

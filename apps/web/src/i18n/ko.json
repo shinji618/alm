@@ -39,7 +39,8 @@
     "categories": "자산 카테고리",
     "categoryCount": "{{name}} (자산 {{count}}개)",
     "assetImport": "자산 일괄 업로드",
-    "numberRanges": "자산태그 번호 범위"
+    "numberRanges": "자산태그 번호 범위",
+    "sapMasters": "SAP 마스터"
   },
   "common": {
     "clear": "초기화",
@@ -1384,5 +1385,52 @@
     "delete": "삭제",
     "deleteMsg": "번호 범위 {{prefix}}를 삭제할까요?",
     "deleted": "번호 범위 {{prefix}}를 삭제했습니다"
+  },
+  "sapm": {
+    "title": "SAP 마스터",
+    "description": "SAP에서 받은 회사·플랜트·프로핏센터·코스트센터·자산클래스를 조회합니다(IF-MD-01). 이 화면에서는 바꿀 수 없습니다.",
+    "lastRun": "마지막 수신",
+    "runCounts": "{{total}}건 (성공 {{ok}} · 오류 {{err}})",
+    "noRun": "아직 받은 마스터가 없습니다.",
+    "type": {
+      "COMPANY": "회사코드",
+      "PLANT": "플랜트",
+      "PROFIT_CENTER": "프로핏센터",
+      "COST_CENTER": "코스트센터",
+      "ASSET_CLASS": "자산클래스"
+    },
+    "code": {
+      "COMPANY": "회사코드",
+      "PLANT": "플랜트",
+      "PROFIT_CENTER": "프로핏센터",
+      "COST_CENTER": "코스트센터",
+      "ASSET_CLASS": "클래스"
+    },
+    "detail": {
+      "COMPANY": "통화",
+      "PLANT": "주소",
+      "PROFIT_CENTER": "세그먼트",
+      "COST_CENTER": "책임자",
+      "ASSET_CLASS": "구분"
+    },
+    "usage": {
+      "COMPANY": "자산 수",
+      "PLANT": "사이트 수",
+      "PROFIT_CENTER": "",
+      "COST_CENTER": "자산 수",
+      "ASSET_CLASS": "자산 수"
+    },
+    "flag": {
+      "LOW_VALUE": "저가자산",
+      "CAPITALIZED": "자본화"
+    },
+    "area": "관리 영역",
+    "inactive": "비활성",
+    "updated": "마지막 변경",
+    "search": "코드·이름",
+    "all": "전체",
+    "onlyActive": "사용",
+    "onlyInactive": "비활성",
+    "readOnly": "비활성은 마지막 수신 배치에 없어 IF-MD-01이 끈 코드입니다. 변경은 SAP에서 한 뒤 다시 받습니다."
   }
 }

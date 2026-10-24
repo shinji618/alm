@@ -39,7 +39,8 @@
     "categories": "Asset categories",
     "categoryCount": "{{name}} ({{count}} assets)",
     "assetImport": "Bulk asset upload",
-    "numberRanges": "Asset tag number ranges"
+    "numberRanges": "Asset tag number ranges",
+    "sapMasters": "SAP master data"
   },
   "common": {
     "clear": "Clear",
@@ -1384,5 +1385,52 @@
     "delete": "Delete",
     "deleteMsg": "Delete number range {{prefix}}?",
     "deleted": "Number range {{prefix}} deleted"
+  },
+  "sapm": {
+    "title": "SAP master data",
+    "description": "View the company codes, plants, profit centers, cost centers and asset classes received from SAP (IF-MD-01). Read-only.",
+    "lastRun": "Last receive",
+    "runCounts": "{{total}} records ({{ok}} ok · {{err}} errors)",
+    "noRun": "No master data received yet.",
+    "type": {
+      "COMPANY": "Company codes",
+      "PLANT": "Plants",
+      "PROFIT_CENTER": "Profit centers",
+      "COST_CENTER": "Cost centers",
+      "ASSET_CLASS": "Asset classes"
+    },
+    "code": {
+      "COMPANY": "Company code",
+      "PLANT": "Plant",
+      "PROFIT_CENTER": "Profit center",
+      "COST_CENTER": "Cost center",
+      "ASSET_CLASS": "Class"
+    },
+    "detail": {
+      "COMPANY": "Currency",
+      "PLANT": "Address",
+      "PROFIT_CENTER": "Segment",
+      "COST_CENTER": "Responsible",
+      "ASSET_CLASS": "Kind"
+    },
+    "usage": {
+      "COMPANY": "Assets",
+      "PLANT": "Sites",
+      "PROFIT_CENTER": "",
+      "COST_CENTER": "Assets",
+      "ASSET_CLASS": "Assets"
+    },
+    "flag": {
+      "LOW_VALUE": "Low value",
+      "CAPITALIZED": "Capitalized"
+    },
+    "area": "Controlling area",
+    "inactive": "Inactive",
+    "updated": "Last changed",
+    "search": "Code or name",
+    "all": "All",
+    "onlyActive": "Active",
+    "onlyInactive": "Inactive",
+    "readOnly": "Inactive codes were missing from the last received batch, so IF-MD-01 turned them off. Change them in SAP and receive again."
   }
 }

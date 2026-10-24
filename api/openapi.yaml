@@ -8219,6 +8219,88 @@ paths:
       security:
       - webAuth:
         - web
+  /admin/sap-masters/summary:
+    get:
+      operationId: getSapMasterSummary
+      summary: SAP 마스터 요약
+      tags:
+      - WEB
+      description: 'ADM-035 · 테이블: company, plant, profit_center, cost_center, asset_class, sap_if_run
+
+
+        - IF-MD-01로 받은 마스터의 종류별 건수와 마지막 수신 결과. 읽기 전용.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SapMasterSummary'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: master.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
+      security:
+      - webAuth:
+        - web
+  /admin/sap-masters/{type}:
+    get:
+      operationId: listSapMasters
+      summary: SAP 마스터 목록(조회)
+      tags:
+      - WEB
+      description: 'ADM-035 · 테이블: company, plant, profit_center, cost_center, asset_class
+
+
+        - type = COMPANY, PLANT, PROFIT_CENTER, COST_CENTER, ASSET_CLASS(그 밖은 404). SAP 연계 회사의 코스트센터와 SAP에서 받은 자산클래스(isManual 제외)만 나온다.
+
+        - active=true/false로 거른다. 수정 API는 없다(SAP에서 관리).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: type
+        in: path
+        required: true
+        description: 마스터 종류
+        schema:
+          type: string
+      - name: active
+        in: query
+        required: false
+        description: 사용 여부
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SapMasterRowList'
+        '400':
+          $ref: '#/components/responses/E400'
+        '404':
+          $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: master.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
+      security:
+      - webAuth:
+        - web
   /admin/categories:
     get:
       operationId: listCategories
@@ -18200,6 +18282,137 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AssetClassRow'
+          description: 행
+      required:
+      - items
+    SapMasterSummaryItem:
+      type: object
+      description: SAP 마스터 종류별 건수
+      properties:
+        type:
+          type: string
+          enum:
+          - COMPANY
+          - PLANT
+          - PROFIT_CENTER
+          - COST_CENTER
+          - ASSET_CLASS
+          description: 종류
+        total:
+          type: integer
+          description: 전체
+        active:
+          type: integer
+          description: 사용
+        inactive:
+          type: integer
+          description: 비활성(마지막 수신에 없어 IF-MD-01이 끔)
+        updatedAt:
+          type: string
+          format: date-time
+          description: 가장 최근 변경
+      required:
+      - type
+      - total
+      - active
+      - inactive
+    SapMasterLastRun:
+      type: object
+      description: IF-MD-01 마지막 수신
+      properties:
+        batchId:
+          type: string
+          description: 배치 ID
+        status:
+          type: string
+          enum:
+          - SUCCESS
+          - PARTIAL
+          - FAILED
+          description: 결과
+        recordCount:
+          type: integer
+          description: 받은 건수
+        successCount:
+          type: integer
+          description: 성공
+        errorCount:
+          type: integer
+          description: 오류
+        startedAt:
+          type: string
+          format: date-time
+          description: 시작
+      required:
+      - batchId
+      - status
+      - recordCount
+      - successCount
+      - errorCount
+      - startedAt
+    SapMasterSummary:
+      type: object
+      description: SAP 마스터 요약
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SapMasterSummaryItem'
+          description: 종류별 건수(회사·플랜트·프로핏센터·코스트센터·자산클래스 순)
+        lastRun:
+          allOf:
+          - $ref: '#/components/schemas/SapMasterLastRun'
+          description: 마지막 IF-MD-01 수신(없으면 생략)
+      required:
+      - items
+    SapMasterRow:
+      type: object
+      description: SAP 마스터 행
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: id
+        code:
+          type: string
+          description: 코드(회사코드·플랜트·프로핏센터·코스트센터·자산클래스)
+        name:
+          type: string
+          description: 이름
+        companyCode:
+          type: string
+          maxLength: 4
+          description: 회사코드(플랜트·코스트센터)
+        controllingArea:
+          type: string
+          maxLength: 4
+          description: 관리 영역(프로핏센터·코스트센터)
+        detail:
+          type: string
+          description: 통화(회사)·주소(플랜트)·세그먼트(프로핏센터)·책임자(코스트센터)·LOW_VALUE/CAPITALIZED(자산클래스)
+        isActive:
+          type: boolean
+          description: 사용
+        updatedAt:
+          type: string
+          format: date-time
+          description: 마지막 변경
+        usage:
+          type: integer
+          description: 쓰는 건수(회사·코스트센터·자산클래스=자산, 플랜트=사이트; 폐기·처분 제외)
+      required:
+      - id
+      - code
+      - name
+      - isActive
+    SapMasterRowList:
+      type: object
+      description: SAP 마스터 목록
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SapMasterRow'
           description: 행
       required:
       - items

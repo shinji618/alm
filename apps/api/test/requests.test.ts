@@ -452,3 +452,30 @@ test('부서 관리자 관리(ADM-040)와 이관 승인 단계: 없는 쪽 건�
     [['APPROVED', undefined], ['APPROVED', '[동일 승인자] 1단계 승인으로 함께 승인'], ['PENDING', undefined]]);
   assert.equal((await call('acct', 'POST', `/approvals/${await step(t3.id, 3)}:approve`, {})).body.requestStatus, 'POSTED');
 });
+
+test('SAP 마스터 조회(ADM-035): 읽기 전용·종류별 건수·SAP 회사만·직접 등록 클래스 제외·권한', { skip }, async () => {
+  assert.equal((await call('emp', 'GET', '/admin/sap-masters/summary')).status, 403);
+  assert.equal((await call('emp', 'GET', '/admin/sap-masters/PLANT')).status, 403);
+  const sum = await call('mgr', 'GET', '/admin/sap-masters/summary');
+  assert.equal(sum.status, 200);
+  assert.deepEqual(sum.body.items.map((x: { type: string }) => x.type), ['COMPANY', 'PLANT', 'PROFIT_CENTER', 'COST_CENTER', 'ASSET_CLASS']);
+  for (const x of sum.body.items) assert.equal(x.total, x.active + x.inactive);
+  const pc = await call('mgr', 'GET', '/admin/sap-masters/PROFIT_CENTER');
+  assert.equal(pc.status, 200);
+  assert.deepEqual(pc.body.items.map((x: { code: string }) => x.code).sort().slice(0, 2), ['P1', 'P2']);
+  assert.deepEqual([pc.body.items[0].controllingArea, pc.body.items[0].usage], ['A000', undefined]);
+  // 직접 만든 자산클래스(is_manual)와 SAP 끈 회사의 코스트센터는 SAP 마스터가 아니다
+  const cls = await call('mgr', 'GET', '/admin/sap-masters/ASSET_CLASS');
+  assert.ok(!cls.body.items.some((x: { code: string }) => x.code === 'ALM-IT'));
+  assert.ok(cls.body.items.some((x: { code: string }) => x.code === '00003200'));
+  const cc = await call('mgr', 'GET', '/admin/sap-masters/COST_CENTER');
+  assert.ok(!cc.body.items.some((x: { code: string }) => x.code === 'N200'));
+  assert.ok(cc.body.items.some((x: { code: string }) => x.code === 'CC100'));
+  // 비활성 필터
+  await q(`UPDATE profit_center SET is_active = false WHERE id = $1`, [ids.pc2]);
+  const off = await call('mgr', 'GET', '/admin/sap-masters/PROFIT_CENTER?active=false');
+  assert.deepEqual(off.body.items.map((x: { code: string }) => x.code), ['P2']);
+  assert.equal((await call('mgr', 'GET', '/admin/sap-masters/PROFIT_CENTER?active=maybe')).status, 400);
+  assert.equal((await call('mgr', 'GET', '/admin/sap-masters/NOPE')).status, 404);
+  assert.equal((await call('mgr', 'POST', '/admin/sap-masters/PLANT', {})).status, 404, '쓰기 API 없음');
+});

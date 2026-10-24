@@ -8,6 +8,7 @@ import * as users from '../admin/users';
 import * as cfg from '../admin/config';
 import * as companies from '../admin/companies';
 import * as fin from '../admin/finmasters';
+import * as sapm from '../admin/sapMasters';
 import * as cats from '../admin/categories';
 import * as ranges from '../admin/numberRanges';
 import * as dm from '../admin/deptmanagers';
@@ -128,6 +129,19 @@ export class AdminController {
   @Operation('listAssetClasses')
   listAssetClasses(@Ctx() ctx: AlmContext) {
     return this.db.withTx(txOf(ctx), (c) => fin.listAssetClasses(c));
+  }
+
+  // SAP 마스터(ADM-035): IF-MD-01로 받은 마스터 읽기 전용
+  @Get('sap-masters/summary')
+  @Operation('getSapMasterSummary')
+  getSapMasterSummary(@Ctx() ctx: AlmContext) {
+    return this.db.withTx(txOf(ctx), (c) => sapm.sapMasterSummary(c));
+  }
+
+  @Get('sap-masters/:type')
+  @Operation('listSapMasters')
+  listSapMasters(@Ctx() ctx: AlmContext, @Param('type') type: string, @Query() q: Record<string, string>) {
+    return this.db.withTx(txOf(ctx), (c) => sapm.listSapMasters(c, type, q));
   }
 
   // 자산 카테고리(ADM-050): ALM에서 정의
