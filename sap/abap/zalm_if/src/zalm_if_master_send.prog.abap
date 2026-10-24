@@ -1,5 +1,6 @@
 *&---------------------------------------------------------------------*
-*& ZALM_IF_MASTER_SEND - SAP → ALM 마스터 송신(08 5.1 IF-MD-01, WBS 7.4)
+*& ZALM_IF_MASTER_SEND - SAP → ALM 마스터 송신(08 5.1 IF-MD-01 WBS 7.4, 5.2 IF-AA-01 WBS 7.5)
+*&   변형 AA01: 자산 마스터 델타 송신(/sap/assets:upsert, 1,000건 분할). 아래 "AA01" 블록 참고
 *&   변형 MD01: 조직·코드 마스터 전체 송신
 *&     COMPANY → PLANT → PROFIT_CENTER → COST_CENTER → ASSET_CLASS → LOCATION (참조되는 쪽 먼저)
 *&   - 대상 회사코드: 화면 S_BUKRS, 비우면 ZALM_CFG BUKRS(여러 행). 회사코드마다 ALM 연결(X-Company-Code)이 따로 있어야 한다
@@ -10,10 +11,17 @@
 *&   - 결과는 ZALM_IF_LOG(IF_ID = IF-MD-01, 회사코드별 1행)·SLG1(객체 ZALM, 하위 객체 IF-MD-01)에 남긴다
 *&   - 수동 실행과 잡(SM36)을 겸한다. 백그라운드에서 실패가 있으면 잡이 오류로 끝난다
 *&   - 저가자산 클래스(D-06 미결)는 ZALM_CFG LOWVAL_CLASS(여러 행)에 넣은 클래스만 true. 없으면 모두 false
+*& AA01 (IF-AA-01, 08 5.2)
+*&   - 대상: ① 마지막 성공 이후 변경 문서(CDHDR ANLA) ② 그 이후 생성(ANLA-ERDAT) ③ 효력일이 도래한 시간종속 행(ANLZ-ADATU)
+*&   - 마지막 성공 시각은 회사코드별 ZALM_CFG LAST_AA01_<BUKRS>(UTC). 비었으면 최초 → 대상 회사코드 전체, isFull = true. 화면 P_FULL로도 전체
+*&   - 성공(HTTP 오류 없음)하면 잡 시작 시각을 저장한다. 건별 ERROR(예: 코스트센터 없음)는 ALM이 다음 IF-MD-01 뒤 자동 재처리하므로 시각은 올린다
+*&   - 삭제 표시(XLOEV) 자산은 보내지 않는다(ALM 쪽 정리는 IF-RC-01 대사). 설명·클래스·코스트센터가 빈 자산은 빼고 경고(T31)
+*&   - 결과는 ZALM_IF_LOG(IF_ID = IF-AA-01)·SLG1. 유형별 요약: 반영 a / 변경 없음 b / 오류 c
 *&---------------------------------------------------------------------*
 REPORT zalm_if_master_send.
 
-CONSTANTS gc_if_id TYPE c LENGTH 10 VALUE 'IF-MD-01'.
+CONSTANTS: gc_if_md TYPE c LENGTH 10 VALUE 'IF-MD-01',
+           gc_if_aa TYPE c LENGTH 10 VALUE 'IF-AA-01'.
 
 DATA gv_bukrs_sel TYPE bukrs.
 
@@ -23,6 +31,7 @@ PARAMETERS: p_api   TYPE rfcdest DEFAULT 'ZALM_API' OBLIGATORY,
             p_tok   TYPE rfcdest DEFAULT 'ZALM_TOKEN' OBLIGATORY,
             p_chunk TYPE i DEFAULT 5000 OBLIGATORY,
             p_req   TYPE c LENGTH 8,
+            p_full  AS CHECKBOX DEFAULT ' ',
             p_dry   AS CHECKBOX DEFAULT ' '.
 
 TYPES:
@@ -69,7 +78,32 @@ TYPES:
     location   TYPE string,
     name       TYPE string,
   END OF gty_loc,
-  gtt_loc TYPE STANDARD TABLE OF gty_loc WITH EMPTY KEY.
+  gtt_loc TYPE STANDARD TABLE OF gty_loc WITH EMPTY KEY,
+  BEGIN OF gty_asset,
+    company_code    TYPE string,
+    asset_no        TYPE string,
+    sub_no          TYPE string,
+    asset_class     TYPE string,
+    description     TYPE string,
+    serial_no       TYPE string,
+    inventory_no    TYPE string,
+    cap_date        TYPE string,
+    deact_date      TYPE string,
+    last_count_date TYPE string,
+    inventory_note  TYPE string,
+    cost_center     TYPE string,
+    plant           TYPE string,
+    location        TYPE string,
+    changed_at      TYPE string,
+  END OF gty_asset,
+  gtt_asset TYPE STANDARD TABLE OF gty_asset WITH EMPTY KEY,
+  BEGIN OF gty_akey,
+    bukrs TYPE bukrs,
+    anln1 TYPE anln1,
+    anln2 TYPE anln2,
+    ts    TYPE timestamp,
+  END OF gty_akey,
+  gtt_akey TYPE SORTED TABLE OF gty_akey WITH UNIQUE KEY bukrs anln1 anln2.
 
 CLASS lcl_run DEFINITION FINAL.
   PUBLIC SECTION.
@@ -81,6 +115,8 @@ CLASS lcl_run DEFINITION FINAL.
     DATA mt_bukrs TYPE gtt_bukrs.
     DATA mr_kokrs TYPE RANGE OF kokrs.
     DATA mv_stamp TYPE string.
+    DATA mv_ts TYPE timestamp.
+    DATA mv_if TYPE c LENGTH 10.
     DATA mv_batch TYPE string.
     DATA mo_log TYPE REF TO zcl_alm_log.
     DATA mo_api TYPE REF TO zcl_alm_http_client.
@@ -104,8 +140,24 @@ CLASS lcl_run DEFINITION FINAL.
                 iv_first TYPE abap_bool.
     METHODS send
       IMPORTING iv_type    TYPE csequence
-                it_records TYPE STANDARD TABLE.
+                it_records TYPE STANDARD TABLE
+                iv_path    TYPE csequence DEFAULT '/sap/master-data'
+                iv_head    TYPE csequence OPTIONAL
+                iv_chunked TYPE abap_bool DEFAULT abap_false.
+    METHODS one_company_aa01
+      IMPORTING iv_bukrs TYPE bukrs.
+    METHODS save_log.
     METHODS finish.
+    METHODS sel_assets
+      IMPORTING iv_bukrs        TYPE bukrs
+                iv_full         TYPE abap_bool
+                iv_date         TYPE d
+                iv_time         TYPE t
+      RETURNING VALUE(rt_asset) TYPE gtt_asset.
+    METHODS to_utc
+      IMPORTING iv_date      TYPE d
+                iv_time      TYPE t DEFAULT '000000'
+      RETURNING VALUE(rv_ts) TYPE timestamp.
 
     METHODS sel_company IMPORTING iv_bukrs TYPE bukrs RETURNING VALUE(rt_rec) TYPE gtt_company.
     METHODS sel_plant IMPORTING iv_bukrs TYPE bukrs RETURNING VALUE(rt_rec) TYPE gtt_plant.
@@ -122,7 +174,9 @@ CLASS lcl_run IMPLEMENTATION.
     DATA lv_ts TYPE timestamp.
 
     GET TIME STAMP FIELD lv_ts.
+    mv_ts = lv_ts.
     mv_stamp = |{ lv_ts }|.
+    mv_if = COND #( WHEN p_var = 'AA01' THEN gc_if_aa ELSE gc_if_md ).
 
     targets( ).
     IF mt_bukrs IS INITIAL.
@@ -130,11 +184,15 @@ CLASS lcl_run IMPLEMENTATION.
     ENDIF.
 
     IF p_dry = abap_false AND lock( ) = abap_false.
-      MESSAGE 'IF-MD-01이 이미 실행 중입니다(잠금). 끝난 뒤 다시 실행하세요' TYPE 'E'.
+      MESSAGE |{ mv_if }이(가) 이미 실행 중입니다(잠금). 끝난 뒤 다시 실행하세요| TYPE 'E'.
     ENDIF.
 
     LOOP AT mt_bukrs INTO DATA(lv_bukrs).
-      one_company( iv_bukrs = lv_bukrs iv_first = xsdbool( sy-tabix = 1 ) ).
+      IF p_var = 'AA01'.
+        one_company_aa01( lv_bukrs ).
+      ELSE.
+        one_company( iv_bukrs = lv_bukrs iv_first = xsdbool( sy-tabix = 1 ) ).
+      ENDIF.
     ENDLOOP.
 
     unlock( ).
@@ -143,9 +201,9 @@ CLASS lcl_run IMPLEMENTATION.
 
 
   METHOD lock.
-    " VARKEY는 RSTABLE-VARKEY 유형이어야 한다(상수 gc_if_id를 그대로 넘기면 CALL_FUNCTION_CONFLICT_TYPE)
+    " VARKEY는 RSTABLE-VARKEY 유형이어야 한다(상수를 그대로 넘기면 CALL_FUNCTION_CONFLICT_TYPE)
     DATA lv_varkey TYPE rstable-varkey.
-    lv_varkey = gc_if_id.
+    lv_varkey = mv_if.
     CALL FUNCTION 'ENQUEUE_E_TABLE'
       EXPORTING
         mode_rstable   = 'E'
@@ -163,7 +221,7 @@ CLASS lcl_run IMPLEMENTATION.
   METHOD unlock.
     DATA lv_varkey TYPE rstable-varkey.
     IF mv_locked = abap_true.
-      lv_varkey = gc_if_id.
+      lv_varkey = mv_if.
       CALL FUNCTION 'DEQUEUE_E_TABLE'
         EXPORTING
           mode_rstable = 'E'
@@ -214,7 +272,7 @@ CLASS lcl_run IMPLEMENTATION.
     mv_batch = |MD01-{ mv_stamp(12) }-{ iv_bukrs }{ lv_req }|.
     CLEAR: mv_failed, mv_sent, mv_err, mv_http.
 
-    mo_log = NEW #( iv_if_id = gc_if_id iv_batch_id = mv_batch iv_bukrs = iv_bukrs ).
+    mo_log = NEW #( iv_if_id = gc_if_md iv_batch_id = mv_batch iv_bukrs = iv_bukrs ).
     mo_api = NEW #( iv_bukrs = iv_bukrs iv_dest_api = p_api iv_dest_token = p_tok ).
     mo_log->add( |IF-MD-01 { COND string( WHEN p_dry = abap_true THEN `시험 실행(보내지 않음)` ELSE `송신` ) }: 회사코드 { iv_bukrs }, 배치 { mv_batch }, SAP 시스템 { mo_api->system_id( ) }| ).
 
@@ -247,8 +305,17 @@ CLASS lcl_run IMPLEMENTATION.
       mv_any_failed = abap_true.
     ENDIF.
 
+    save_log( ).
+  ENDMETHOD.
+
+
+  METHOD save_log.
     IF p_dry = abap_false.
       DATA(lt_warn) = VALUE zcl_alm_log=>tt_msg( FOR m IN mo_log->mt_msg WHERE ( type CA 'EW' ) ( m ) ).
+      " MSG_JSON(길이 한도)을 넘지 않게 앞 50건만. 전체는 SLG1에 있다
+      IF lines( lt_warn ) > 50.
+        DELETE lt_warn FROM 51.
+      ENDIF.
       mo_log->set_result(
         iv_status   = COND #( WHEN mv_failed = abap_true THEN zcl_alm_log=>c_failed
                               WHEN mv_err > 0 THEN zcl_alm_log=>c_partial
@@ -274,15 +341,26 @@ CLASS lcl_run IMPLEMENTATION.
     ENDIF.
 
     lv_batch = mv_batch.
+    " 분할 상한: 마스터 5,000건, 자산 1,000건(08 4.3)
+    DATA(lv_chunk) = COND i( WHEN iv_chunked = abap_true THEN nmin( val1 = p_chunk val2 = 1000 ) ELSE p_chunk ).
     DO 2 TIMES.
       DATA(lv_try) = sy-index.
       CLEAR: lt_chunks, lv_retry.
       TRY.
-          lt_chunks = mo_api->send_records( iv_path       = '/sap/master-data'
-                                            iv_batch_id   = lv_batch
-                                            iv_type       = iv_type
-                                            it_records    = it_records
-                                            iv_chunk_size = p_chunk ).
+          IF iv_chunked = abap_true.
+            lt_chunks = mo_api->send_records( iv_path       = iv_path
+                                              iv_batch_id   = lv_batch
+                                              iv_head       = iv_head
+                                              iv_chunked    = abap_true
+                                              it_records    = it_records
+                                              iv_chunk_size = lv_chunk ).
+          ELSE.
+            lt_chunks = mo_api->send_records( iv_path       = iv_path
+                                              iv_batch_id   = lv_batch
+                                              iv_type       = iv_type
+                                              it_records    = it_records
+                                              iv_chunk_size = lv_chunk ).
+          ENDIF.
         CATCH zcx_alm INTO DATA(lx).
           mo_log->add( iv_type = 'E' iv_text = |{ iv_type }: { lx->get_text( ) }| ).
           mv_http = lx->mv_http_status.
@@ -305,19 +383,24 @@ CLASS lcl_run IMPLEMENTATION.
       EXIT.
     ENDDO.
 
-    DATA(lv_ok) = 0.
+    DATA(lv_skip) = 0.
+    DATA(lv_fail) = 0.
     LOOP AT lt_chunks INTO DATA(ls_chunk).
       mv_sent = mv_sent + ls_chunk-records.
       mv_http = ls_chunk-response-status.
       CASE ls_chunk-response-status.
         WHEN 200 OR 202 OR 207.
-          lv_ok = lv_ok + ls_chunk-result-succeeded.
           mv_err = mv_err + ls_chunk-result-failed.
+          lv_fail = lv_fail + ls_chunk-result-failed.
           LOOP AT ls_chunk-result-results INTO DATA(ls_item) WHERE status = 'ERROR'.
             mo_log->add( iv_type = 'W' iv_text = |{ iv_type } { ls_item-key }: { ls_item-code } { ls_item-message }| ).
           ENDLOOP.
+          " 응답에는 ERROR·SKIPPED만 있다. SKIPPED(값이 같아 변경 없음)는 건수만 세고, 사유가 있는 건만 남긴다
           LOOP AT ls_chunk-result-results INTO ls_item WHERE status = 'SKIPPED'.
-            mo_log->add( iv_type = 'I' iv_text = |{ iv_type } { ls_item-key }: { ls_item-message }| ).
+            lv_skip = lv_skip + 1.
+            IF ls_item-message IS NOT INITIAL.
+              mo_log->add( iv_type = 'I' iv_text = |{ iv_type } { ls_item-key }: { ls_item-message }| ).
+            ENDIF.
           ENDLOOP.
         WHEN OTHERS.
           DATA(ls_problem) = zcl_alm_http_client=>parse_problem( ls_chunk-response-body ).
@@ -327,20 +410,182 @@ CLASS lcl_run IMPLEMENTATION.
       ENDCASE.
     ENDLOOP.
     mo_log->add( iv_type = COND #( WHEN mv_failed = abap_true THEN 'E' ELSE 'S' )
-                 iv_text = |{ iv_type }: { lv_count }건, 분할 { lines( lt_chunks ) }개, 반영 { lv_ok }건| ).
+                 iv_text = |{ iv_type }: { lv_count }건, 분할 { lines( lt_chunks ) }개 — 반영 { nmax( val1 = lv_count - lv_skip - lv_fail val2 = 0 ) } / 변경 없음 { lv_skip } / 오류 { lv_fail }| ).
   ENDMETHOD.
 
 
   METHOD finish.
     IF mv_any_failed = abap_true.
       IF sy-batch = abap_true.
-        MESSAGE 'IF-MD-01 실패가 있습니다. SLG1(객체 ZALM)과 ZALM_IF_LOG를 확인하세요' TYPE 'E'.
+        MESSAGE |{ mv_if } 실패가 있습니다. SLG1(객체 ZALM)과 ZALM_IF_LOG를 확인하세요| TYPE 'E'.
       ELSE.
-        MESSAGE 'IF-MD-01 실패가 있습니다. SLG1(객체 ZALM)과 ZALM_IF_LOG를 확인하세요' TYPE 'S' DISPLAY LIKE 'E'.
+        MESSAGE |{ mv_if } 실패가 있습니다. SLG1(객체 ZALM)과 ZALM_IF_LOG를 확인하세요| TYPE 'S' DISPLAY LIKE 'E'.
       ENDIF.
     ELSE.
-      MESSAGE 'IF-MD-01 완료' TYPE 'S'.
+      MESSAGE |{ mv_if } 완료| TYPE 'S'.
     ENDIF.
+  ENDMETHOD.
+
+
+  METHOD one_company_aa01.
+    DATA lv_d TYPE d.
+    DATA lv_t TYPE t.
+    DATA lv_init TYPE abap_bool.
+
+    DATA(lv_req) = COND string( WHEN p_req IS NOT INITIAL THEN |-REQ{ p_req }| ).
+    mv_batch = |AA01-{ mv_stamp(12) }-{ iv_bukrs }{ lv_req }|.
+    CLEAR: mv_failed, mv_sent, mv_err, mv_http.
+
+    mo_log = NEW #( iv_if_id = gc_if_aa iv_batch_id = mv_batch iv_bukrs = iv_bukrs ).
+    mo_api = NEW #( iv_bukrs = iv_bukrs iv_dest_api = p_api iv_dest_token = p_tok ).
+    DATA(lv_param) = |LAST_AA01_{ iv_bukrs }|.
+    zcl_alm_cfg=>delta_from( EXPORTING iv_param = lv_param
+                             IMPORTING ev_date = lv_d ev_time = lv_t ev_initial = lv_init ).
+    DATA(lv_full) = xsdbool( lv_init = abap_true OR p_full = abap_true ).
+    mo_log->add( |IF-AA-01 { COND string( WHEN p_dry = abap_true THEN `시험 실행(보내지 않음)` ELSE `송신` ) }: 회사코드 { iv_bukrs }, 배치 { mv_batch }, SAP 시스템 { mo_api->system_id( ) }| ).
+    mo_log->add( COND string( WHEN lv_full = abap_true THEN |선택: 전체(isFull){ COND string( WHEN lv_init = abap_true THEN `, 최초 실행` ELSE `, 화면에서 전체 지정` ) }|
+                              ELSE |선택: 델타 — { lv_d DATE = ISO } { lv_t TIME = ISO } (시스템 시간) 이후| ) ).
+
+    DATA(lt_asset) = sel_assets( iv_bukrs = iv_bukrs iv_full = lv_full iv_date = lv_d iv_time = lv_t ).
+    IF lt_asset IS INITIAL.
+      mo_log->add( 'ASSET: 보낼 자산이 없습니다(변경 없음)' ).
+    ELSE.
+      send( iv_type = 'ASSET' it_records = lt_asset iv_path = '/sap/assets:upsert' iv_chunked = abap_true
+            iv_head = COND #( WHEN lv_full = abap_true THEN `"isFull":true` ) ).
+    ENDIF.
+
+    IF mv_failed = abap_true.
+      mv_any_failed = abap_true.
+    ELSEIF p_dry = abap_false.
+      " 성공하면 잡 시작 시각을 저장한다(실패하면 그대로 둬서 다음 실행이 다시 보낸다)
+      zcl_alm_cfg=>set_timestamp( iv_param = lv_param iv_ts = mv_ts ).
+    ENDIF.
+    save_log( ).
+  ENDMETHOD.
+
+
+  METHOD to_utc.
+    " 시스템 시간(CT 등)의 날짜·시각 → UTC 타임스탬프
+    SELECT SINGLE tzonesys FROM ttzcu INTO @DATA(lv_tz).
+    IF lv_tz IS INITIAL.
+      lv_tz = sy-zonlo.
+    ENDIF.
+    CONVERT DATE iv_date TIME iv_time INTO TIME STAMP rv_ts TIME ZONE lv_tz.
+  ENDMETHOD.
+
+
+  METHOD sel_assets.
+    DATA lt_key TYPE gtt_akey.
+    DATA lv_ts TYPE timestamp.
+
+    " 1) 대상 자산 키 모으기 ------------------------------------------------
+    IF iv_full = abap_true.
+      SELECT bukrs, anln1, anln2 FROM anla
+        WHERE bukrs = @iv_bukrs AND xloev = @space
+        INTO TABLE @DATA(lt_all).
+      LOOP AT lt_all INTO DATA(ls_all).
+        INSERT VALUE #( bukrs = ls_all-bukrs anln1 = ls_all-anln1 anln2 = ls_all-anln2 ) INTO TABLE lt_key.
+      ENDLOOP.
+      mo_log->add( |대상 키: 전체 { lines( lt_key ) }건| ).
+    ELSE.
+      DATA(lv_like) = |{ sy-mandt }{ iv_bukrs }%|.
+      " ① 변경 문서(D-07 ANLA). OBJECTID = 클라이언트(3) + BUKRS(4) + ANLN1(12) + ANLN2(4)
+      SELECT objectid, udate, utime FROM cdhdr
+        WHERE objectclas = 'ANLA' AND objectid LIKE @lv_like
+          AND ( udate > @iv_date OR ( udate = @iv_date AND utime >= @iv_time ) )
+        INTO TABLE @DATA(lt_cd).
+      LOOP AT lt_cd INTO DATA(ls_cd).
+        DATA(ls_key) = VALUE gty_akey( bukrs = ls_cd-objectid+3(4) anln1 = ls_cd-objectid+7(12) anln2 = ls_cd-objectid+19(4)
+                                       ts = to_utc( iv_date = ls_cd-udate iv_time = ls_cd-utime ) ).
+        ASSIGN lt_key[ bukrs = ls_key-bukrs anln1 = ls_key-anln1 anln2 = ls_key-anln2 ] TO FIELD-SYMBOL(<ls_k>).
+        IF sy-subrc = 0.
+          IF ls_key-ts > <ls_k>-ts.
+            <ls_k>-ts = ls_key-ts.
+          ENDIF.
+        ELSE.
+          INSERT ls_key INTO TABLE lt_key.
+        ENDIF.
+      ENDLOOP.
+      DATA(lv_n_cd) = lines( lt_key ).
+      " ② 그 날짜 이후 생성된 자산
+      SELECT bukrs, anln1, anln2, erdat FROM anla
+        WHERE bukrs = @iv_bukrs AND erdat >= @iv_date AND xloev = @space
+        INTO TABLE @DATA(lt_new).
+      LOOP AT lt_new INTO DATA(ls_new).
+        IF NOT line_exists( lt_key[ bukrs = ls_new-bukrs anln1 = ls_new-anln1 anln2 = ls_new-anln2 ] ).
+          INSERT VALUE #( bukrs = ls_new-bukrs anln1 = ls_new-anln1 anln2 = ls_new-anln2 ts = to_utc( ls_new-erdat ) ) INTO TABLE lt_key.
+        ENDIF.
+      ENDLOOP.
+      DATA(lv_n_new) = lines( lt_key ) - lv_n_cd.
+      " ②-1 시간종속 행의 효력일(ADATU)이 지난 실행 이후 오늘까지 도래한 자산(미리 바꿔 둔 코스트센터·룸 변경)
+      SELECT bukrs, anln1, anln2, adatu FROM anlz
+        WHERE bukrs = @iv_bukrs AND adatu > @iv_date AND adatu <= @sy-datum
+        INTO TABLE @DATA(lt_eff).
+      LOOP AT lt_eff INTO DATA(ls_eff).
+        IF NOT line_exists( lt_key[ bukrs = ls_eff-bukrs anln1 = ls_eff-anln1 anln2 = ls_eff-anln2 ] ).
+          INSERT VALUE #( bukrs = ls_eff-bukrs anln1 = ls_eff-anln1 anln2 = ls_eff-anln2 ts = to_utc( ls_eff-adatu ) ) INTO TABLE lt_key.
+        ENDIF.
+      ENDLOOP.
+      mo_log->add( |대상 키: 변경 문서 { lv_n_cd }건, 신규 { lv_n_new }건, 효력일 도래 포함 합계 { lines( lt_key ) }건| ).
+    ENDIF.
+    IF lt_key IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    " 2) 마스터·시간종속 읽기 ---------------------------------------------
+    DATA lt_k2 TYPE STANDARD TABLE OF gty_akey WITH EMPTY KEY.
+    lt_k2 = lt_key.
+    SELECT bukrs, anln1, anln2, anlkl, txt50, sernr, invnr, aktiv, deakt, ivdat, invzu, erdat
+      FROM anla
+      FOR ALL ENTRIES IN @lt_k2
+      WHERE bukrs = @lt_k2-bukrs AND anln1 = @lt_k2-anln1 AND anln2 = @lt_k2-anln2 AND xloev = @space
+      INTO TABLE @DATA(lt_anla).
+    SORT lt_anla BY bukrs anln1 anln2.
+    SELECT bukrs, anln1, anln2, kostl, werks, stort
+      FROM anlz
+      FOR ALL ENTRIES IN @lt_k2
+      WHERE bukrs = @lt_k2-bukrs AND anln1 = @lt_k2-anln1 AND anln2 = @lt_k2-anln2
+        AND adatu <= @sy-datum AND bdatu >= @sy-datum
+      INTO TABLE @DATA(lt_anlz).
+    SORT lt_anlz BY bukrs anln1 anln2.
+
+    DATA lv_now TYPE timestamp.
+    GET TIME STAMP FIELD lv_now.
+    LOOP AT lt_anla INTO DATA(ls_a).
+      DATA(lv_id) = |{ ls_a-bukrs }/{ ls_a-anln1 }/{ ls_a-anln2 }|.
+      READ TABLE lt_anlz INTO DATA(ls_z) WITH KEY bukrs = ls_a-bukrs anln1 = ls_a-anln1 anln2 = ls_a-anln2 BINARY SEARCH.
+      IF sy-subrc <> 0.
+        CLEAR ls_z.
+      ENDIF.
+      " 송신 전 검증(08 4.3): API 필수 필드가 빈 자산은 빼고 경고
+      IF ls_a-txt50 IS INITIAL OR ls_a-anlkl IS INITIAL OR ls_z-kostl IS INITIAL.
+        mo_log->add( iv_type = 'W' iv_text = |ASSET { lv_id }: 설명·자산클래스·코스트센터 중 빈 값이 있어 보내지 않음| ).
+        mv_err = mv_err + 1.
+        CONTINUE.
+      ENDIF.
+      lv_ts = lt_key[ bukrs = ls_a-bukrs anln1 = ls_a-anln1 anln2 = ls_a-anln2 ]-ts.
+      IF lv_ts IS INITIAL.
+        lv_ts = COND #( WHEN ls_a-erdat IS NOT INITIAL THEN to_utc( ls_a-erdat ) ELSE lv_now ).
+      ENDIF.
+      DATA(ls_rec) = VALUE gty_asset(
+        company_code = ls_a-bukrs asset_no = ls_a-anln1 sub_no = ls_a-anln2
+        asset_class = ls_a-anlkl description = condense( ls_a-txt50 )
+        serial_no = condense( ls_a-sernr ) inventory_no = condense( ls_a-invnr )
+        inventory_note = condense( ls_a-invzu )
+        cost_center = ls_z-kostl plant = ls_z-werks location = condense( ls_z-stort )
+        changed_at = |{ lv_ts TIMESTAMP = ISO }Z| ).
+      IF ls_a-aktiv IS NOT INITIAL.
+        ls_rec-cap_date = |{ ls_a-aktiv DATE = ISO }|.
+      ENDIF.
+      IF ls_a-deakt IS NOT INITIAL.
+        ls_rec-deact_date = |{ ls_a-deakt DATE = ISO }|.
+      ENDIF.
+      IF ls_a-ivdat IS NOT INITIAL.
+        ls_rec-last_count_date = |{ ls_a-ivdat DATE = ISO }|.
+      ENDIF.
+      APPEND ls_rec TO rt_asset.
+    ENDLOOP.
+    mo_log->add( |ASSET: 송신 대상 { lines( rt_asset ) }건| ).
   ENDMETHOD.
 
 
@@ -463,11 +708,11 @@ ENDCLASS.
 
 
 AT SELECTION-SCREEN.
-  IF p_var <> 'MD01'.
-    MESSAGE '변형은 MD01만 있습니다(AA01·AA02·MM01은 7.5에서 추가)' TYPE 'E'.
+  IF p_var <> 'MD01' AND p_var <> 'AA01'.
+    MESSAGE '변형은 MD01(조직·코드 마스터), AA01(자산 마스터 델타)입니다. AA02·MM01은 이어서 추가합니다' TYPE 'E'.
   ENDIF.
   IF p_chunk < 1 OR p_chunk > 5000.
-    MESSAGE '분할 크기는 1~5000입니다' TYPE 'E'.
+    MESSAGE '분할 크기는 1~5000입니다(자산 AA01은 1,000건으로 제한)' TYPE 'E'.
   ENDIF.
 
 START-OF-SELECTION.

@@ -12,8 +12,8 @@
    <TPOOL>
     <item>
      <ID>R</ID>
-     <ENTRY>IF-MD-01 master data send (SAP to ALM)</ENTRY>
-     <LENGTH>38</LENGTH>
+     <ENTRY>IF-MD-01/IF-AA-01 master send (SAP to ALM)</ENTRY>
+     <LENGTH>48</LENGTH>
     </item>
     <item>
      <ID>S</ID>
@@ -35,6 +35,12 @@
     </item>
     <item>
      <ID>S</ID>
+     <KEY>P_FULL</KEY>
+     <ENTRY>        Full send (AA01)</ENTRY>
+     <LENGTH>24</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
      <KEY>P_REQ</KEY>
      <ENTRY>        Run request id (IF-OP-01)</ENTRY>
      <LENGTH>33</LENGTH>
@@ -48,8 +54,8 @@
     <item>
      <ID>S</ID>
      <KEY>P_VAR</KEY>
-     <ENTRY>        Variant (MD01)</ENTRY>
-     <LENGTH>22</LENGTH>
+     <ENTRY>        Variant (MD01/AA01)</ENTRY>
+     <LENGTH>27</LENGTH>
     </item>
     <item>
      <ID>S</ID>
