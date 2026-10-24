@@ -670,23 +670,35 @@ CLASS lcl_run IMPLEMENTATION.
 
 
   METHOD sel_values.
-    " 올해 회계연도(회사코드의 회계연도 변형 기준)
-    DATA lv_curry TYPE t009b-bdatj.
-    DATA lv_currp TYPE t009b-poper.
-    CALL FUNCTION 'GET_CURRENT_YEAR'
-      EXPORTING
-        bukrs = iv_bukrs
-        date  = sy-datum
-      IMPORTING
-        curry = lv_curry
-        currp = lv_currp
-      EXCEPTIONS
-        OTHERS = 1.
-    IF sy-subrc <> 0 OR lv_curry IS INITIAL.
-      mv_failed = abap_true.
-      mo_log->add( iv_type = 'E' iv_text = |회사코드 { iv_bukrs }의 현재 회계연도를 알 수 없습니다(GET_CURRENT_YEAR)| ).
-      RETURN.
+    " 올해 회계연도·현재 기간(회사코드의 회계연도 변형 기준). 함수 파라미터 이름이 릴리스마다 달라 동적으로 부르고, 안 되면 달력 연도
+    DATA lv_curry TYPE gjahr.
+    DATA lv_currp TYPE poper.
+    DATA lv_periv TYPE t001-periv.
+    DATA lv_date TYPE d.
+    lv_date = sy-datum.
+    SELECT SINGLE periv FROM t001 WHERE bukrs = @iv_bukrs INTO @lv_periv.
+    TRY.
+        DATA(lt_ptab) = VALUE abap_func_parmbind_tab(
+          ( name = 'I_DATE'  kind = abap_func_exporting value = REF #( lv_date ) )
+          ( name = 'I_PERIV' kind = abap_func_exporting value = REF #( lv_periv ) )
+          ( name = 'E_GJAHR' kind = abap_func_importing value = REF #( lv_curry ) )
+          ( name = 'E_BUPER' kind = abap_func_importing value = REF #( lv_currp ) ) ).
+        DATA(lt_etab) = VALUE abap_func_excpbind_tab( ( name = 'OTHERS' value = 1 ) ).
+        CALL FUNCTION 'DATE_TO_PERIOD_CONVERT'
+          PARAMETER-TABLE lt_ptab
+          EXCEPTION-TABLE lt_etab.
+        IF sy-subrc <> 0.
+          CLEAR: lv_curry, lv_currp.
+        ENDIF.
+      CATCH cx_sy_dyn_call_error.
+        CLEAR: lv_curry, lv_currp.
+    ENDTRY.
+    IF lv_curry IS INITIAL.
+      lv_curry = sy-datum(4).
+      lv_currp = sy-datum+4(2).
+      mo_log->add( iv_type = 'W' iv_text = |회계연도 변형({ lv_periv })으로 기간을 구하지 못해 달력 연도·월을 씁니다| ).
     ENDIF.
+
     mo_log->add( |회계연도 { lv_curry }, 현재 전기 기간 { lv_currp }, 상각영역 01, 보낼 기간: { COND string( WHEN p_per > 0 THEN |화면 지정 { p_per }| ELSE `ANLC-PERAF(없으면 현재 전기 기간)` ) }| ).
 
     SELECT bukrs, anln1, anln2 FROM anla
