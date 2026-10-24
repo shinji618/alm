@@ -55,6 +55,7 @@ model Tenant {
   vendors Vendor[] @relation("vendor_tenant_id")
   assets Asset[] @relation("asset_tenant_id")
   assetValues AssetValue[] @relation("asset_value_tenant_id")
+  assetOrigins AssetOrigin[] @relation("asset_origin_tenant_id")
   assetAssignments AssetAssignment[] @relation("asset_assignment_tenant_id")
   assetEvents AssetEvent[] @relation("asset_event_tenant_id")
   discoveryJobs DiscoveryJob[] @relation("discovery_job_tenant_id")
@@ -782,6 +783,7 @@ model Asset {
   version Int @default(1)
   assetsParentAsset Asset[] @relation("asset_parent_asset_id")
   assetValues AssetValue[] @relation("asset_value_asset_id")
+  assetOrigins AssetOrigin[] @relation("asset_origin_asset_id")
   assetAssignments AssetAssignment[] @relation("asset_assignment_asset_id")
   assetEvents AssetEvent[] @relation("asset_event_asset_id")
   discoveryItems DiscoveryItem[] @relation("discovery_item_matched_asset_id")
@@ -854,6 +856,47 @@ model AssetValue {
   version Int @default(1)
   @@unique([assetId, fiscalYear, period, depArea])
   @@map("asset_value")
+}
+
+/// 자산 취득 출처 — SAP 자산의 취득 근거 PO와 AuC 정산 출처 (IF-AA-02 origins). 수신할 때마다 그 자산의 목록 전체를 교체
+model AssetOrigin {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("asset_origin_tenant_id", fields: [tenantId], references: [id])
+  /// 자산
+  assetId String @map("asset_id") @db.Uuid
+  asset Asset @relation("asset_origin_asset_id", fields: [assetId], references: [id])
+  /// DIRECT 이 자산에 직접 걸린 PO / AUC AuC 정산으로 취득
+  sourceType String @map("source_type") @db.VarChar(6)
+  /// EBELN. PO 없이 취득했으면 빈 값
+  poNo String @default("") @map("po_no") @db.VarChar(10)
+  /// EBELP
+  poItem String @default("") @map("po_item") @db.VarChar(5)
+  /// LIFNR
+  vendorCode String? @map("vendor_code") @db.VarChar(10)
+  /// 공급업체명
+  vendorName String? @map("vendor_name") @db.VarChar(80)
+  /// PO 일자 BEDAT
+  poDate DateTime? @map("po_date") @db.Date
+  /// AUC일 때 정산 원천 AuC 자산번호(ANLN1). AuC 자산은 ALM에 보내지 않고 번호만 둔다
+  aucAssetNo String @default("") @map("auc_asset_no") @db.VarChar(12)
+  /// AuC 보조번호(ANLN2)
+  aucSubNo String @default("") @map("auc_sub_no") @db.VarChar(4)
+  /// 수신 일시
+  receivedAt DateTime @map("received_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([assetId, sourceType, poNo, poItem, aucAssetNo, aucSubNo])
+  @@map("asset_origin")
 }
 
 /// 자산 할당 — Check-out·반납 이력. 반납 전 행이 현재 할당

@@ -247,6 +247,17 @@ usefulLifeYears | int | N | 내용연수
 valueAsOf | string | N | 금액 기준 회계연도·기간 (예: 2026/009)
 tcoEstimate | number | N | TCO 추정(구매가 + 계약 금액 배분)
 sapSyncedAt | datetime | N | 마지막 SAP 수신
+origins | [AssetOrigin] | N | 취득 출처(PO·AuC 정산). SAP 자산만, IF-AA-02로 수신
+''')
+schema('AssetOrigin', '취득 출처 1건(Financial & SAP 탭)', '''
+sourceType | enum(DIRECT,AUC) | Y | DIRECT 직접 걸린 PO / AUC AuC 정산
+poNo | string(10) | N | PO 번호
+poItem | string(5) | N | PO 항목
+vendorCode | string(10) | N | 공급업체 코드
+vendorName | string(80) | N | 공급업체명
+poDate | date | N | PO 일자
+aucAssetNo | string(12) | N | 정산 원천 AuC 자산번호(번호만, AuC 자산은 ALM에 없음)
+aucSubNo | string(4) | N | AuC 보조번호
 ''')
 schema('AssetDetail', '자산 상세(General 탭 + 요약)', '''
 id | uuid | Y | id

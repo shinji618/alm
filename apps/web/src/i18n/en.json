@@ -255,6 +255,17 @@
       "by": "Uploaded by",
       "at": "Uploaded"
     },
+    "origin": {
+      "title": "Acquisition origin (PO · AuC settlement)",
+      "none": "No acquisition origin (PO) received from SAP.",
+      "type": "Type",
+      "DIRECT": "Direct",
+      "AUC": "AuC settlement",
+      "auc": "AuC asset no.",
+      "po": "PO/item",
+      "vendor": "Vendor",
+      "poDate": "PO date"
+    },
     "po": {
       "title": "Purchasing & goods receipt",
       "none": "No linked PO.",

@@ -11678,6 +11678,11 @@ components:
           type: string
           maxLength: 4
           description: AFASL
+        origins:
+          type: array
+          items:
+            $ref: '#/components/schemas/SapAssetOrigin'
+          description: 취득 출처(PO·AuC 정산). 키가 있으면 이 자산의 목록 전체를 교체(빈 배열이면 비움), 없으면 건드리지 않음. 최대 50건
       required:
       - companyCode
       - assetNo
@@ -11688,6 +11693,46 @@ components:
       - acquisitionValue
       - accumDepreciation
       - netBookValue
+    SapAssetOrigin:
+      type: object
+      description: IF-AA-02 취득 출처 1건 → asset_origin
+      properties:
+        sourceType:
+          type: string
+          enum:
+          - DIRECT
+          - AUC
+          description: DIRECT 이 자산에 직접 걸린 PO / AUC AuC 정산으로 취득(그 AuC에 걸린 PO)
+        poNo:
+          type: string
+          maxLength: 10
+          description: EBELN. DIRECT는 필수
+        poItem:
+          type: string
+          maxLength: 5
+          description: EBELP
+        vendorCode:
+          type: string
+          maxLength: 10
+          description: LIFNR
+        vendorName:
+          type: string
+          maxLength: 80
+          description: 공급업체명
+        poDate:
+          type: string
+          format: date
+          description: PO 일자 BEDAT
+        aucAssetNo:
+          type: string
+          maxLength: 12
+          description: 정산 원천 AuC 자산번호 ANLN1. AUC는 필수. AuC 자산 자체는 보내지 않음
+        aucSubNo:
+          type: string
+          maxLength: 4
+          description: AuC 보조번호 ANLN2
+      required:
+      - sourceType
     AssetValuesRequest:
       type: object
       description: IF-AA-02 요청
@@ -13281,10 +13326,55 @@ components:
           type: string
           format: date-time
           description: 마지막 SAP 수신
+        origins:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssetOrigin'
+          description: 취득 출처(PO·AuC 정산). SAP 자산만, IF-AA-02로 수신
       required:
       - isCapitalized
       - companyCode
       - sapEnabled
+    AssetOrigin:
+      type: object
+      description: 취득 출처 1건(Financial & SAP 탭)
+      properties:
+        sourceType:
+          type: string
+          enum:
+          - DIRECT
+          - AUC
+          description: DIRECT 직접 걸린 PO / AUC AuC 정산
+        poNo:
+          type: string
+          maxLength: 10
+          description: PO 번호
+        poItem:
+          type: string
+          maxLength: 5
+          description: PO 항목
+        vendorCode:
+          type: string
+          maxLength: 10
+          description: 공급업체 코드
+        vendorName:
+          type: string
+          maxLength: 80
+          description: 공급업체명
+        poDate:
+          type: string
+          format: date
+          description: PO 일자
+        aucAssetNo:
+          type: string
+          maxLength: 12
+          description: 정산 원천 AuC 자산번호(번호만, AuC 자산은 ALM에 없음)
+        aucSubNo:
+          type: string
+          maxLength: 4
+          description: AuC 보조번호
+      required:
+      - sourceType
     AssetDetail:
       type: object
       description: 자산 상세(General 탭 + 요약)

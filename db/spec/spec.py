@@ -257,6 +257,18 @@ dep_key | vc(4) | | AFASL
 is_closed | bool | NN =false | 마감값(isClosing 수신). true면 이후 일반 수신으로 덮어쓰지 않음
 received_at | ts | NN | 수신 일시
 ''', uniques=[('asset_id','fiscal_year','period','dep_area')], screens='ALM-010, 111')
+t('asset','asset_origin','자산 취득 출처','SAP 자산의 취득 근거 PO와 AuC 정산 출처 (IF-AA-02 origins). 수신할 때마다 그 자산의 목록 전체를 교체', '''
+asset_id | ->asset | NN | 자산
+source_type | vc(6) | NN | DIRECT 이 자산에 직접 걸린 PO / AUC AuC 정산으로 취득
+po_no | vc(10) | NN =\'\' | EBELN. PO 없이 취득했으면 빈 값
+po_item | vc(5) | NN =\'\' | EBELP
+vendor_code | vc(10) | | LIFNR
+vendor_name | vc(80) | | 공급업체명
+po_date | date | | PO 일자 BEDAT
+auc_asset_no | vc(12) | NN =\'\' | AUC일 때 정산 원천 AuC 자산번호(ANLN1). AuC 자산은 ALM에 보내지 않고 번호만 둔다
+auc_sub_no | vc(4) | NN =\'\' | AuC 보조번호(ANLN2)
+received_at | ts | NN | 수신 일시
+''', uniques=[('asset_id','source_type','po_no','po_item','auc_asset_no','auc_sub_no')], screens='ALM-010')
 t('asset','asset_assignment','자산 할당','Check-out·반납 이력. 반납 전 행이 현재 할당', '''
 asset_id | ->asset | NN | 자산
 user_id | ->app_user | | 사용자

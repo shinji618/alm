@@ -188,3 +188,25 @@ test('IF-AA-02: 금액 업서트, 없는 자산 E201, 마감 기간 잠금', { s
   assert.deepEqual(daily.body.results, [{ key: '1000/100001/0000/2026/9', status: 'SKIPPED', message: '마감된 기간(마감 실행 값 유지)' }]);
   assert.deepEqual(await q(`SELECT accum_depreciation::text AS d, is_closed FROM asset_value`), [{ d: '400.00', is_closed: true }]);
 });
+
+test('IF-AA-02: 취득 출처(PO·AuC) 교체 저장, 같으면 SKIPPED, 키 없으면 유지, 오류 검증', { skip }, async () => {
+  const v = (o: Record<string, unknown> = {}) => ({ companyCode: '1000', assetNo: '100001', subNo: '0000', fiscalYear: 2026, period: 10, depArea: '01',
+    acquisitionValue: 900, accumDepreciation: 0, netBookValue: 900, ...o });
+  const direct = { sourceType: 'DIRECT', poNo: '4500000001', poItem: '00010', vendorCode: 'V100', vendorName: 'Dell', poDate: '2026-09-01' };
+  const auc = { sourceType: 'AUC', aucAssetNo: '000900000001', aucSubNo: '0000', poNo: '4500000002', poItem: '00020', vendorName: 'Cisco' };
+  const rows = () => q(`SELECT source_type, po_no, po_item, auc_asset_no, vendor_name FROM asset_origin ORDER BY source_type, po_no`);
+  const a = await post('/sap/asset-values', { batchId: 'OR-1', records: [v({ origins: [direct, auc] })] });
+  assert.equal(a.status, 200);
+  assert.equal((await rows()).length, 2);
+  assert.equal((await post('/sap/asset-values', { batchId: 'OR-2', records: [v({ origins: [direct, auc] })] })).body.results[0].status, 'SKIPPED', '같은 출처·같은 값');
+  assert.equal((await post('/sap/asset-values', { batchId: 'OR-3', records: [v()] })).body.results[0].status, 'SKIPPED');
+  assert.equal((await rows()).length, 2, 'origins 키가 없으면 유지');
+  await post('/sap/asset-values', { batchId: 'OR-4', records: [v({ origins: [direct] })] });
+  assert.deepEqual(await rows(), [{ source_type: 'DIRECT', po_no: '4500000001', po_item: '00010', auc_asset_no: '', vendor_name: 'Dell' }]);
+  await post('/sap/asset-values', { batchId: 'OR-5', records: [v({ origins: [{ ...direct, vendorName: 'Dell Inc' }] })] });
+  assert.equal((await rows())[0].vendor_name, 'Dell Inc');
+  const bad = await post('/sap/asset-values', { batchId: 'OR-6', records: [v({ origins: [{ sourceType: 'AUC' }] }), v({ assetNo: '100001', period: 11, origins: [{ sourceType: 'X' }] })] });
+  assert.deepEqual(bad.body.results.map((x: { code: string }) => x.code), ['ALM-E101', 'ALM-E100']);
+  await post('/sap/asset-values', { batchId: 'OR-7', records: [v({ origins: [] })] });
+  assert.equal((await rows()).length, 0, '빈 배열이면 비움');
+});

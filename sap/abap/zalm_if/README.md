@@ -15,7 +15,7 @@
 | ZCL_ALM_HTTP_CLIENT | 클래스 | SM59 ZALM_API 호출, 토큰(SM59 ZALM_TOKEN), 헤더, 재시도(1·2·4분 3회, 401 토큰 갱신), 분할 송신, 207 해석 |
 | ZALM_IF_PING | 프로그램 | 연결 시험(토큰 → GET /sap/ping), 로그 남김 |
 | ZALM_IF_CONFIG | 프로그램 | ZALM_CFG·ZALM_MAP 조회·저장·삭제, 기본값 넣기 |
-| ZALM_IF_MASTER_SEND | 프로그램 | 7.4 IF-MD-01 조직·코드 마스터 전체 송신(변형 MD01). 수동 실행과 잡 겸용. 변형 AA01(IF-AA-01 자산 마스터 델타, 7.5). 변형 AA02(IF-AA-02 자산 금액, 7.5). MM01은 이어서 추가 |
+| ZALM_IF_MASTER_SEND | 프로그램 | 7.4 IF-MD-01 조직·코드 마스터 전체 송신(변형 MD01). 수동 실행과 잡 겸용. 변형 AA01(IF-AA-01 자산 마스터 델타, 7.5). 변형 AA02(IF-AA-02 자산 금액, 7.5). AA02는 PO·AuC 출처(origins)도 함께 송신. MM01(PO 송신)은 보류 |
 
 명세서와 다른 점: 잡 겹침 방지는 잠금 객체 EZALM_RUN 대신 표준 `ENQUEUE_E_TABLE`(테이블 ZALM_IF_LOG, 키 = 잡 이름)을 쓴다(7.6에서 사용).
 
@@ -98,8 +98,12 @@ SM59 비밀번호 칸이 클라이언트 비밀 길이를 받지 못하면, ZALM
 - **기간**: 올해 회계연도(`GET_CURRENT_YEAR`)의 ANLC 행. 기간은 화면 값, 0이면 ANLC-PERAF, 없으면 현재 전기 기간(S/4HANA ANLC 호환 뷰에는 PERAF가 없다). ANLC 필드는 모두 이름으로 읽어 릴리스 차이에 깨지지 않는다. ANLC 행이 없는 자산(신규·연초 상각 전)은 금액 0으로 보낸다(T30). 연초 연도 마감(AJAB/AJRW) 전에는 새 해 ANLC 행이 없어 0이 나갈 수 있으므로 연초에는 값을 확인한다.
 - **산식(D-06 초안)**: 취득가 = KANSW + ANSWL, 감가상각누계 = KNAFA + NAFAG(음수), 장부가 = 두 값의 합. AW01N과 다르면 ZALM_CFG에 `AA02_DEP_EXTRA`(여러 행, LOW = ANLC 필드명, 예: `KMAFA`, `MAFAG`(계획외), `KSAFA`, `SAFAG`(특별))를 넣어 누계에 더한다. 코드 수정 없이 맞출 수 있다(ZALM_IF_CONFIG로 입력).
 - **내용연수·상각키**: ANLB(영역 01, 오늘 유효한 행)의 NDJAR·NDPER·AFASL.
+- **취득 출처(origins, P_ORIG 기본 켬)**: 각 자산 레코드에 `origins[]`를 실어 PO와 AuC 정산 출처를 보낸다(PO는 따로 보내지 않고 가액과 함께).
+  - DIRECT = 그 자산에 계정지정된 PO(EKKN-ANLN1/ANLN2, 삭제 표시 제외, EKKO-LIFNR·BEDAT, LFA1-NAME1).
+  - AUC = AuC 정산으로 취득한 자산. ZALM_CFG `AUC_CLASS`(여러 행, AuC 자산클래스)의 자산이 올라간 자산 문서(ANEK-BELNR)에 같이 올라간 일반 자산을 찾아, 원천 AuC 번호와 그 AuC의 PO를 붙인다. AuC 자산 자체는 보내지 않는다. `AUC_CLASS`가 비면 AUC는 찾지 않고 경고.
+  - 시험 실행은 앞 10건의 출처를 로그에 보인다. 원천 필드(EKKN·ANEK)가 릴리스에 따라 다르면 활성화·실행 때 드러난다(SE11 확인).
 - **결과**: ZALM_IF_LOG(IF_ID `IF-AA-02`, 회사코드별 1행). 요약 `반영 a / 변경 없음 b / 오류 c`.
-- **시험 순서**: ① 시험 실행(구성 확인, AW01N 대조) → ② 실제 송신 → ③ ALM 자산 상세의 금액 확인 → ④ 다시 실행해 전부 변경 없음인지 → ⑤ 연초 전 자산(ANLC 행 없음)이 0으로 들어오는지(T30) → ⑥ 마감 실행 후 다음 날 일일 실행이 마감 값을 덮지 않는지(T32).
+- **시험 순서**: ① 시험 실행(구성 확인, AW01N 대조) → ② 실제 송신 → ③ ALM 자산 상세의 금액 확인 → ④ 다시 실행해 전부 변경 없음인지 → ⑤ 연초 전 자산(ANLC 행 없음)이 0으로 들어오는지(T30) → ⑥ 마감 실행 후 다음 날 일일 실행이 마감 값을 덮지 않는지(T32). ⑦ PO 자산·AuC 정산 자산·PO 없는 자산의 출처가 ALM에 맞게 보이는지(T35~T37).
 
 ## 문법 검사(개발용)
 

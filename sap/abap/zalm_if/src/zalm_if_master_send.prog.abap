@@ -27,6 +27,9 @@
 *&     계획외·특별 상각 등을 더해야 하면 ZALM_CFG AA02_DEP_EXTRA(여러 행, 예: KMAFA MAFAG KSAFA SAFAG)에 ANLC 필드명을 넣는다(AW01N과 맞추기)
 *&   - 내용연수·상각키: ANLB(상각영역 01, 오늘 유효) NDJAR·NDPER·AFASL
 *&   - 마감 실행: P_CLOSE(isClosing) 체크 → 요청 본문 isClosing = true, ALM이 그 기간 값을 마감값으로 잠금(자산회계가 ALM 화면 IF-OP-01로 요청)
+*&   - 취득 출처(origins): P_ORIG(기본 켬)이면 각 자산 레코드에 PO와 AuC 정산 출처를 실어 보낸다(자산 마스터가 아니라 금액과 같이 보냄 = 가액이 생기는 시점)
+*&     DIRECT = 그 자산에 걸린 PO(EKKN-ANLN1/ANLN2, 삭제 표시 제외), AUC = AuC 정산으로 취득한 경우 원천 AuC 자산번호와 그 AuC에 걸린 PO.
+*&     AuC 정산 판별: ZALM_CFG AUC_CLASS(AuC 자산클래스, 여러 행). 비어 있으면 AUC 출처는 찾지 않는다. AuC 자산 자체는 보내지 않는다
 *&   - 시험 실행은 앞 10건의 금액 구성(KANSW·ANSWL·KNAFA·NAFAG와 추가 필드)을 로그에 보여 AW01N과 대조하게 한다
 *&---------------------------------------------------------------------*
 REPORT zalm_if_master_send.
@@ -46,6 +49,7 @@ PARAMETERS: p_api   TYPE rfcdest DEFAULT 'ZALM_API' OBLIGATORY,
             p_full  AS CHECKBOX DEFAULT ' ',
             p_close AS CHECKBOX DEFAULT ' ',
             p_per   TYPE i DEFAULT 0,
+            p_orig  AS CHECKBOX DEFAULT 'X',
             p_dry   AS CHECKBOX DEFAULT ' '.
 
 TYPES gty_amount TYPE p LENGTH 13 DECIMALS 2.
@@ -120,6 +124,17 @@ TYPES:
     ts    TYPE timestamp,
   END OF gty_akey,
   gtt_akey TYPE SORTED TABLE OF gty_akey WITH UNIQUE KEY bukrs anln1 anln2,
+  BEGIN OF gty_origin,
+    source_type  TYPE string,
+    po_no        TYPE string,
+    po_item      TYPE string,
+    vendor_code  TYPE string,
+    vendor_name  TYPE string,
+    po_date      TYPE string,
+    auc_asset_no TYPE string,
+    auc_sub_no   TYPE string,
+  END OF gty_origin,
+  gtt_origin TYPE STANDARD TABLE OF gty_origin WITH EMPTY KEY,
   BEGIN OF gty_value,
     company_code        TYPE string,
     asset_no            TYPE string,
@@ -133,6 +148,7 @@ TYPES:
     useful_life_years   TYPE i,
     useful_life_periods TYPE i,
     dep_key             TYPE string,
+    origins             TYPE gtt_origin,
   END OF gty_value,
   gtt_value TYPE STANDARD TABLE OF gty_value WITH EMPTY KEY.
 
@@ -183,6 +199,9 @@ CLASS lcl_run DEFINITION FINAL.
     METHODS sel_values
       IMPORTING iv_bukrs        TYPE bukrs
       RETURNING VALUE(rt_value) TYPE gtt_value.
+    METHODS fill_origins
+      IMPORTING iv_bukrs TYPE bukrs
+      CHANGING  ct_value TYPE gtt_value.
     METHODS anlc_val
       IMPORTING is_anlc       TYPE any
                 iv_field      TYPE csequence
@@ -648,6 +667,9 @@ CLASS lcl_run IMPLEMENTATION.
     IF lt_value IS INITIAL.
       mo_log->add( 'VALUE: 보낼 자산이 없습니다' ).
     ELSE.
+      IF p_orig = abap_true.
+        fill_origins( EXPORTING iv_bukrs = iv_bukrs CHANGING ct_value = lt_value ).
+      ENDIF.
       send( iv_type = 'VALUE' it_records = lt_value iv_path = '/sap/asset-values' iv_chunked = abap_false iv_compress = abap_false
             iv_head = COND #( WHEN p_close = abap_true THEN `"isClosing":true` ) ).
     ENDIF.
@@ -656,6 +678,124 @@ CLASS lcl_run IMPLEMENTATION.
       mv_any_failed = abap_true.
     ENDIF.
     save_log( ).
+  ENDMETHOD.
+
+
+  METHOD fill_origins.
+    " 취득 출처: PO(EKKN 계정지정이 자산) + AuC 정산 원천. 회사코드 단위로 한 번에 읽어 메모리에서 붙인다
+    TYPES: BEGIN OF lty_po,
+             anln1 TYPE anln1,
+             anln2 TYPE anln2,
+             ebeln TYPE ebeln,
+             ebelp TYPE ebelp,
+             lifnr TYPE lifnr,
+             name1 TYPE lfa1-name1,
+             bedat TYPE ekko-bedat,
+           END OF lty_po,
+           BEGIN OF lty_key,
+             anln1 TYPE anln1,
+             anln2 TYPE anln2,
+           END OF lty_key,
+           BEGIN OF lty_doc,
+             gjahr TYPE gjahr,
+             belnr TYPE anek-belnr,
+             anln1 TYPE anln1,
+             anln2 TYPE anln2,
+           END OF lty_doc,
+           BEGIN OF lty_src,
+             anln1 TYPE anln1,
+             anln2 TYPE anln2,
+             auc1  TYPE anln1,
+             auc2  TYPE anln2,
+           END OF lty_src.
+    DATA lt_po TYPE SORTED TABLE OF lty_po WITH NON-UNIQUE KEY anln1 anln2.
+    DATA lt_src TYPE SORTED TABLE OF lty_src WITH UNIQUE KEY anln1 anln2 auc1 auc2.
+    DATA lt_auc TYPE SORTED TABLE OF lty_key WITH UNIQUE KEY anln1 anln2.
+    DATA lt_adoc TYPE STANDARD TABLE OF lty_doc WITH EMPTY KEY.
+    DATA lt_rdoc TYPE STANDARD TABLE OF lty_doc WITH EMPTY KEY.
+    DATA lr_aucc TYPE RANGE OF anlkl.
+
+    SELECT DISTINCT n~anln1, n~anln2, n~ebeln, n~ebelp, h~lifnr, v~name1, h~bedat
+      FROM ekkn AS n
+      INNER JOIN ekpo AS p ON p~ebeln = n~ebeln AND p~ebelp = n~ebelp
+      INNER JOIN ekko AS h ON h~ebeln = n~ebeln
+      LEFT OUTER JOIN lfa1 AS v ON v~lifnr = h~lifnr
+      WHERE h~bukrs = @iv_bukrs AND n~anln1 <> @space AND p~loekz = @space AND n~loekz = @space
+      INTO CORRESPONDING FIELDS OF TABLE @lt_po.
+    mo_log->add( |ORIGIN: 자산에 걸린 PO 계정지정 { lines( lt_po ) }건| ).
+
+    " AuC 정산 원천: AuC 자산이 올라간 전표(ANEK-BELNR)에 같이 올라간 일반 자산 = 정산 받은 자산
+    DATA(lt_aucc) = zcl_alm_cfg=>get_list( 'AUC_CLASS' ).
+    IF lt_aucc IS INITIAL.
+      mo_log->add( iv_type = 'W' iv_text = 'ZALM_CFG AUC_CLASS가 비어 있어 AuC 정산 출처(AUC)는 찾지 않습니다' ).
+    ELSE.
+      lr_aucc = VALUE #( FOR c IN lt_aucc ( sign = 'I' option = 'EQ' low = CONV anlkl( |{ c ALPHA = IN }| ) ) ).
+      SELECT anln1, anln2 FROM anla
+        WHERE bukrs = @iv_bukrs AND anlkl IN @lr_aucc
+        INTO CORRESPONDING FIELDS OF TABLE @lt_auc.
+      IF lt_auc IS NOT INITIAL.
+        SELECT DISTINCT gjahr, belnr, anln1, anln2 FROM anek
+          FOR ALL ENTRIES IN @lt_auc
+          WHERE bukrs = @iv_bukrs AND anln1 = @lt_auc-anln1 AND anln2 = @lt_auc-anln2 AND belnr <> @space
+          INTO CORRESPONDING FIELDS OF TABLE @lt_adoc.
+      ENDIF.
+      IF lt_adoc IS NOT INITIAL.
+        SELECT DISTINCT gjahr, belnr, anln1, anln2 FROM anek
+          FOR ALL ENTRIES IN @lt_adoc
+          WHERE bukrs = @iv_bukrs AND gjahr = @lt_adoc-gjahr AND belnr = @lt_adoc-belnr
+          INTO CORRESPONDING FIELDS OF TABLE @lt_rdoc.
+        LOOP AT lt_rdoc INTO DATA(ls_r).
+          READ TABLE lt_auc WITH TABLE KEY anln1 = ls_r-anln1 anln2 = ls_r-anln2 TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0.
+            CONTINUE.   " 받는 쪽이 AuC면 정산 받은 자산이 아님
+          ENDIF.
+          LOOP AT lt_adoc INTO DATA(ls_a) WHERE gjahr = ls_r-gjahr AND belnr = ls_r-belnr.
+            INSERT VALUE lty_src( anln1 = ls_r-anln1 anln2 = ls_r-anln2 auc1 = ls_a-anln1 auc2 = ls_a-anln2 ) INTO TABLE lt_src.
+          ENDLOOP.
+        ENDLOOP.
+      ENDIF.
+      mo_log->add( |ORIGIN: AuC 자산 { lines( lt_auc ) }개, AuC 정산으로 취득한 자산 { lines( lt_src ) }건(AUC_CLASS { concat_lines_of( table = lt_aucc sep = ` ` ) })| ).
+    ENDIF.
+
+    DATA(lv_with) = 0.
+    DATA(lv_shown) = 0.
+    LOOP AT ct_value ASSIGNING FIELD-SYMBOL(<ls_v>).
+      DATA(lv_a1) = CONV anln1( <ls_v>-asset_no ).
+      DATA(lv_a2) = CONV anln2( <ls_v>-sub_no ).
+      LOOP AT lt_po INTO DATA(ls_po) WHERE anln1 = lv_a1 AND anln2 = lv_a2.
+        APPEND VALUE #( source_type = 'DIRECT' po_no = ls_po-ebeln po_item = ls_po-ebelp vendor_code = ls_po-lifnr vendor_name = ls_po-name1
+                        po_date = COND #( WHEN ls_po-bedat IS NOT INITIAL THEN |{ ls_po-bedat DATE = ISO }| ) ) TO <ls_v>-origins.
+      ENDLOOP.
+      LOOP AT lt_src INTO DATA(ls_s) WHERE anln1 = lv_a1 AND anln2 = lv_a2.
+        DATA(lv_found) = abap_false.
+        LOOP AT lt_po INTO ls_po WHERE anln1 = ls_s-auc1 AND anln2 = ls_s-auc2.
+          lv_found = abap_true.
+          APPEND VALUE #( source_type = 'AUC' po_no = ls_po-ebeln po_item = ls_po-ebelp vendor_code = ls_po-lifnr vendor_name = ls_po-name1
+                          po_date = COND #( WHEN ls_po-bedat IS NOT INITIAL THEN |{ ls_po-bedat DATE = ISO }| )
+                          auc_asset_no = ls_s-auc1 auc_sub_no = ls_s-auc2 ) TO <ls_v>-origins.
+        ENDLOOP.
+        IF lv_found = abap_false.
+          APPEND VALUE #( source_type = 'AUC' auc_asset_no = ls_s-auc1 auc_sub_no = ls_s-auc2 ) TO <ls_v>-origins.
+        ENDIF.
+      ENDLOOP.
+      IF lines( <ls_v>-origins ) > 50.
+        DELETE <ls_v>-origins FROM 51.
+        mo_log->add( iv_type = 'W' iv_text = |{ lv_a1 }-{ lv_a2 }: 출처가 50건을 넘어 앞 50건만 보냅니다| ).
+      ENDIF.
+      IF <ls_v>-origins IS NOT INITIAL.
+        lv_with = lv_with + 1.
+        IF p_dry = abap_true AND lv_shown < 10.
+          lv_shown = lv_shown + 1.
+          DATA(lv_txt) = VALUE string( ).
+          LOOP AT <ls_v>-origins INTO DATA(ls_o).
+            lv_txt = |{ lv_txt }{ COND string( WHEN lv_txt IS NOT INITIAL THEN `, ` ) }{ ls_o-source_type }{
+                     COND string( WHEN ls_o-auc_asset_no IS NOT INITIAL THEN | AuC { ls_o-auc_asset_no }| ) } PO { ls_o-po_no }/{ ls_o-po_item }|.
+          ENDLOOP.
+          mo_log->add( |  { lv_a1 }-{ lv_a2 } 출처: { lv_txt }| ).
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+    mo_log->add( |ORIGIN: 출처가 있는 자산 { lv_with }건 / 송신 대상 { lines( ct_value ) }건| ).
   ENDMETHOD.
 
 

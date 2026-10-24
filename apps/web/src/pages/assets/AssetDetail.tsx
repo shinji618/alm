@@ -104,7 +104,7 @@ export function AssetDetail() {
             : tab === 'general' ? <><General d={d} L={L} lang={lang} name={name} />
               {d.isBundle && <BundlePanel d={d} canWrite={can('asset.write') && !['RETIRED', 'DISPOSED'].includes(d.status)}
                 onChange={(x) => a.setData({ ...d, components: x.components, componentCostTotal: x.componentCostTotal })} />}</>
-            : tab === 'financial' ? <><Financial d={d} lang={lang} /><h3>{t('asset.po.title')}</h3><Purchase d={d} lang={lang} /></>
+            : tab === 'financial' ? <><Financial d={d} lang={lang} /><h3>{t('asset.po.title')}</h3><Purchase d={d} lang={lang} /><Origins d={d} lang={lang} /></>
             : tab === 'history' ? <History id={id} lang={lang} />
             : tab === 'assignments' ? <Assignments id={id} lang={lang} />
             : <AttachmentPanel ownerType="asset" ownerId={id} listPath={`/assets/${id}/attachments`} canWrite={can('asset.write')} />}
@@ -181,6 +181,26 @@ function Financial({ d, lang }: { d: Detail; lang: Lang }) {
       { label: t('asset.fin.tco'), value: <span className="num">{formatUsd(f.tcoEstimate, 2)}</span> },
       { label: t('asset.fin.sapSyncedAt'), value: f.sapSyncedAt && formatDateTime(f.sapSyncedAt) },
     ]} />
+  );
+}
+
+// 취득 출처(IF-AA-02): PO와 AuC 정산 번호. AuC 자산은 ALM에 없으므로 번호만 보여 준다
+function Origins({ d, lang }: { d: Detail; lang: Lang }) {
+  const { t } = useTranslation();
+  const rows = d.financial.origins;
+  if (!rows?.length) return d.purchase ? null : <span className="muted">{t('asset.origin.none')}</span>;
+  return (
+    <>
+      <h3>{t('asset.origin.title')}</h3>
+      <DataTable rows={rows} rowId={(x) => [x.sourceType, x.poNo, x.poItem, x.aucAssetNo, x.aucSubNo].join('|')}
+        columns={[
+          { key: 'sourceType', label: t('asset.origin.type'), render: (x) => t(`asset.origin.${x.sourceType}`) },
+          { key: 'aucAssetNo', label: t('asset.origin.auc'), render: (x) => (x.aucAssetNo ? <span className="mono">{x.aucAssetNo.replace(/^0+/, '')}-{x.aucSubNo}</span> : '') },
+          { key: 'poNo', label: t('asset.origin.po'), render: (x) => (x.poNo ? <span className="mono">{x.poNo}{x.poItem ? `/${x.poItem}` : ''}</span> : '') },
+          { key: 'vendorName', label: t('asset.origin.vendor'), render: (x) => x.vendorName ?? x.vendorCode },
+          { key: 'poDate', label: t('asset.origin.poDate'), render: (x) => formatDate(x.poDate, lang) },
+        ]} />
+    </>
   );
 }
 

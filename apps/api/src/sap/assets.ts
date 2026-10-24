@@ -174,6 +174,49 @@ export async function retryPendingAssets(c: PoolClient, conn: SapConn, correlati
   return batch;
 }
 
+const ORIGIN_MAX = 50;
+
+/** IF-AA-02 origins: 이 자산의 취득 출처(PO·AuC 정산) 목록 전체를 교체한다. 키가 없으면 건드리지 않고, 빈 배열이면 비운다. 바뀐 게 있으면 true */
+async function replaceOrigins(c: PoolClient, conn: SapConn, assetId: string, raw: unknown): Promise<boolean> {
+  if (raw === undefined || raw === null) return false;
+  if (!Array.isArray(raw)) throw new RecError('ALM-E100', 'origins는 배열');
+  if (raw.length > ORIGIN_MAX) throw new RecError('ALM-E100', `origins 최대 ${ORIGIN_MAX}건`);
+  const want = new Map<string, { type: string; po: string; item: string; vc: string | null; vn: string | null; pd: string | null; ano: string; asub: string }>();
+  for (const o of raw) {
+    if (!o || typeof o !== 'object' || Array.isArray(o)) throw new RecError('ALM-E100', 'origins 항목은 객체');
+    const f = new Rec(o as Record<string, unknown>);
+    const type = f.str('sourceType', 6, true)!;
+    if (type !== 'DIRECT' && type !== 'AUC') throw new RecError('ALM-E100', 'sourceType은 DIRECT 또는 AUC');
+    const po = f.str('poNo', 10) ?? '', item = f.str('poItem', 5) ?? '';
+    const ano = f.str('aucAssetNo', 12) ?? '', asub = f.str('aucSubNo', 4) ?? '';
+    if (type === 'AUC' && !ano) throw new RecError('ALM-E101', 'AUC는 aucAssetNo 필수');
+    if (type === 'DIRECT' && !po) throw new RecError('ALM-E101', 'DIRECT는 poNo 필수');
+    want.set([type, po, item, ano, asub].join('|'), { type, po, item, ano, asub, vc: f.str('vendorCode', 10) ?? null, vn: f.str('vendorName', 80) ?? null, pd: f.date('poDate') ?? null });
+  }
+  const cur = (await c.query(`SELECT id, source_type, po_no, po_item, auc_asset_no, auc_sub_no, vendor_code, vendor_name, to_char(po_date, 'YYYY-MM-DD') AS po_date
+    FROM asset_origin WHERE asset_id = $1`, [assetId])).rows;
+  let changed = false;
+  const seen = new Set<string>();
+  for (const x of cur) {
+    const k = [x.source_type, x.po_no, x.po_item, x.auc_asset_no, x.auc_sub_no].join('|');
+    const w = want.get(k);
+    if (!w) { await c.query('DELETE FROM asset_origin WHERE id = $1', [x.id]); changed = true; continue; }
+    seen.add(k);
+    if (w.vc !== x.vendor_code || w.vn !== x.vendor_name || w.pd !== x.po_date) {
+      await c.query(`UPDATE asset_origin SET vendor_code = $2, vendor_name = $3, po_date = $4, received_at = now(), updated_at = now(), version = version + 1 WHERE id = $1`,
+        [x.id, w.vc, w.vn, w.pd]);
+      changed = true;
+    }
+  }
+  for (const [k, w] of want) {
+    if (seen.has(k)) continue;
+    await c.query(`INSERT INTO asset_origin (id, tenant_id, asset_id, source_type, po_no, po_item, vendor_code, vendor_name, po_date, auc_asset_no, auc_sub_no, received_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())`, [randomUUID(), conn.tenantId, assetId, w.type, w.po, w.item, w.vc, w.vn, w.pd, w.ano, w.asub]);
+    changed = true;
+  }
+  return changed;
+}
+
 export async function postAssetValues(c: PoolClient, conn: SapConn, b: Record<string, unknown>, records: Record<string, unknown>[], batch: Batch) {
   const closing = b.isClosing === true;
   const assets = new Map<string, string | null>();
@@ -193,11 +236,12 @@ export async function postAssetValues(c: PoolClient, conn: SapConn, b: Record<st
         [conn.companyId, no, sub])).rows[0]?.id ?? null);
       const assetId = assets.get(ak);
       if (!assetId) throw new RecError('ALM-E201', `자산 ${cc}/${no}/${sub}이 ALM에 없음(IF-AA-01 먼저)`);
+      const originsChanged = await replaceOrigins(c, conn, assetId, r.origins);
       const cur = (await c.query(`SELECT acquisition_value::float8 AS acq, accum_depreciation::float8 AS dep, net_book_value::float8 AS nbv,
           useful_life_years AS ly, useful_life_periods AS lp, dep_key AS dk, is_closed FROM asset_value
         WHERE asset_id = $1 AND fiscal_year = $2 AND period = $3 AND dep_area = $4`, [assetId, fy, per, area])).rows[0];
-      if (cur?.is_closed && !closing) return { skip: '마감된 기간(마감 실행 값 유지)' };
-      if (cur && cur.acq === acq && cur.dep === dep && cur.nbv === nbv && cur.ly === ly && cur.lp === lp && cur.dk === dk && cur.is_closed === closing) return 'SKIPPED';
+      if (cur?.is_closed && !closing) return originsChanged ? 'OK' : { skip: '마감된 기간(마감 실행 값 유지)' };
+      if (cur && cur.acq === acq && cur.dep === dep && cur.nbv === nbv && cur.ly === ly && cur.lp === lp && cur.dk === dk && cur.is_closed === closing && !originsChanged) return 'SKIPPED';
       await c.query(`INSERT INTO asset_value (id, tenant_id, asset_id, fiscal_year, period, dep_area, acquisition_value, accum_depreciation, net_book_value,
           useful_life_years, useful_life_periods, dep_key, is_closed, received_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now())

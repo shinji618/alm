@@ -255,6 +255,17 @@
       "by": "올린 사람",
       "at": "올린 일시"
     },
+    "origin": {
+      "title": "취득 출처(PO·AuC 정산)",
+      "none": "SAP에서 받은 취득 출처(PO)가 없습니다.",
+      "type": "구분",
+      "DIRECT": "직접 취득",
+      "AUC": "AuC 정산",
+      "auc": "AuC 자산번호",
+      "po": "PO/항목",
+      "vendor": "공급업체",
+      "poDate": "PO 일자"
+    },
     "po": {
       "title": "구매·입고",
       "none": "연결된 PO가 없습니다.",

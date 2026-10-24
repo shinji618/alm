@@ -67,6 +67,27 @@ describe('company settings', () => {
     expect(screen.queryByText('$99.00')).not.toBeInTheDocument();
   });
 
+  it('shows acquisition origins: direct PO and AuC settlement number', async () => {
+    window.history.pushState({}, '', '/assets/a2');
+    const me: Me = { ...admin, permissions: ['asset.read', 'amount.read'], features: { sap: true } };
+    mockFetch((url) => {
+      if (url.includes('/lookups')) return { body: {} };
+      if (url.endsWith('/assets/a2')) return { body: { id: 'a2', version: 1, assetTag: 'AT-0002', description: 'Server', categoryId: 'cat', status: 'IN_USE', stage: 'OPERATE',
+        source: 'SAP', financial: { isCapitalized: true, companyCode: '1000', sapEnabled: true, sapAssetNo: '000300001234', sapSubNo: '0000',
+          origins: [{ sourceType: 'DIRECT', poNo: '4500000001', poItem: '00010', vendorName: 'Dell' },
+            { sourceType: 'AUC', aucAssetNo: '000900000001', aucSubNo: '0000', poNo: '4500000002', poItem: '00020' }] },
+        openRequests: [], editableFields: [] } };
+      return undefined;
+    });
+    render(<App initialMe={me} />);
+    const user = userEvent.setup();
+    expect(await screen.findByText('Server')).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Financial & SAP' }));
+    expect(await screen.findByText('4500000001/00010')).toBeInTheDocument();
+    expect(screen.getByText('900000001-0000')).toBeInTheDocument();
+    expect(screen.getByText('AuC settlement')).toBeInTheDocument();
+  });
+
   it('cost centers: SAP rows read-only, add one for a non-SAP company', async () => {
     window.history.pushState({}, '', '/admin/fin-masters');
     const me: Me = { ...admin, permissions: ['admin.config', 'master.read', 'master.write'] };

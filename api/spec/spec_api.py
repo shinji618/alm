@@ -347,6 +347,17 @@ netBookValue | number | Y | 장부가액
 usefulLifeYears | int | N | NDJAR
 usefulLifePeriods | int | N | NDPER
 depKey | string(4) | N | AFASL
+origins | [SapAssetOrigin] | N | 취득 출처(PO·AuC 정산). 키가 있으면 이 자산의 목록 전체를 교체(빈 배열이면 비움), 없으면 건드리지 않음. 최대 50건
+''')
+schema('SapAssetOrigin', 'IF-AA-02 취득 출처 1건 → asset_origin', '''
+sourceType | enum(DIRECT,AUC) | Y | DIRECT 이 자산에 직접 걸린 PO / AUC AuC 정산으로 취득(그 AuC에 걸린 PO)
+poNo | string(10) | N | EBELN. DIRECT는 필수
+poItem | string(5) | N | EBELP
+vendorCode | string(10) | N | LIFNR
+vendorName | string(80) | N | 공급업체명
+poDate | date | N | PO 일자 BEDAT
+aucAssetNo | string(12) | N | 정산 원천 AuC 자산번호 ANLN1. AUC는 필수. AuC 자산 자체는 보내지 않음
+aucSubNo | string(4) | N | AuC 보조번호 ANLN2
 ''')
 schema('AssetValuesRequest', 'IF-AA-02 요청', '''
 batchId | string(40) | Y | 배치 ID

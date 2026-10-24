@@ -163,6 +163,9 @@ export async function detail(c: PoolClient, p: Principal, id: string) {
      FROM po_item pi LEFT JOIN goods_receipt gr ON gr.id = $2
     WHERE pi.id = coalesce($1, (SELECT po_item_id FROM po_item_asset WHERE asset_id = $3 ORDER BY created_at DESC LIMIT 1))`,
   [r.po_item_id, r.goods_receipt_id, id])).rows[0];
+  // 취득 출처(IF-AA-02 origins): 이 자산에 직접 걸린 PO, AuC 정산이면 AuC 번호와 그 AuC의 PO
+  const origins = (await c.query(`SELECT source_type, po_no, po_item, vendor_code, vendor_name, po_date, auc_asset_no, auc_sub_no
+      FROM asset_origin WHERE asset_id = $1 ORDER BY source_type, auc_asset_no, po_no, po_item`, [id])).rows;
   const ps = new Params([id]);
   const writable = can(p, 'asset.write') && !!(await c.query(`SELECT 1 FROM asset a WHERE a.id = $1 AND ${assetScope(p, 'asset.write', ps)}`, ps.values)).rowCount
     && !['DISPOSED'].includes(r.status);
@@ -181,6 +184,9 @@ export async function detail(c: PoolClient, p: Principal, id: string) {
       netBookValue: amount ? numOrNull(r.net_book_value) : null, usefulLifeYears: r.vl_life ?? r.default_useful_life_years ?? undefined,
       valueAsOf: r.fiscal_year ? `${r.fiscal_year}/${String(r.period).padStart(3, '0')}` : undefined,
       tcoEstimate: amount ? numOrNull(r.purchase_cost) : null, sapSyncedAt: iso(r.sap_synced_at),
+      origins: origins.length ? origins.map((o) => clean({ sourceType: o.source_type, poNo: o.po_no || undefined, poItem: o.po_item || undefined,
+        vendorCode: o.vendor_code ?? undefined, vendorName: o.vendor_name ?? undefined, poDate: day(o.po_date),
+        aucAssetNo: o.auc_asset_no || undefined, aucSubNo: o.auc_sub_no || undefined })) : undefined,
     }),
     purchase: po ? clean({
       poNo: po.po_no, poItem: po.item_no, vendorName: po.vendor_name ?? undefined, description: po.description, quantity: po.quantity,

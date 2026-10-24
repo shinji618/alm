@@ -47,6 +47,12 @@
     </item>
     <item>
      <ID>S</ID>
+     <KEY>P_ORIG</KEY>
+     <ENTRY>        PO/AuC origin (AA02)</ENTRY>
+     <LENGTH>28</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
      <KEY>P_PER</KEY>
      <ENTRY>        Period (AA02, 0 = auto)</ENTRY>
      <LENGTH>31</LENGTH>
