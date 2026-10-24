@@ -143,11 +143,14 @@ CLASS lcl_run IMPLEMENTATION.
 
 
   METHOD lock.
+    " VARKEY는 RSTABLE-VARKEY 유형이어야 한다(상수 gc_if_id를 그대로 넘기면 CALL_FUNCTION_CONFLICT_TYPE)
+    DATA lv_varkey TYPE rstable-varkey.
+    lv_varkey = gc_if_id.
     CALL FUNCTION 'ENQUEUE_E_TABLE'
       EXPORTING
         mode_rstable   = 'E'
         tabname        = 'ZALM_IF_LOG'
-        varkey         = gc_if_id
+        varkey         = lv_varkey
       EXCEPTIONS
         foreign_lock   = 1
         system_failure = 2
@@ -158,12 +161,14 @@ CLASS lcl_run IMPLEMENTATION.
 
 
   METHOD unlock.
+    DATA lv_varkey TYPE rstable-varkey.
     IF mv_locked = abap_true.
+      lv_varkey = gc_if_id.
       CALL FUNCTION 'DEQUEUE_E_TABLE'
         EXPORTING
           mode_rstable = 'E'
           tabname      = 'ZALM_IF_LOG'
-          varkey       = gc_if_id.
+          varkey       = lv_varkey.
       mv_locked = abap_false.
     ENDIF.
   ENDMETHOD.
