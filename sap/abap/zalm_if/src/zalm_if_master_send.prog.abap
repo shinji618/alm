@@ -1,5 +1,6 @@
 *&---------------------------------------------------------------------*
-*& ZALM_IF_MASTER_SEND - SAP → ALM 마스터 송신(08 5.1 IF-MD-01 WBS 7.4, 5.2 IF-AA-01 WBS 7.5)
+*& ZALM_IF_MASTER_SEND - SAP → ALM 마스터 송신(08 5.1 IF-MD-01 WBS 7.4, 5.2 IF-AA-01·5.3 IF-AA-02 WBS 7.5)
+*&   변형 AA02: 자산 금액 송신(/sap/asset-values, 1,000건 분할). 아래 "AA02" 블록 참고
 *&   변형 AA01: 자산 마스터 델타 송신(/sap/assets:upsert, 1,000건 분할). 아래 "AA01" 블록 참고
 *&   변형 MD01: 조직·코드 마스터 전체 송신
 *&     COMPANY → PLANT → PROFIT_CENTER → COST_CENTER → ASSET_CLASS → LOCATION (참조되는 쪽 먼저)
@@ -17,11 +18,20 @@
 *&   - 성공(HTTP 오류 없음)하면 잡 시작 시각을 저장한다. 건별 ERROR(예: 코스트센터 없음)는 ALM이 다음 IF-MD-01 뒤 자동 재처리하므로 시각은 올린다
 *&   - 삭제 표시(XLOEV) 자산은 보내지 않는다(ALM 쪽 정리는 IF-RC-01 대사). 설명·클래스·코스트센터가 빈 자산은 빼고 경고(T31)
 *&   - 결과는 ZALM_IF_LOG(IF_ID = IF-AA-01)·SLG1. 유형별 요약: 반영 a / 변경 없음 b / 오류 c
+*& AA02 (IF-AA-02, 08 5.3, D-06 초안 산식)
+*&   - 대상: 회사코드의 삭제 표시 아닌 자산 전체(매일 전체, 같은 값이면 ALM이 SKIPPED). 상각영역 01만
+*&   - 기간: 올해 회계연도(GET_CURRENT_YEAR)의 ANLC 행, period = max(ANLC-PERAF, 1). ANLC 행이 없으면 금액 0으로 명시(T30)
+*&   - acquisitionValue = KANSW + ANSWL, accumDepreciation = KNAFA + NAFAG(음수), netBookValue = 둘의 합
+*&     계획외·특별 상각 등을 더해야 하면 ZALM_CFG AA02_DEP_EXTRA(여러 행, 예: KMAFA MAFAG KSAFA SAFAG)에 ANLC 필드명을 넣는다(AW01N과 맞추기)
+*&   - 내용연수·상각키: ANLB(상각영역 01, 오늘 유효) NDJAR·NDPER·AFASL
+*&   - 마감 실행: P_CLOSE(isClosing) 체크 → 요청 본문 isClosing = true, ALM이 그 기간 값을 마감값으로 잠금(자산회계가 ALM 화면 IF-OP-01로 요청)
+*&   - 시험 실행은 앞 10건의 금액 구성(KANSW·ANSWL·KNAFA·NAFAG와 추가 필드)을 로그에 보여 AW01N과 대조하게 한다
 *&---------------------------------------------------------------------*
 REPORT zalm_if_master_send.
 
 CONSTANTS: gc_if_md TYPE c LENGTH 10 VALUE 'IF-MD-01',
-           gc_if_aa TYPE c LENGTH 10 VALUE 'IF-AA-01'.
+           gc_if_aa TYPE c LENGTH 10 VALUE 'IF-AA-01',
+           gc_if_av TYPE c LENGTH 10 VALUE 'IF-AA-02'.
 
 DATA gv_bukrs_sel TYPE bukrs.
 
@@ -32,6 +42,7 @@ PARAMETERS: p_api   TYPE rfcdest DEFAULT 'ZALM_API' OBLIGATORY,
             p_chunk TYPE i DEFAULT 5000 OBLIGATORY,
             p_req   TYPE c LENGTH 8,
             p_full  AS CHECKBOX DEFAULT ' ',
+            p_close AS CHECKBOX DEFAULT ' ',
             p_dry   AS CHECKBOX DEFAULT ' '.
 
 TYPES:
@@ -103,7 +114,22 @@ TYPES:
     anln2 TYPE anln2,
     ts    TYPE timestamp,
   END OF gty_akey,
-  gtt_akey TYPE SORTED TABLE OF gty_akey WITH UNIQUE KEY bukrs anln1 anln2.
+  gtt_akey TYPE SORTED TABLE OF gty_akey WITH UNIQUE KEY bukrs anln1 anln2,
+  BEGIN OF gty_value,
+    company_code        TYPE string,
+    asset_no            TYPE string,
+    sub_no              TYPE string,
+    fiscal_year         TYPE i,
+    period              TYPE i,
+    dep_area            TYPE string,
+    acquisition_value   TYPE p LENGTH 13 DECIMALS 2,
+    accum_depreciation  TYPE p LENGTH 13 DECIMALS 2,
+    net_book_value      TYPE p LENGTH 13 DECIMALS 2,
+    useful_life_years   TYPE i,
+    useful_life_periods TYPE i,
+    dep_key             TYPE string,
+  END OF gty_value,
+  gtt_value TYPE STANDARD TABLE OF gty_value WITH EMPTY KEY.
 
 CLASS lcl_run DEFINITION FINAL.
   PUBLIC SECTION.
@@ -143,9 +169,19 @@ CLASS lcl_run DEFINITION FINAL.
                 it_records TYPE STANDARD TABLE
                 iv_path    TYPE csequence DEFAULT '/sap/master-data'
                 iv_head    TYPE csequence OPTIONAL
-                iv_chunked TYPE abap_bool DEFAULT abap_false.
+                iv_chunked TYPE abap_bool DEFAULT abap_false
+                iv_compress TYPE abap_bool DEFAULT abap_true.
     METHODS one_company_aa01
       IMPORTING iv_bukrs TYPE bukrs.
+    METHODS one_company_aa02
+      IMPORTING iv_bukrs TYPE bukrs.
+    METHODS sel_values
+      IMPORTING iv_bukrs        TYPE bukrs
+      RETURNING VALUE(rt_value) TYPE gtt_value.
+    METHODS anlc_sum
+      IMPORTING is_anlc       TYPE anlc
+                iv_field      TYPE csequence
+      RETURNING VALUE(rv_sum) TYPE anlc-kansw.
     METHODS save_log.
     METHODS finish.
     METHODS sel_assets
@@ -176,7 +212,7 @@ CLASS lcl_run IMPLEMENTATION.
     GET TIME STAMP FIELD lv_ts.
     mv_ts = lv_ts.
     mv_stamp = |{ lv_ts }|.
-    mv_if = COND #( WHEN p_var = 'AA01' THEN gc_if_aa ELSE gc_if_md ).
+    mv_if = SWITCH #( p_var WHEN 'AA01' THEN gc_if_aa WHEN 'AA02' THEN gc_if_av ELSE gc_if_md ).
 
     targets( ).
     IF mt_bukrs IS INITIAL.
@@ -190,6 +226,8 @@ CLASS lcl_run IMPLEMENTATION.
     LOOP AT mt_bukrs INTO DATA(lv_bukrs).
       IF p_var = 'AA01'.
         one_company_aa01( lv_bukrs ).
+      ELSEIF p_var = 'AA02'.
+        one_company_aa02( lv_bukrs ).
       ELSE.
         one_company( iv_bukrs = lv_bukrs iv_first = xsdbool( sy-tabix = 1 ) ).
       ENDIF.
@@ -342,24 +380,26 @@ CLASS lcl_run IMPLEMENTATION.
 
     lv_batch = mv_batch.
     " 분할 상한: 마스터 5,000건, 자산 1,000건(08 4.3)
-    DATA(lv_chunk) = COND i( WHEN iv_chunked = abap_true THEN nmin( val1 = p_chunk val2 = 1000 ) ELSE p_chunk ).
+    DATA(lv_chunk) = COND i( WHEN iv_path = '/sap/master-data' THEN p_chunk ELSE nmin( val1 = p_chunk val2 = 1000 ) ).
     DO 2 TIMES.
       DATA(lv_try) = sy-index.
       CLEAR: lt_chunks, lv_retry.
       TRY.
-          IF iv_chunked = abap_true.
-            lt_chunks = mo_api->send_records( iv_path       = iv_path
-                                              iv_batch_id   = lv_batch
-                                              iv_head       = iv_head
-                                              iv_chunked    = abap_true
-                                              it_records    = it_records
-                                              iv_chunk_size = lv_chunk ).
-          ELSE.
+          IF iv_path = '/sap/master-data'.
             lt_chunks = mo_api->send_records( iv_path       = iv_path
                                               iv_batch_id   = lv_batch
                                               iv_type       = iv_type
                                               it_records    = it_records
                                               iv_chunk_size = lv_chunk ).
+          ELSE.
+            " 자산·금액: type 없이 {batchId, <head>, [chunkNo, isLast,] records}. 금액은 0·빈 값도 보내야 해 compress를 끈다
+            lt_chunks = mo_api->send_records( iv_path       = iv_path
+                                              iv_batch_id   = lv_batch
+                                              iv_head       = iv_head
+                                              iv_chunked    = iv_chunked
+                                              it_records    = it_records
+                                              iv_chunk_size = lv_chunk
+                                              iv_compress   = iv_compress ).
           ENDIF.
         CATCH zcx_alm INTO DATA(lx).
           mo_log->add( iv_type = 'E' iv_text = |{ iv_type }: { lx->get_text( ) }| ).
@@ -589,6 +629,119 @@ CLASS lcl_run IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD one_company_aa02.
+    DATA(lv_req) = COND string( WHEN p_req IS NOT INITIAL THEN |-REQ{ p_req }| ).
+    mv_batch = |AA02-{ mv_stamp(12) }-{ iv_bukrs }{ lv_req }|.
+    CLEAR: mv_failed, mv_sent, mv_err, mv_http.
+
+    mo_log = NEW #( iv_if_id = gc_if_av iv_batch_id = mv_batch iv_bukrs = iv_bukrs ).
+    mo_api = NEW #( iv_bukrs = iv_bukrs iv_dest_api = p_api iv_dest_token = p_tok ).
+    mo_log->add( |IF-AA-02 { COND string( WHEN p_dry = abap_true THEN `시험 실행(보내지 않음)` ELSE `송신` ) }: 회사코드 { iv_bukrs }, 배치 { mv_batch }, SAP 시스템 { mo_api->system_id( ) }{
+                 COND string( WHEN p_close = abap_true THEN `, 마감 실행(isClosing)` ) }| ).
+
+    DATA(lt_value) = sel_values( iv_bukrs ).
+    IF lt_value IS INITIAL.
+      mo_log->add( 'VALUE: 보낼 자산이 없습니다' ).
+    ELSE.
+      send( iv_type = 'VALUE' it_records = lt_value iv_path = '/sap/asset-values' iv_chunked = abap_false iv_compress = abap_false
+            iv_head = COND #( WHEN p_close = abap_true THEN `"isClosing":true` ) ).
+    ENDIF.
+
+    IF mv_failed = abap_true.
+      mv_any_failed = abap_true.
+    ENDIF.
+    save_log( ).
+  ENDMETHOD.
+
+
+  METHOD anlc_sum.
+    " ANLC 필드명으로 금액을 읽는다(ZALM_CFG AA02_DEP_EXTRA에 적은 이름). 없는 필드는 0
+    FIELD-SYMBOLS <lv_val> TYPE any.
+    ASSIGN COMPONENT iv_field OF STRUCTURE is_anlc TO <lv_val>.
+    IF sy-subrc = 0.
+      rv_sum = <lv_val>.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD sel_values.
+    " 올해 회계연도(회사코드의 회계연도 변형 기준)
+    DATA lv_curry TYPE t009b-bdatj.
+    DATA lv_currp TYPE t009b-poper.
+    CALL FUNCTION 'GET_CURRENT_YEAR'
+      EXPORTING
+        bukrs = iv_bukrs
+        date  = sy-datum
+      IMPORTING
+        curry = lv_curry
+        currp = lv_currp
+      EXCEPTIONS
+        OTHERS = 1.
+    IF sy-subrc <> 0 OR lv_curry IS INITIAL.
+      mv_failed = abap_true.
+      mo_log->add( iv_type = 'E' iv_text = |회사코드 { iv_bukrs }의 현재 회계연도를 알 수 없습니다(GET_CURRENT_YEAR)| ).
+      RETURN.
+    ENDIF.
+    mo_log->add( |회계연도 { lv_curry }, 현재 기간 { lv_currp }, 상각영역 01| ).
+
+    SELECT bukrs, anln1, anln2 FROM anla
+      WHERE bukrs = @iv_bukrs AND xloev = @space
+      ORDER BY bukrs, anln1, anln2
+      INTO TABLE @DATA(lt_anla).
+    IF lt_anla IS INITIAL.
+      RETURN.
+    ENDIF.
+    SELECT * FROM anlc
+      WHERE bukrs = @iv_bukrs AND gjahr = @lv_curry AND afabe = '01'
+      INTO TABLE @DATA(lt_anlc).
+    SORT lt_anlc BY bukrs anln1 anln2.
+    " 현재 유효한 상각 조건: 오늘 이후까지 유효한 행 중 가장 이른 것
+    SELECT bukrs, anln1, anln2, bdatu, ndjar, ndper, afasl FROM anlb
+      WHERE bukrs = @iv_bukrs AND afabe = '01' AND bdatu >= @sy-datum
+      INTO TABLE @DATA(lt_anlb).
+    SORT lt_anlb BY bukrs anln1 anln2 bdatu.
+
+    DATA(lt_extra) = zcl_alm_cfg=>get_list( 'AA02_DEP_EXTRA' ).
+    DATA(lv_no_row) = 0.
+    DATA(lv_shown) = 0.
+
+    LOOP AT lt_anla INTO DATA(ls_a).
+      DATA(ls_rec) = VALUE gty_value( company_code = ls_a-bukrs asset_no = ls_a-anln1 sub_no = ls_a-anln2
+                                      fiscal_year = lv_curry period = 1 dep_area = '01' ).
+      READ TABLE lt_anlc INTO DATA(ls_c) WITH KEY bukrs = ls_a-bukrs anln1 = ls_a-anln1 anln2 = ls_a-anln2 BINARY SEARCH.
+      IF sy-subrc = 0.
+        DATA(lv_extra) = CONV anlc-kansw( 0 ).
+        LOOP AT lt_extra INTO DATA(lv_f).
+          lv_extra = lv_extra + anlc_sum( is_anlc = ls_c iv_field = lv_f ).
+        ENDLOOP.
+        ls_rec-period = nmax( val1 = CONV i( ls_c-peraf ) val2 = 1 ).
+        ls_rec-acquisition_value = ls_c-kansw + ls_c-answl.
+        ls_rec-accum_depreciation = ls_c-knafa + ls_c-nafag + lv_extra.
+        IF p_dry = abap_true AND lv_shown < 10.
+          lv_shown = lv_shown + 1.
+          mo_log->add( |  { ls_a-anln1 }-{ ls_a-anln2 } 기간 { ls_rec-period }: KANSW { ls_c-kansw } + ANSWL { ls_c-answl } = { ls_rec-acquisition_value } / KNAFA { ls_c-knafa } + NAFAG { ls_c-nafag }{
+                       COND string( WHEN lt_extra IS NOT INITIAL THEN | + 추가 { lv_extra }| ) } = { ls_rec-accum_depreciation }| ).
+        ENDIF.
+      ELSE.
+        " ANLC 행이 없는 자산(신규·연초 상각 전): 금액 0을 명시해 보낸다(T30)
+        lv_no_row = lv_no_row + 1.
+      ENDIF.
+      ls_rec-net_book_value = ls_rec-acquisition_value + ls_rec-accum_depreciation.
+      READ TABLE lt_anlb INTO DATA(ls_b) WITH KEY bukrs = ls_a-bukrs anln1 = ls_a-anln1 anln2 = ls_a-anln2 BINARY SEARCH.
+      IF sy-subrc = 0.
+        ls_rec-useful_life_years = ls_b-ndjar.
+        ls_rec-useful_life_periods = ls_b-ndper.
+        ls_rec-dep_key = ls_b-afasl.
+      ENDIF.
+      APPEND ls_rec TO rt_value.
+    ENDLOOP.
+    mo_log->add( |VALUE: 송신 대상 { lines( rt_value ) }건(ANLC 행이 없어 금액 0으로 보내는 자산 { lv_no_row }건)| ).
+    IF lt_extra IS NOT INITIAL.
+      mo_log->add( |합산에 추가한 ANLC 필드(ZALM_CFG AA02_DEP_EXTRA): { concat_lines_of( table = lt_extra sep = ` ` ) }| ).
+    ENDIF.
+  ENDMETHOD.
+
+
   METHOD sel_company.
     SELECT SINGLE bukrs, butxt, waers FROM t001 WHERE bukrs = @iv_bukrs INTO @DATA(ls_t001).
     IF sy-subrc = 0.
@@ -708,11 +861,14 @@ ENDCLASS.
 
 
 AT SELECTION-SCREEN.
-  IF p_var <> 'MD01' AND p_var <> 'AA01'.
-    MESSAGE '변형은 MD01(조직·코드 마스터), AA01(자산 마스터 델타)입니다. AA02·MM01은 이어서 추가합니다' TYPE 'E'.
+  IF p_var <> 'MD01' AND p_var <> 'AA01' AND p_var <> 'AA02'.
+    MESSAGE '변형은 MD01(조직·코드 마스터), AA01(자산 마스터 델타), AA02(자산 금액)입니다. MM01은 이어서 추가합니다' TYPE 'E'.
+  ENDIF.
+  IF p_close = abap_true AND p_var <> 'AA02'.
+    MESSAGE '마감 실행(isClosing)은 AA02에서만 씁니다' TYPE 'E'.
   ENDIF.
   IF p_chunk < 1 OR p_chunk > 5000.
-    MESSAGE '분할 크기는 1~5000입니다(자산 AA01은 1,000건으로 제한)' TYPE 'E'.
+    MESSAGE '분할 크기는 1~5000입니다(자산 AA01·금액 AA02는 1,000건으로 제한)' TYPE 'E'.
   ENDIF.
 
 START-OF-SELECTION.

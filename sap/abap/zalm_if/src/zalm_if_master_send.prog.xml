@@ -12,8 +12,8 @@
    <TPOOL>
     <item>
      <ID>R</ID>
-     <ENTRY>IF-MD-01/IF-AA-01 master send (SAP to ALM)</ENTRY>
-     <LENGTH>48</LENGTH>
+     <ENTRY>IF-MD-01/AA-01/AA-02 master send (SAP to ALM)</ENTRY>
+     <LENGTH>52</LENGTH>
     </item>
     <item>
      <ID>S</ID>
@@ -26,6 +26,12 @@
      <KEY>P_CHUNK</KEY>
      <ENTRY>        Chunk size (max 5000)</ENTRY>
      <LENGTH>29</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_CLOSE</KEY>
+     <ENTRY>        Closing run (AA02)</ENTRY>
+     <LENGTH>26</LENGTH>
     </item>
     <item>
      <ID>S</ID>
@@ -54,8 +60,8 @@
     <item>
      <ID>S</ID>
      <KEY>P_VAR</KEY>
-     <ENTRY>        Variant (MD01/AA01)</ENTRY>
-     <LENGTH>27</LENGTH>
+     <ENTRY>        Variant (MD01/AA01/AA02)</ENTRY>
+     <LENGTH>31</LENGTH>
     </item>
     <item>
      <ID>S</ID>
