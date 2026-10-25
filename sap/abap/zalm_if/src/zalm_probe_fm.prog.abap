@@ -44,9 +44,9 @@ START-OF-SELECTION.
   " 이관 거래유형(300번대)과 회사코드 1000의 문서 분할 사용 여부
   SKIP.
   WRITE: / '=== 거래유형 300번대(이관) ==='.
-  SELECT bwasl, ltext FROM tabwt
+  SELECT bwasl, txt50 FROM tabwt
     WHERE spras = 'E' AND bwasl LIKE '3%'
     INTO TABLE @DATA(lt_tt).
   LOOP AT lt_tt INTO DATA(ls_tt).
-    WRITE: / ls_tt-bwasl, ls_tt-ltext.
+    WRITE: / ls_tt-bwasl, ls_tt-txt50.
   ENDLOOP.
