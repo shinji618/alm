@@ -12,6 +12,7 @@ import { Check, UUID } from '../common/validate';
 import type { Principal } from '../auth/principal';
 import { allowsPlace, assetScope, can, Params } from '../auth/scope';
 import { nextAssetTags, nextNumbers } from './tags';
+import { desc2 } from '../common/sap-text';
 import { defaultTemplateId } from '../labels/labels';
 import { attachComponents, bundleView, componentCost } from './bundles';
 
@@ -376,6 +377,7 @@ export async function patchAsset(c: PoolClient, p: Principal, id: string, ifMatc
   if (has('dueBackDate')) cmp('due_back_date', day(cur.due_back_date) ?? null, v.dueBackDate ?? null);
   if (has('notes')) cmp('notes', cur.notes, v.notes ?? null);
   let roomCode: string | undefined;
+  let siteCode: string | undefined;
   if (has('modelId') && has('modelName')) throw E.badRequest('입력 값을 확인하세요: modelName modelId와 함께 보낼 수 없습니다', { errors: [{ field: 'modelName', code: 'ALM-E100', message: '하나만' }] });
   if (has('modelId') && (v.modelId ?? null) !== cur.model_id) {
     if (v.modelId) {
@@ -398,6 +400,7 @@ export async function patchAsset(c: PoolClient, p: Principal, id: string, ifMatc
     cmp('room_id', cur.room_id, r.id);
     cmp('site_id', cur.site_id, r.site_id);
     roomCode = r.room_code;
+    siteCode = r.site_code;
   }
   if (!set.length) return { asset: await detail(c, p, id), createdRequests: [] };
 
@@ -420,13 +423,13 @@ export async function patchAsset(c: PoolClient, p: Principal, id: string, ifMatc
       updated_at = now(), updated_by = $2, version = version + 1 WHERE id = $1`, [id, p.userId, ...args]);
   await event(c, p, id, 'UPDATED', Object.fromEntries(set.map(([col, before, after]) => [col, { before, after }])));
 
-  // SAP 자산: 자산명·시리얼·룸(STORT) 변경을 SAP에 보낸다(IF-AA-04). 회계 값이 아니므로 승인 없이 전기 대기
+  // SAP 자산: 자산명·시리얼·룸(설명 2행) 변경을 SAP에 보낸다(IF-AA-04). 회계 값이 아니므로 승인 없이 전기 대기
   const createdRequests: Record<string, string>[] = [];
   const fields: Record<string, string | null> = {};
   for (const [col, , after] of set) {
     if (col === 'description') fields.description = after as string;
     if (col === 'serial_no') fields.serialNo = (after as string | null) ?? '';
-    if (col === 'room_id') fields.location = roomCode ?? '';
+    if (col === 'room_id') fields.description2 = desc2(siteCode, roomCode) ?? '';
   }
   if (sapAsset && Object.keys(fields).length) createdRequests.push(await changeRequest(c, p, cur, fields));
   return { asset: await detail(c, p, id), createdRequests };

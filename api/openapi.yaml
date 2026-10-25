@@ -11956,14 +11956,10 @@ components:
           type: string
           maxLength: 25
           description: INVNR
-        location:
+        description2:
           type: string
-          maxLength: 10
-          description: STORT = 룸 코드
-        room:
-          type: string
-          maxLength: 8
-          description: RAUMNR 약어
+          maxLength: 50
+          description: 'DESCRIPT2(자산 설명 2행) = "Location: 사이트코드"와 "Room: 룸코드"를 세로선으로 이은 문자열. 위치·룸 값은 SAP 위치 필드 대신 여기로 보낸다'
         poNo:
           type: string
           maxLength: 10
@@ -11984,7 +11980,7 @@ components:
         fields:
           type: object
           additionalProperties: true
-          description: '변경 필드만: description, serialNo, inventoryNo, location, room, costCenter'
+          description: '변경 필드만: description, description2(위치·룸 설명 2행), serialNo, inventoryNo, costCenter'
         costCenterValidFrom:
           type: string
           format: date

@@ -399,7 +399,7 @@ costCenter | string(10) | Y | KOSTL
 capDate | date | N | AKTIV(빈 값 가능)
 serialNo | string(18) | N | SERNR
 inventoryNo | string(25) | Y | INVNR
-description2 | string(50) | N | DESCRIPT2(자산 설명 2행) = `Location: 사이트코드 | Room: 룸코드`. 위치·룸 값은 SAP 위치 필드 대신 여기로 보낸다
+description2 | string(50) | N | DESCRIPT2(자산 설명 2행) = "Location: 사이트코드"와 "Room: 룸코드"를 세로선으로 이은 문자열. 위치·룸 값은 SAP 위치 필드 대신 여기로 보낸다
 poNo | string(10) | N | 참조 PO
 poItem | string(5) | N | 참조 PO 항목
 ''')
