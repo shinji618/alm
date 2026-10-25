@@ -286,6 +286,8 @@ CLASS lcl_post IMPLEMENTATION.
     ENDTRY.
 
     lo_log->add( |claim: { lines( ls_claim-items ) }건(최대 { p_max })| ).
+    DATA(lt_sk) = zcl_alm_cfg=>get_list( 'POST_SKIP' ).
+    lo_log->add( |버전 v4 · POST_SKIP: { COND string( WHEN lt_sk IS INITIAL THEN '(없음)' ELSE concat_lines_of( table = lt_sk sep = ',' ) ) } · SEND_INVNO: { COND string( WHEN zcl_alm_cfg=>get( iv_param = 'SEND_INVNO' ) IS NOT INITIAL THEN 'X' ELSE '(꺼짐)' ) }| ).
     lo_log->set_result( iv_status = zcl_alm_log=>c_success iv_rec_cnt = lines( ls_claim-items ) ).
     IF p_test = abap_false.
       lo_log->save( iv_commit = abap_true ).
