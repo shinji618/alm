@@ -557,7 +557,7 @@ CLASS lcl_post IMPLEMENTATION.
     DATA(lt_keep) = VALUE abap_func_parmbind_tab( ).
     LOOP AT ct_ptab INTO DATA(ls_pt).
       IF line_exists( lt_par[ parameter = ls_pt-name ] ).
-        APPEND ls_pt TO lt_keep.
+        INSERT ls_pt INTO TABLE lt_keep.
       ELSE.
         lv_dropped = |{ lv_dropped } { ls_pt-name }|.
       ENDIF.
@@ -578,10 +578,10 @@ CLASS lcl_post IMPLEMENTATION.
     ENDIF.
     CASE ls_par-paramtype.
       WHEN 'T'.
-        APPEND VALUE #( name = ls_par-parameter kind = abap_func_tables value = REF #( lt_return ) ) TO lt_keep.
+        INSERT VALUE #( name = ls_par-parameter kind = abap_func_tables value = REF #( lt_return ) ) INTO TABLE lt_keep.
       WHEN 'E'.
         CREATE DATA lr_ret TYPE (ls_par-structure).
-        APPEND VALUE #( name = ls_par-parameter kind = abap_func_importing value = lr_ret ) TO lt_keep.
+        INSERT VALUE #( name = ls_par-parameter kind = abap_func_importing value = lr_ret ) INTO TABLE lt_keep.
       WHEN OTHERS.
         err( EXPORTING iv_text = |{ iv_fm } 메시지 파라미터 { ls_par-parameter }의 종류({ ls_par-paramtype })를 지원하지 않습니다. 파라미터: { lv_list }| CHANGING ct_ret = ct_ret ).
         RETURN.
