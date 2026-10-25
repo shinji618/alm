@@ -358,7 +358,7 @@ CLASS lcl_post IMPLEMENTATION.
                                    ELSE concat_lines_of( table = lt_sk sep = ',' ) ).
     DATA(lv_inv_txt) = COND string( WHEN zcl_alm_cfg=>get( iv_param = 'SEND_INVNO' ) IS NOT INITIAL THEN 'X'
                                     ELSE '(꺼짐)' ).
-    lo_log->add( |버전 v13 · POST_SKIP: { lv_sk_txt } · SEND_INVNO: { lv_inv_txt }| ).
+    lo_log->add( |버전 v14 · POST_SKIP: { lv_sk_txt } · SEND_INVNO: { lv_inv_txt }| ).
     lo_log->set_result( iv_status = zcl_alm_log=>c_success iv_rec_cnt = lines( ls_claim-items ) ).
     IF p_test = abap_false.
       lo_log->save( iv_commit = abap_true ).
@@ -843,13 +843,20 @@ CLASS lcl_post IMPLEMENTATION.
           lv_rev_ok = abap_true.
         ENDLOOP.
         IF lv_rev_ok = abap_false AND lr_r IS BOUND.
+          " DEV 확인: RETIREMENTDATA(BAPIFAPO_RET)의 REV_ON_RET이 매각 수익, CURRENCY가 통화(AMOUNT는 부분 폐기 금액이라 쓰지 않는다)
           FIELD-SYMBOLS <ls_ret> TYPE any.
+          FIELD-SYMBOLS <lv_rv> TYPE any.
           ASSIGN lr_r->* TO <ls_ret>.
-          ASSIGN COMPONENT 'REVENUE' OF STRUCTURE <ls_ret> TO FIELD-SYMBOL(<lv_rv>).
-          IF sy-subrc = 0.
-            setf( EXPORTING ir_struct = lr_r iv_field = 'REVENUE' iv_val = ls_p-sale_amount iv_type = 'RETIREMENTDATA' CHANGING ct_ret = ct_ret ).
-            lv_rev_ok = abap_true.
-          ENDIF.
+          LOOP AT VALUE string_table( ( `REV_ON_RET` ) ( `REVENUE` ) ) INTO DATA(lv_rn).
+            ASSIGN COMPONENT lv_rn OF STRUCTURE <ls_ret> TO <lv_rv>.
+            IF sy-subrc = 0.
+              setf( EXPORTING ir_struct = lr_r iv_field = lv_rn iv_val = ls_p-sale_amount iv_type = 'RETIREMENTDATA' CHANGING ct_ret = ct_ret ).
+              setf_opt( EXPORTING ir_struct = lr_r it_names = VALUE #( ( `CURRENCY` ) ( `CURRENCY_ISO` ) ) iv_val = lv_waers
+                                  iv_type = 'RETIREMENTDATA' io_log = io_log CHANGING ct_ret = ct_ret ).
+              lv_rev_ok = abap_true.
+              EXIT.
+            ENDIF.
+          ENDLOOP.
         ENDIF.
         IF lv_rev_ok = abap_false.
           err( EXPORTING iv_text = |{ lc_fm }에서 매각 수익 필드를 찾지 못했습니다. 위 구조 필드 목록(로그)을 보내 주세요| CHANGING ct_ret = ct_ret ).
