@@ -95,6 +95,8 @@ CLASS lcl_post DEFINITION FINAL.
 
   PRIVATE SECTION.
     DATA mt_bukrs TYPE STANDARD TABLE OF bukrs WITH EMPTY KEY.
+    DATA mt_skip TYPE string_table.
+    DATA mv_skip_loaded TYPE abap_bool.
     DATA mo_api TYPE REF TO zcl_alm_http_client.
     DATA mv_bukrs TYPE bukrs.
     DATA mv_batch TYPE string.
@@ -642,6 +644,16 @@ CLASS lcl_post IMPLEMENTATION.
     DATA lv_d TYPE d.
 
     IF iv_val IS INITIAL.
+      RETURN.
+    ENDIF.
+    " ZALM_CFG POST_SKIP(여러 행): 자산클래스 화면 레이아웃이 입력 불가(AY219)인 BAPI 필드 이름은 보내지 않는다
+    IF mv_skip_loaded = abap_false.
+      LOOP AT zcl_alm_cfg=>get_list( 'POST_SKIP' ) INTO DATA(lv_sk).
+        APPEND to_upper( lv_sk ) TO mt_skip.
+      ENDLOOP.
+      mv_skip_loaded = abap_true.
+    ENDIF.
+    IF line_exists( mt_skip[ table_line = to_upper( iv_field ) ] ).
       RETURN.
     ENDIF.
     ASSIGN ir_struct->* TO <ls_s>.

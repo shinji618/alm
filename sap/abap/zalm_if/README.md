@@ -113,6 +113,7 @@ ALM에서 승인된 요청(READY)을 가져와 SAP에 전기한다. 이번 단�
 | 항목 | 내용 |
 | --- | --- |
 | 재고번호 | 기본은 SAP에 보내지 않음(자산클래스 화면 레이아웃이 입력 불가면 AY219). 보내려면 ZALM_CFG `SEND_INVNO` = `X`(SE38 ZALM_IF_CONFIG). 안 보내면 중복 확인은 자산명+클래스+사용자+승인일로 한다 |
+| 입력 불가 필드 | 자산클래스 화면 레이아웃이 입력 불가인 필드(AY219: Location, Serial number 등)는 ZALM_CFG `POST_SKIP`(여러 행, BAPI 필드 이름: `SERIAL_NO`, `LOCATION`, `ROOM`, `INVENT_NO`)에 넣으면 보내지 않는다. 정식 해결은 OAOA 화면 레이아웃에서 선택 입력으로 바꾸는 것 |
 | 실행 | SE38 `ZALM_IF_POSTING`. 회사코드는 비우면 ZALM_CFG `BUKRS`. 15분 간격 잡(7.9 SM36)으로 돌리는 것이 목표 |
 | 파라미터 | P_MAX 한 번에 가져올 건수(기본 50, 최대 200), P_TEST BAPI TESTRUN(커밋·로그·회신 없음) |
 | P_TEST 주의 | claim은 하므로 그 건은 15분 뒤 다시 대상이 되고 ALM의 시도 횟수(최대 5)가 1 오른다. 시험은 적은 건수로 |
