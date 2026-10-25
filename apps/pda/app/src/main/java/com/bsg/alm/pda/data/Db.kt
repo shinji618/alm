@@ -119,7 +119,8 @@ interface CountDao {
     @Query("SELECT count(*) FROM queue WHERE userId = :userId AND state = 'PENDING'") fun pendingCount(userId: String): Flow<Int>
     @Query("SELECT count(*) FROM queue WHERE userId = :userId AND state = 'PENDING'") suspend fun pendingNow(userId: String): Int
     @Query("SELECT * FROM queue WHERE userId = :userId ORDER BY id DESC LIMIT 300") fun queue(userId: String): Flow<List<QueueItem>>
-    @Query("SELECT * FROM queue WHERE userId = :userId AND type = 'SCAN' AND campaignId = :campaignId AND roomId = :roomId ORDER BY id DESC LIMIT 50")
+    // 같은 자산을 여러 번 스캔·확인해도 최근 스캔 목록에는 자산당 마지막 1건만 보인다
+    @Query("SELECT * FROM queue WHERE id IN (SELECT max(id) FROM queue WHERE userId = :userId AND type = 'SCAN' AND campaignId = :campaignId AND roomId = :roomId GROUP BY upper(label)) ORDER BY id DESC LIMIT 50")
     fun recentScans(userId: String, campaignId: String, roomId: String): Flow<List<QueueItem>>
     @Query("SELECT count(*) FROM queue WHERE userId = :userId AND type = 'UNREG' AND campaignId = :campaignId") suspend fun unregCount(userId: String, campaignId: String): Int
     @Query("UPDATE queue SET state = :state, attempts = attempts + 1, error = :error, serverResult = coalesce(:serverResult, serverResult), sentAt = :sentAt WHERE id = :id")
