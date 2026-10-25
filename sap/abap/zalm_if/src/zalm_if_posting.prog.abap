@@ -287,7 +287,7 @@ CLASS lcl_post IMPLEMENTATION.
 
     lo_log->add( |claim: { lines( ls_claim-items ) }건(최대 { p_max })| ).
     DATA(lt_sk) = zcl_alm_cfg=>get_list( 'POST_SKIP' ).
-    lo_log->add( |버전 v5 · POST_SKIP: { COND string( WHEN lt_sk IS INITIAL THEN '(없음)' ELSE concat_lines_of( table = lt_sk sep = ',' ) ) } · SEND_INVNO: { COND string( WHEN zcl_alm_cfg=>get( iv_param = 'SEND_INVNO' ) IS NOT INITIAL THEN 'X' ELSE '(꺼짐)' ) }| ).
+    lo_log->add( |버전 v6 · POST_SKIP: { COND string( WHEN lt_sk IS INITIAL THEN '(없음)' ELSE concat_lines_of( table = lt_sk sep = ',' ) ) } · SEND_INVNO: { COND string( WHEN zcl_alm_cfg=>get( iv_param = 'SEND_INVNO' ) IS NOT INITIAL THEN 'X' ELSE '(꺼짐)' ) }| ).
     lo_log->set_result( iv_status = zcl_alm_log=>c_success iv_rec_cnt = lines( ls_claim-items ) ).
     IF p_test = abap_false.
       lo_log->save( iv_commit = abap_true ).
@@ -474,7 +474,6 @@ CLASS lcl_post IMPLEMENTATION.
 
   METHOD handle_change.
     DATA ls_p TYPE gty_change.
-    DATA lr_key TYPE REF TO data.
     DATA lr_gd TYPE REF TO data.
     DATA lr_gdx TYPE REF TO data.
     DATA lr_td TYPE REF TO data.
@@ -505,15 +504,11 @@ CLASS lcl_post IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    CREATE DATA lr_key TYPE ('BAPI1022_KEY').
     CREATE DATA lr_gd TYPE ('BAPI1022_FEGLG001').
     CREATE DATA lr_gdx TYPE ('BAPI1022_FEGLG001X').
     CREATE DATA lr_td TYPE ('BAPI1022_FEGLG003').
     CREATE DATA lr_tdx TYPE ('BAPI1022_FEGLG003X').
 
-    setf( EXPORTING ir_struct = lr_key iv_field = 'COMPANYCODE' iv_val = is_item-company_code iv_type = 'KEY' CHANGING ct_ret = ct_ret ).
-    setf( EXPORTING ir_struct = lr_key iv_field = 'ASSET' iv_val = lv_a1 iv_type = 'KEY' CHANGING ct_ret = ct_ret ).
-    setf( EXPORTING ir_struct = lr_key iv_field = 'SUBNUMBER' iv_val = lv_a2 iv_type = 'KEY' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'DESCRIPT' iv_val = ls_p-fields-description iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'SERIAL_NO' iv_val = ls_p-fields-serial_no iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'INVENT_NO' iv_val = COND string( WHEN zcl_alm_cfg=>get( iv_param = 'SEND_INVNO' ) IS NOT INITIAL THEN ls_p-fields-inventory_no ) iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
@@ -524,9 +519,19 @@ CLASS lcl_post IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    " BAPI_FIXEDASSET_CHANGE는 KEY 구조가 아니라 COMPANYCODE·ASSET·SUBNUMBER 단일 파라미터를 쓰고, 릴리스에 따라 TESTRUN이 없다.
+    " TESTRUN이 없는데 시험 실행이면 실제로 바뀌므로 BAPI를 부르지 않고 입력 점검까지만 한다
+    SELECT SINGLE parameter FROM fupararef WHERE funcname = 'BAPI_FIXEDASSET_CHANGE' AND parameter = 'TESTRUN' INTO @DATA(lv_has_test).
+    IF sy-subrc <> 0 AND p_test = abap_true.
+      io_log->add( 'BAPI_FIXEDASSET_CHANGE에 TESTRUN 파라미터가 없어 시험 실행은 BAPI를 호출하지 않고 입력 점검까지만 합니다' ).
+      RETURN.
+    ENDIF.
+    DATA(lv_cc) = is_item-company_code.
     lv_testrun = COND #( WHEN p_test = abap_true THEN 'X' ELSE ' ' ).
     DATA(lt_ptab) = VALUE abap_func_parmbind_tab(
-      ( name = 'KEY'                kind = abap_func_exporting value = lr_key )
+      ( name = 'COMPANYCODE'        kind = abap_func_exporting value = REF #( lv_cc ) )
+      ( name = 'ASSET'              kind = abap_func_exporting value = REF #( lv_a1 ) )
+      ( name = 'SUBNUMBER'          kind = abap_func_exporting value = REF #( lv_a2 ) )
       ( name = 'TESTRUN'            kind = abap_func_exporting value = REF #( lv_testrun ) )
       ( name = 'GENERALDATA'        kind = abap_func_exporting value = lr_gd )
       ( name = 'GENERALDATAX'       kind = abap_func_exporting value = lr_gdx )
