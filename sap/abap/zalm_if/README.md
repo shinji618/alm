@@ -15,6 +15,7 @@
 | ZCL_ALM_HTTP_CLIENT | 클래스 | SM59 ZALM_API 호출, 토큰(SM59 ZALM_TOKEN), 헤더, 재시도(1·2·4분 3회, 401 토큰 갱신), 분할 송신, 207 해석 |
 | ZALM_IF_PING | 프로그램 | 연결 시험(토큰 → GET /sap/ping), 로그 남김 |
 | ZALM_IF_CONFIG | 프로그램 | ZALM_CFG·ZALM_MAP 조회·저장·삭제, 기본값 넣기 |
+| ZALM_IF_POSTING | 프로그램 | 7.6 전기 잡 1단계: claim(ASSET_CREATE·ASSET_CHANGE) → BAPI_FIXEDASSET_CREATE1/CHANGE(동적 호출) → 로그 후 커밋 → 결과 회신 → 회신 실패 재회신. 이관·폐기·실사 결과(IF-AA-05~07)는 이어서 추가 |
 | ZALM_IF_MASTER_SEND | 프로그램 | 7.4 IF-MD-01 조직·코드 마스터 전체 송신(변형 MD01). 수동 실행과 잡 겸용. 변형 AA01(IF-AA-01 자산 마스터 델타, 7.5). 변형 AA02(IF-AA-02 자산 금액, 7.5). AA02는 PO·AuC 출처(origins)도 함께 송신. MM01(PO 송신)은 보류 |
 
 명세서와 다른 점: 잡 겹침 방지는 잠금 객체 EZALM_RUN 대신 표준 `ENQUEUE_E_TABLE`(테이블 ZALM_IF_LOG, 키 = 잡 이름)을 쓴다(7.6에서 사용).
@@ -104,6 +105,24 @@ SM59 비밀번호 칸이 클라이언트 비밀 길이를 받지 못하면, ZALM
   - 시험 실행은 앞 10건의 출처를 로그에 보인다. 원천 필드(EKKN·ANEK)가 릴리스에 따라 다르면 활성화·실행 때 드러난다(SE11 확인).
 - **결과**: ZALM_IF_LOG(IF_ID `IF-AA-02`, 회사코드별 1행). 요약 `반영 a / 변경 없음 b / 오류 c`.
 - **시험 순서**: ① 시험 실행(구성 확인, AW01N 대조) → ② 실제 송신 → ③ ALM 자산 상세의 금액 확인 → ④ 다시 실행해 전부 변경 없음인지 → ⑤ 연초 전 자산(ANLC 행 없음)이 0으로 들어오는지(T30) → ⑥ 마감 실행 후 다음 날 일일 실행이 마감 값을 덮지 않는지(T32). ⑦ PO 자산·AuC 정산 자산·PO 없는 자산의 출처가 ALM에 맞게 보이는지(T35~T37).
+
+## 7.6 전기 잡 — ZALM_IF_POSTING (IF-AA-03 자산 생성 · IF-AA-04 자산 변경)
+
+ALM에서 승인된 요청(READY)을 가져와 SAP에 전기한다. 이번 단계는 `ASSET_CREATE`·`ASSET_CHANGE`만 가져온다(`types` 필터). 나머지 유형은 READY로 남는다.
+
+| 항목 | 내용 |
+| --- | --- |
+| 실행 | SE38 `ZALM_IF_POSTING`. 회사코드는 비우면 ZALM_CFG `BUKRS`. 15분 간격 잡(7.9 SM36)으로 돌리는 것이 목표 |
+| 파라미터 | P_MAX 한 번에 가져올 건수(기본 50, 최대 200), P_TEST BAPI TESTRUN(커밋·로그·회신 없음) |
+| P_TEST 주의 | claim은 하므로 그 건은 15분 뒤 다시 대상이 되고 ALM의 시도 횟수(최대 5)가 1 오른다. 시험은 적은 건수로 |
+| POST_BLOCK | ZALM_CFG `POST_BLOCK = X`이면 claim하지 않고 건너뜀(월말 마감) |
+| 중복 방지 | ① 같은 postingId가 ZALM_IF_LOG에 POSTED면 BAPI를 다시 부르지 않고 회신만 ② 생성은 ANLA(BUKRS·INVNR·ANLKL·ERNAM = 실행 사용자·ERDAT ≥ 승인일 −1·DEAKT 없음)로 이미 만들어졌는지 확인 |
+| 커밋 순서 | RETURN에 E·A가 없으면 ZALM_IF_LOG(POSTED)를 먼저 쓰고 `BAPI_TRANSACTION_COMMIT`(WAIT). 실패는 ROLLBACK 후 FAILED 로그와 회신 |
+| 회신 | `POST /sap/postings/{id}/result`, Idempotency-Key = `postingId-attempt`. 실패한 회신은 같은 실행 끝에 다시 보냄(최근 7일, 키 `postingId-R<시각>`) |
+| BAPI 호출 | `CALL FUNCTION … PARAMETER-TABLE`로 부르고 구조·필드를 이름으로 채운다. 구조 이름(BAPI1022_FEGLG001·002·003 등)이나 필드가 이 릴리스에 없으면 그 건이 FAILED로 끝나고 메시지에 이름이 나온다 → SE37·SE11 확인(D-13) |
+| 변경의 제한 | 값을 비우는 변경은 미지원(빈 값 = 변경 없음). 코스트센터 유효시작일이 미래면 D-03 결정 전이라 FAILED |
+
+**시험 순서**: ① ALM에서 자산 생성 요청을 만들고 2단계 승인(전기 대기 READY) → ② ZALM_IF_POSTING을 P_TEST로 실행해 BAPI 오류가 없는지(구조·필드명 확인) → ③ 실제 실행: 자산번호가 SAP(AS03)에 생기고 ALM 요청이 POSTED가 되는지 → ④ 같은 건을 다시 실행해도 새 자산이 안 생기는지(POSTED 로그) → ⑤ ALM에서 자산명·시리얼·룸을 바꾼 변경 요청이 SAP에 반영되는지(IF-AA-04) → ⑥ 필수 값이 빠진 건이 FAILED로 돌아와 ALM이 POST_ERROR가 되는지.
 
 ## 문법 검사(개발용)
 
