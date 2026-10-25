@@ -139,7 +139,7 @@ test('전기 큐: 재전기(요청 값으로 payload 재생성)·시도 초과�
   assert.equal((await call('acct', 'POST', `/integration/sap/postings/${c.posting}:cancel`, { confirmSapChecked: true })).status, 409, '잠금 중');
   // 선점 취소(잠금 해제): 잠금 중이어도 confirmed와 함께 READY로, 시도 1 감소
   await q(`UPDATE sap_posting SET attempt_count = 2, claim_batch_id = 'B-9' WHERE id = $1`, [c.posting]);
-  assert.equal((await call('adm', 'POST', `/integration/sap/postings/${c.posting}:release`, { confirmed: true })).status, 403, '해제는 sap.operate');
+  assert.equal((await call('mgr', 'POST', `/integration/sap/postings/${c.posting}:release`, { confirmed: true })).status, 403, '해제는 sap.operate(자산 관리자는 없음)');
   const nr = await call('acct', 'POST', `/integration/sap/postings/${c.posting}:release`, {});
   assert.equal(nr.status, 409); assert.equal(nr.body.needsConfirm, true);
   const rl = await call('acct', 'POST', `/integration/sap/postings/${c.posting}:release`, { confirmed: true });
