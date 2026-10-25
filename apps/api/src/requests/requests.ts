@@ -757,10 +757,7 @@ async function buildPosting(c: PoolClient, r: Record<string, any>, a: Record<str
       return { postingType: 'ASSET_CHANGE', payload: { fields } };
     }
     case 'TRANSFER':
-      if (r.is_profit_center_change) {
-        return { postingType: 'ASSET_TRANSFER', payload: { newCostCenter: tcc?.cost_center_code, newProfitCenter: tcc?.profit_center_code ?? '',
-          percent: 100, createNewSubNo: false } };
-      }
+      // D-03(2026-10-25 확정): 손익센터가 바뀌는 이관도 이관 전표(ABUMN) 없이 IF-AA-04 시간종속 변경으로 보낸다(손익센터는 SAP이 코스트센터에서 도출)
       return { postingType: 'ASSET_CHANGE', payload: clean({ fields: clean({ costCenter: tcc?.cost_center_code,
         description2: desc2(room?.site_code, room?.room_code) }), costCenterValidFrom: day(r.effective_date) }) };
     case 'RETIRE':

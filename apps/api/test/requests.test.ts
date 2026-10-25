@@ -173,8 +173,8 @@ test('승인: 이관은 보내는 부서(CC100) → 받는 부서(CC300) → 자
   assert.equal(a2.status, 200); assert.equal(a2.body.requestStatus, 'ACCT_APPROVED');
   assert.equal((await call('acct', 'POST', `/approvals/${s3}:approve`, {})).status, 409, '이미 결정');
   const [pst] = await q(`SELECT posting_type, status, payload, value_date::text AS vd, approved_by FROM sap_posting WHERE posting_id = 'AR-00001'`);
-  assert.equal(pst.posting_type, 'ASSET_TRANSFER'); assert.equal(pst.status, 'READY'); assert.equal(pst.vd, '2026-11-02'); assert.equal(pst.approved_by, ids.acct);
-  assert.deepEqual(pst.payload, { newCostCenter: 'CC300', newProfitCenter: 'P2', percent: 100, createNewSubNo: false });
+  assert.equal(pst.posting_type, 'ASSET_CHANGE'); assert.equal(pst.status, 'READY'); assert.equal(pst.vd, '2026-11-02'); assert.equal(pst.approved_by, ids.acct);
+  assert.deepEqual(pst.payload, { fields: { costCenter: 'CC300' }, costCenterValidFrom: '2026-11-02' });
   assert.equal((await q('SELECT cost_center_id FROM asset WHERE id = $1', [ids.sapA]))[0].cost_center_id, ids.cc100, 'SAP 전기 전에는 그대로');
   assert.equal((await q(`SELECT count(*)::int AS n FROM notification WHERE template = 'APPROVAL_DECIDED' AND recipient_id = $1`, [ids.mgr]))[0].n, 1);
 
