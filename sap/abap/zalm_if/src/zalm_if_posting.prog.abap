@@ -287,7 +287,7 @@ CLASS lcl_post IMPLEMENTATION.
 
     lo_log->add( |claim: { lines( ls_claim-items ) }건(최대 { p_max })| ).
     DATA(lt_sk) = zcl_alm_cfg=>get_list( 'POST_SKIP' ).
-    lo_log->add( |버전 v6 · POST_SKIP: { COND string( WHEN lt_sk IS INITIAL THEN '(없음)' ELSE concat_lines_of( table = lt_sk sep = ',' ) ) } · SEND_INVNO: { COND string( WHEN zcl_alm_cfg=>get( iv_param = 'SEND_INVNO' ) IS NOT INITIAL THEN 'X' ELSE '(꺼짐)' ) }| ).
+    lo_log->add( |버전 v7 · POST_SKIP: { COND string( WHEN lt_sk IS INITIAL THEN '(없음)' ELSE concat_lines_of( table = lt_sk sep = ',' ) ) } · SEND_INVNO: { COND string( WHEN zcl_alm_cfg=>get( iv_param = 'SEND_INVNO' ) IS NOT INITIAL THEN 'X' ELSE '(꺼짐)' ) }| ).
     lo_log->set_result( iv_status = zcl_alm_log=>c_success iv_rec_cnt = lines( ls_claim-items ) ).
     IF p_test = abap_false.
       lo_log->save( iv_commit = abap_true ).
@@ -526,7 +526,8 @@ CLASS lcl_post IMPLEMENTATION.
       io_log->add( 'BAPI_FIXEDASSET_CHANGE에 TESTRUN 파라미터가 없어 시험 실행은 BAPI를 호출하지 않고 입력 점검까지만 합니다' ).
       RETURN.
     ENDIF.
-    DATA(lv_cc) = is_item-company_code.
+    DATA lv_cc TYPE bukrs.
+    lv_cc = is_item-company_code.
     lv_testrun = COND #( WHEN p_test = abap_true THEN 'X' ELSE ' ' ).
     DATA(lt_ptab) = VALUE abap_func_parmbind_tab(
       ( name = 'COMPANYCODE'        kind = abap_func_exporting value = REF #( lv_cc ) )
