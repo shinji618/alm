@@ -344,7 +344,7 @@ CLASS lcl_post IMPLEMENTATION.
                                    ELSE concat_lines_of( table = lt_sk sep = ',' ) ).
     DATA(lv_inv_txt) = COND string( WHEN zcl_alm_cfg=>get( iv_param = 'SEND_INVNO' ) IS NOT INITIAL THEN 'X'
                                     ELSE '(꺼짐)' ).
-    lo_log->add( |버전 v9 · POST_SKIP: { lv_sk_txt } · SEND_INVNO: { lv_inv_txt }| ).
+    lo_log->add( |버전 v10 · POST_SKIP: { lv_sk_txt } · SEND_INVNO: { lv_inv_txt }| ).
     lo_log->set_result( iv_status = zcl_alm_log=>c_success iv_rec_cnt = lines( ls_claim-items ) ).
     IF p_test = abap_false.
       lo_log->save( iv_commit = abap_true ).
@@ -636,6 +636,8 @@ CLASS lcl_post IMPLEMENTATION.
     DATA lt_par TYPE gtt_par.
     DATA ls_p TYPE gty_retire.
     DATA lr_g TYPE REF TO data.
+    DATA lr_r TYPE REF TO data.
+    DATA lr_a TYPE REF TO data.
     CONSTANTS lc_fm TYPE string VALUE 'BAPI_ASSET_RETIREMENT_POST'.
 
     /ui2/cl_json=>deserialize( EXPORTING json = is_item-payload pretty_name = /ui2/cl_json=>pretty_mode-camel_case
@@ -704,11 +706,6 @@ CLASS lcl_post IMPLEMENTATION.
                                ELSE |{ sy-datum(4) }-{ sy-datum+4(2) }-{ sy-datum+6(2) }| ).
     DATA(lv_vd) = COND string( WHEN is_item-value_date IS NOT INITIAL THEN is_item-value_date ELSE lv_pd ).
     DATA(lv_has_test) = xsdbool( line_exists( lt_par[ parameter = 'TESTRUN' ] ) ).
-    IF p_test = abap_true AND lv_has_test = abap_false.
-      io_log->add( |{ lc_fm }에 TESTRUN 파라미터가 없어 시험 실행은 BAPI를 호출하지 않고 입력 점검까지만 합니다| ).
-      RETURN.
-    ENDIF.
-
     DATA(lt_ptab) = VALUE abap_func_parmbind_tab( ).
     DATA(lv_bukrs) = CONV string( is_item-company_code ).
     DATA(lv_a1s) = CONV string( lv_a1 ).
@@ -722,11 +719,25 @@ CLASS lcl_post IMPLEMENTATION.
       setf( EXPORTING ir_struct = lr_g iv_field = 'PSTNG_DATE' iv_val = lv_pd iv_type = 'GENERALPOSTINGDATA' CHANGING ct_ret = ct_ret ).
       setf( EXPORTING ir_struct = lr_g iv_field = 'DOC_DATE' iv_val = lv_pd iv_type = 'GENERALPOSTINGDATA' CHANGING ct_ret = ct_ret ).
       setf( EXPORTING ir_struct = lr_g iv_field = 'ASSETTRTYP' iv_val = lv_tt iv_type = 'GENERALPOSTINGDATA' CHANGING ct_ret = ct_ret ).
-      " 가치일·헤더 텍스트 필드명은 릴리스마다 달라 후보 이름을 차례로 찾는다. 없으면 경고만 하고 보내지 않는다
-      setf_opt( EXPORTING ir_struct = lr_g it_names = VALUE #( ( `ASVAL_DATE` ) ( `ASSETVALDATE` ) ( `VALUE_DATE` ) ( `ASSET_VAL_DATE` ) )
-                          iv_val = lv_vd iv_type = 'GENERALPOSTINGDATA' io_log = io_log CHANGING ct_ret = ct_ret ).
-      setf_opt( EXPORTING ir_struct = lr_g it_names = VALUE #( ( `HEADER_TXT` ) ( `BKTXT` ) ( `HEADERTXT` ) ( `REF_DOC_NO` ) ( `REFERENCE` ) )
-                          iv_val = is_item-posting_id iv_type = 'GENERALPOSTINGDATA' io_log = io_log CHANGING ct_ret = ct_ret ).
+      " 전체 폐기 표시·가치일은 RETIREMENTDATA, 헤더 텍스트·품목 텍스트는 FURTHERPOSTINGDATA(DEV 확인: BAPIFAPO_RET·BAPIFAPO_ADD_INFO)
+      IF line_exists( lt_par[ parameter = 'RETIREMENTDATA' ] ).
+        DATA(ls_rt) = lt_par[ parameter = 'RETIREMENTDATA' ].
+        CREATE DATA lr_r TYPE (ls_rt-structure).
+        setf_opt( EXPORTING ir_struct = lr_r it_names = VALUE #( ( `COMPL_RET` ) ) iv_val = 'X'
+                            iv_type = 'RETIREMENTDATA' io_log = io_log CHANGING ct_ret = ct_ret ).
+        setf_opt( EXPORTING ir_struct = lr_r it_names = VALUE #( ( `VALUEDATE` ) ( `ASVAL_DATE` ) ) iv_val = lv_vd
+                            iv_type = 'RETIREMENTDATA' io_log = io_log CHANGING ct_ret = ct_ret ).
+        INSERT VALUE #( name = 'RETIREMENTDATA' kind = abap_func_exporting value = lr_r ) INTO TABLE lt_ptab.
+      ENDIF.
+      IF line_exists( lt_par[ parameter = 'FURTHERPOSTINGDATA' ] ).
+        DATA(ls_ad) = lt_par[ parameter = 'FURTHERPOSTINGDATA' ].
+        CREATE DATA lr_a TYPE (ls_ad-structure).
+        setf_opt( EXPORTING ir_struct = lr_a it_names = VALUE #( ( `HEADER_TXT` ) ( `BKTXT` ) ) iv_val = is_item-posting_id
+                            iv_type = 'FURTHERPOSTINGDATA' io_log = io_log CHANGING ct_ret = ct_ret ).
+        setf_opt( EXPORTING ir_struct = lr_a it_names = VALUE #( ( `ITEM_TEXT` ) ) iv_val = COND string( WHEN strlen( ls_p-reason ) > 50 THEN ls_p-reason(50) ELSE ls_p-reason )
+                            iv_type = 'FURTHERPOSTINGDATA' io_log = io_log CHANGING ct_ret = ct_ret ).
+        INSERT VALUE #( name = 'FURTHERPOSTINGDATA' kind = abap_func_exporting value = lr_a ) INTO TABLE lt_ptab.
+      ENDIF.
       IF ct_ret IS NOT INITIAL.
         RETURN.
       ENDIF.
@@ -743,6 +754,15 @@ CLASS lcl_post IMPLEMENTATION.
     ENDIF.
     IF lv_has_test = abap_true.
       addp( EXPORTING it_par = lt_par iv_name = 'TESTRUN' iv_val = COND string( WHEN p_test = abap_true THEN 'X' ELSE ' ' ) CHANGING ct_ptab = lt_ptab ).
+    ENDIF.
+
+    IF ct_ret IS NOT INITIAL.
+      RETURN.
+    ENDIF.
+    " TESTRUN이 없는 BAPI는 시험 실행에서 호출하지 않는다(실제로 폐기되므로). 값 채우기까지는 점검했다
+    IF p_test = abap_true AND lv_has_test = abap_false.
+      io_log->add( |{ lc_fm }에 TESTRUN 파라미터가 없어 시험 실행은 BAPI를 호출하지 않고 입력 점검까지만 했습니다| ).
+      RETURN.
     ENDIF.
 
     call_bapi( EXPORTING iv_fm = lc_fm
