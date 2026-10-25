@@ -358,7 +358,7 @@ CLASS lcl_post IMPLEMENTATION.
                                    ELSE concat_lines_of( table = lt_sk sep = ',' ) ).
     DATA(lv_inv_txt) = COND string( WHEN zcl_alm_cfg=>get( iv_param = 'SEND_INVNO' ) IS NOT INITIAL THEN 'X'
                                     ELSE '(꺼짐)' ).
-    lo_log->add( |버전 v12 · POST_SKIP: { lv_sk_txt } · SEND_INVNO: { lv_inv_txt }| ).
+    lo_log->add( |버전 v13 · POST_SKIP: { lv_sk_txt } · SEND_INVNO: { lv_inv_txt }| ).
     lo_log->set_result( iv_status = zcl_alm_log=>c_success iv_rec_cnt = lines( ls_claim-items ) ).
     IF p_test = abap_false.
       lo_log->save( iv_commit = abap_true ).
@@ -728,6 +728,7 @@ CLASS lcl_post IMPLEMENTATION.
     DATA lr_g TYPE REF TO data.
     DATA lr_r TYPE REF TO data.
     DATA lr_a TYPE REF TO data.
+    DATA lr_v TYPE REF TO data.
     CONSTANTS lc_fm TYPE string VALUE 'BAPI_ASSET_RETIREMENT_POST'.
 
     /ui2/cl_json=>deserialize( EXPORTING json = is_item-payload pretty_name = /ui2/cl_json=>pretty_mode-camel_case
@@ -749,8 +750,8 @@ CLASS lcl_post IMPLEMENTATION.
       err( EXPORTING iv_text = '부분 폐기는 v1에서 지원하지 않습니다(isPartial = true)' CHANGING ct_ret = ct_ret ).
       RETURN.
     ENDIF.
-    IF ls_p-retire_type = 'SALE'.
-      err( EXPORTING iv_text = '매각(SALE)은 수익 필드·고객 계정(D-05) 확정 전이라 지원하지 않습니다. 폐기(SCRAP·LOSS)만 가능합니다' CHANGING ct_ret = ct_ret ).
+    IF ls_p-retire_type = 'SALE' AND ( ls_p-sale_amount IS INITIAL OR CONV decfloat34( ls_p-sale_amount ) <= 0 ).
+      err( EXPORTING iv_text = '매각(SALE) 전기 건에 매각금액(saleAmount)이 없거나 0 이하입니다' CHANGING ct_ret = ct_ret ).
       RETURN.
     ENDIF.
     DATA(lv_tt) = zcl_alm_cfg=>map( iv_type = 'RETIRE_TT' iv_alm = ls_p-retire_type ).
@@ -827,6 +828,32 @@ CLASS lcl_post IMPLEMENTATION.
         setf_opt( EXPORTING ir_struct = lr_a it_names = VALUE #( ( `ITEM_TEXT` ) ) iv_val = COND string( WHEN strlen( ls_p-reason ) > 50 THEN ls_p-reason(50) ELSE ls_p-reason )
                             iv_type = 'FURTHERPOSTINGDATA' io_log = io_log CHANGING ct_ret = ct_ret ).
         INSERT VALUE #( name = 'FURTHERPOSTINGDATA' kind = abap_func_exporting value = lr_a ) INTO TABLE lt_ptab.
+      ENDIF.
+      " 매각(D-05 제안: 고객 계정 없이 수익만): 수익 구조(REVENUE…)가 있으면 거기에, 없으면 RETIREMENTDATA의 REVENUE 필드에 매각금액·통화를 넣는다
+      IF ls_p-retire_type = 'SALE'.
+        SELECT SINGLE waers FROM t001 WHERE bukrs = @is_item-company_code INTO @DATA(lv_waers).
+        DATA(lv_rev_ok) = abap_false.
+        LOOP AT lt_par INTO DATA(ls_rv) WHERE paramtype = 'I' AND structure IS NOT INITIAL AND parameter CS 'REVENUE'.
+          CREATE DATA lr_v TYPE (ls_rv-structure).
+          setf_opt( EXPORTING ir_struct = lr_v it_names = VALUE #( ( `REVENUE` ) ( `NET_REVENUE` ) ( `AMOUNT` ) ( `AMOUNT_EXTERN` ) ) iv_val = ls_p-sale_amount
+                              iv_type = ls_rv-parameter io_log = io_log CHANGING ct_ret = ct_ret ).
+          setf_opt( EXPORTING ir_struct = lr_v it_names = VALUE #( ( `CURRENCY` ) ( `CURRENCY_ISO` ) ) iv_val = lv_waers
+                              iv_type = ls_rv-parameter io_log = io_log CHANGING ct_ret = ct_ret ).
+          INSERT VALUE #( name = ls_rv-parameter kind = abap_func_exporting value = lr_v ) INTO TABLE lt_ptab.
+          lv_rev_ok = abap_true.
+        ENDLOOP.
+        IF lv_rev_ok = abap_false AND lr_r IS BOUND.
+          FIELD-SYMBOLS <ls_ret> TYPE any.
+          ASSIGN lr_r->* TO <ls_ret>.
+          ASSIGN COMPONENT 'REVENUE' OF STRUCTURE <ls_ret> TO FIELD-SYMBOL(<lv_rv>).
+          IF sy-subrc = 0.
+            setf( EXPORTING ir_struct = lr_r iv_field = 'REVENUE' iv_val = ls_p-sale_amount iv_type = 'RETIREMENTDATA' CHANGING ct_ret = ct_ret ).
+            lv_rev_ok = abap_true.
+          ENDIF.
+        ENDIF.
+        IF lv_rev_ok = abap_false.
+          err( EXPORTING iv_text = |{ lc_fm }에서 매각 수익 필드를 찾지 못했습니다. 위 구조 필드 목록(로그)을 보내 주세요| CHANGING ct_ret = ct_ret ).
+        ENDIF.
       ENDIF.
       IF ct_ret IS NOT INITIAL.
         RETURN.
