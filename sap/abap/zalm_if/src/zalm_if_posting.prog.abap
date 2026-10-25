@@ -13,7 +13,8 @@
 REPORT zalm_if_posting.
 
 CONSTANTS: gc_if_create TYPE c LENGTH 10 VALUE 'IF-AA-03',
-           gc_if_change TYPE c LENGTH 10 VALUE 'IF-AA-04'.
+           gc_if_change TYPE c LENGTH 10 VALUE 'IF-AA-04',
+           gc_if_retire TYPE c LENGTH 10 VALUE 'IF-AA-06'.
 
 DATA gv_bukrs_sel TYPE bukrs.
 
@@ -71,6 +72,21 @@ TYPES:
     fields                 TYPE gty_fields,
     cost_center_valid_from TYPE string,
   END OF gty_change,
+  BEGIN OF gty_retire,
+    retire_type TYPE string,
+    sale_amount TYPE string,
+    is_partial  TYPE abap_bool,
+    reason      TYPE string,
+  END OF gty_retire,
+  BEGIN OF gty_doc,
+    belnr TYPE string,
+    gjahr TYPE string,
+  END OF gty_doc,
+  BEGIN OF gty_par,
+    parameter TYPE fupararef-parameter,
+    paramtype TYPE fupararef-paramtype,
+    structure TYPE fupararef-structure,
+  END OF gty_par,
   BEGIN OF gty_msg,
     type   TYPE string,
     id     TYPE string,
@@ -81,6 +97,7 @@ TYPES:
     posting_id TYPE string,
     status     TYPE string,
     asset      TYPE gty_asref,
+    sap_document TYPE gty_doc,
     messages   TYPE STANDARD TABLE OF gty_msg WITH EMPTY KEY,
   END OF gty_result,
   BEGIN OF gty_claim_req,
@@ -88,6 +105,8 @@ TYPES:
     max_items TYPE i,
     types     TYPE string_table,
   END OF gty_claim_req.
+
+TYPES gtt_par TYPE STANDARD TABLE OF gty_par WITH DEFAULT KEY.
 
 CLASS lcl_post DEFINITION FINAL.
   PUBLIC SECTION.
@@ -122,8 +141,32 @@ CLASS lcl_post DEFINITION FINAL.
       EXPORTING es_asset TYPE gty_asref
       CHANGING  ct_ret   TYPE bapirettab
       RAISING   cx_sy_create_data_error cx_sy_dyn_call_error.
+    METHODS handle_retire
+      IMPORTING is_item     TYPE gty_item
+                io_log      TYPE REF TO zcl_alm_log
+      EXPORTING es_asset    TYPE gty_asref
+                es_doc      TYPE gty_doc
+                ev_obj_type TYPE awtyp
+                ev_obj_key  TYPE awkey
+      CHANGING  ct_ret      TYPE bapirettab
+      RAISING   cx_sy_create_data_error cx_sy_dyn_call_error.
+    METHODS addp
+      IMPORTING it_par   TYPE gtt_par
+                iv_name  TYPE csequence
+                iv_val   TYPE csequence
+                iv_alpha TYPE abap_bool DEFAULT abap_false
+      CHANGING  ct_ptab  TYPE abap_func_parmbind_tab
+      RAISING   cx_sy_create_data_error.
+    METHODS find_doc
+      IMPORTING iv_bukrs    TYPE bukrs
+                iv_obj_type TYPE awtyp
+                iv_obj_key  TYPE awkey
+                iv_text     TYPE csequence
+      RETURNING VALUE(rs_doc) TYPE gty_doc.
     METHODS call_bapi
       IMPORTING iv_fm   TYPE csequence
+      EXPORTING ev_obj_type TYPE awtyp
+                ev_obj_key  TYPE awkey
       CHANGING  ct_ptab TYPE abap_func_parmbind_tab
                 ct_ret  TYPE bapirettab
       RAISING   cx_sy_create_data_error.
@@ -260,7 +303,7 @@ CLASS lcl_post IMPLEMENTATION.
     DATA ls_claim TYPE gty_claim.
     ls_req-batch_id = mv_batch.
     ls_req-max_items = p_max.
-    ls_req-types = VALUE #( ( `ASSET_CREATE` ) ( `ASSET_CHANGE` ) ).
+    ls_req-types = VALUE #( ( `ASSET_CREATE` ) ( `ASSET_CHANGE` ) ( `ASSET_RETIRE` ) ).
     TRY.
         DATA(ls_resp) = mo_api->post( iv_path = '/sap/postings:claim' iv_body = zcl_alm_http_client=>to_json( ls_req ) iv_key = mv_batch ).
         IF ls_resp-status <> 200.
@@ -287,7 +330,7 @@ CLASS lcl_post IMPLEMENTATION.
 
     lo_log->add( |claim: { lines( ls_claim-items ) }건(최대 { p_max })| ).
     DATA(lt_sk) = zcl_alm_cfg=>get_list( 'POST_SKIP' ).
-    lo_log->add( |버전 v7 · POST_SKIP: { COND string( WHEN lt_sk IS INITIAL THEN '(없음)' ELSE concat_lines_of( table = lt_sk sep = ',' ) ) } · SEND_INVNO: { COND string( WHEN zcl_alm_cfg=>get( iv_param = 'SEND_INVNO' ) IS NOT INITIAL THEN 'X' ELSE '(꺼짐)' ) }| ).
+    lo_log->add( |버전 v8 · POST_SKIP: { COND string( WHEN lt_sk IS INITIAL THEN '(없음)' ELSE concat_lines_of( table = lt_sk sep = ',' ) ) } · SEND_INVNO: { COND string( WHEN zcl_alm_cfg=>get( iv_param = 'SEND_INVNO' ) IS NOT INITIAL THEN 'X' ELSE '(꺼짐)' ) }| ).
     lo_log->set_result( iv_status = zcl_alm_log=>c_success iv_rec_cnt = lines( ls_claim-items ) ).
     IF p_test = abap_false.
       lo_log->save( iv_commit = abap_true ).
@@ -307,8 +350,11 @@ CLASS lcl_post IMPLEMENTATION.
     DATA ls_res TYPE gty_result.
     DATA ls_asset TYPE gty_asref.
     DATA lt_ret TYPE bapirettab.
+    DATA ls_doc TYPE gty_doc.
+    DATA lv_obj_type TYPE awtyp.
+    DATA lv_obj_key TYPE awkey.
 
-    DATA(lv_if) = COND #( WHEN is_item-type = 'ASSET_CREATE' THEN gc_if_create ELSE gc_if_change ).
+    DATA(lv_if) = SWITCH #( is_item-type WHEN 'ASSET_CREATE' THEN gc_if_create WHEN 'ASSET_RETIRE' THEN gc_if_retire ELSE gc_if_change ).
     DATA(lo_log) = NEW zcl_alm_log( iv_if_id = lv_if iv_batch_id = mv_batch iv_posting_id = is_item-posting_id iv_bukrs = mv_bukrs ).
     ls_res-posting_id = is_item-posting_id.
     lo_log->add( |{ is_item-posting_id } { is_item-type } 시도 { is_item-attempt }| ).
@@ -318,6 +364,9 @@ CLASS lcl_post IMPLEMENTATION.
     IF p_test = abap_false AND ls_prev-status = zcl_alm_log=>c_posted.
       ls_res-status = 'POSTED'.
       ls_res-asset = VALUE #( asset_no = ls_prev-anln1 sub_no = ls_prev-anln2 ).
+      IF ls_prev-belnr IS NOT INITIAL.
+        ls_res-sap_document = VALUE #( belnr = ls_prev-belnr gjahr = ls_prev-gjahr ).
+      ENDIF.
       DATA(lv_h) = reply( is_res = ls_res iv_key = |{ is_item-posting_id }-{ is_item-attempt }-{ mv_stamp(12) }| iv_log_id = ls_prev-log_id ).
       WRITE: / is_item-posting_id, 'POSTED 로그가 있어 저장된 결과를 회신', lv_h.
       RETURN.
@@ -332,6 +381,10 @@ CLASS lcl_post IMPLEMENTATION.
               handle_create( EXPORTING is_item = is_item io_log = lo_log IMPORTING es_asset = ls_asset CHANGING ct_ret = lt_ret ).
             WHEN 'ASSET_CHANGE'.
               handle_change( EXPORTING is_item = is_item io_log = lo_log IMPORTING es_asset = ls_asset CHANGING ct_ret = lt_ret ).
+            WHEN 'ASSET_RETIRE'.
+              handle_retire( EXPORTING is_item = is_item io_log = lo_log
+                             IMPORTING es_asset = ls_asset es_doc = ls_doc ev_obj_type = lv_obj_type ev_obj_key = lv_obj_key
+                             CHANGING ct_ret = lt_ret ).
             WHEN OTHERS.
               err( EXPORTING iv_text = |지원하지 않는 유형 { is_item-type }| CHANGING ct_ret = lt_ret ).
           ENDCASE.
@@ -369,16 +422,37 @@ CLASS lcl_post IMPLEMENTATION.
       ls_res-status = 'POSTED'.
       ls_res-asset = VALUE #( asset_no = ls_asset-asset_no sub_no = ls_asset-sub_no ).
       lo_log->set_posting( iv_anln1 = CONV #( ls_asset-asset_no ) iv_anln2 = CONV #( ls_asset-sub_no ) ).
+      IF is_item-type = 'ASSET_RETIRE'.
+        lo_log->set_posting( iv_obj_type = lv_obj_type iv_obj_key = lv_obj_key ).
+        IF ls_doc-belnr IS NOT INITIAL.
+          lo_log->set_posting( iv_belnr = CONV #( ls_doc-belnr ) iv_gjahr = CONV #( ls_doc-gjahr ) ).
+        ENDIF.
+      ENDIF.
       lo_log->set_result( iv_status = zcl_alm_log=>c_posted iv_rec_cnt = 1 ).
       lo_log->save( ).
       CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
         EXPORTING
           wait = abap_true.
+      IF is_item-type = 'ASSET_RETIRE'.
+        " 4.2-5: 전표번호는 커밋 뒤에 BKPF(AWTYP·AWKEY)로 찾아 로그에 다시 넣는다
+        IF ls_doc-belnr IS INITIAL.
+          ls_doc = find_doc( iv_bukrs = CONV #( is_item-company_code ) iv_obj_type = lv_obj_type iv_obj_key = lv_obj_key iv_text = is_item-posting_id ).
+        ENDIF.
+        IF ls_doc-belnr IS INITIAL.
+          lo_log->add( iv_type = 'E' iv_text = |폐기는 전기됐지만 전표번호를 찾지 못했습니다(OBJ { lv_obj_type } { lv_obj_key }). SAP에서 전표를 확인하세요| ).
+          mv_any_failed = abap_true.
+        ELSE.
+          lo_log->set_posting( iv_belnr = CONV #( ls_doc-belnr ) iv_gjahr = CONV #( ls_doc-gjahr ) ).
+          lo_log->add( |전표 { ls_doc-belnr }/{ ls_doc-gjahr }| ).
+          lo_log->save( iv_commit = abap_true ).
+        ENDIF.
+        ls_res-sap_document = ls_doc.
+      ENDIF.
     ENDIF.
 
     " 6. 결과 회신
     DATA(lv_http) = reply( is_res = ls_res iv_key = |{ is_item-posting_id }-{ is_item-attempt }-{ mv_stamp(12) }| io_log = lo_log ).
-    WRITE: / is_item-posting_id, ls_res-status, ls_res-asset-asset_no, lv_http.
+    WRITE: / is_item-posting_id, ls_res-status, ls_res-asset-asset_no, ls_res-sap_document-belnr, lv_http.
   ENDMETHOD.
 
 
@@ -542,6 +616,176 @@ CLASS lcl_post IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD handle_retire.
+    " IF-AA-06 폐기 — BAPI_ASSET_RETIREMENT_POST. 릴리스마다 파라미터가 달라 함수 인터페이스(FUPARAREF)를 읽어
+    " 구조형(GENERALPOSTINGDATA)이면 구조로, 아니면 단일 파라미터(COMPANYCODE·ASSET…)로 채운다(08 6.4, D-13)
+    DATA lt_par TYPE gtt_par.
+    DATA ls_p TYPE gty_retire.
+    DATA lr_g TYPE REF TO data.
+    CONSTANTS lc_fm TYPE string VALUE 'BAPI_ASSET_RETIREMENT_POST'.
+
+    /ui2/cl_json=>deserialize( EXPORTING json = is_item-payload pretty_name = /ui2/cl_json=>pretty_mode-camel_case
+                               CHANGING data = ls_p ).
+    IF is_item-asset-asset_no IS INITIAL.
+      err( EXPORTING iv_text = 'ASSET_RETIRE 전기 건에 asset.assetNo가 없습니다' CHANGING ct_ret = ct_ret ).
+      RETURN.
+    ENDIF.
+    DATA(lv_a1) = CONV anln1( |{ is_item-asset-asset_no ALPHA = IN }| ).
+    DATA(lv_a2) = CONV anln2( COND string( WHEN is_item-asset-sub_no IS INITIAL THEN `0000` ELSE is_item-asset-sub_no ) ).
+    es_asset = VALUE #( asset_no = lv_a1 sub_no = lv_a2 ).
+
+    SELECT SINGLE deakt FROM anla WHERE bukrs = @is_item-company_code AND anln1 = @lv_a1 AND anln2 = @lv_a2 INTO @DATA(lv_deakt).
+    IF sy-subrc <> 0.
+      err( EXPORTING iv_text = |자산 { is_item-company_code }/{ lv_a1 }-{ lv_a2 }이(가) SAP에 없습니다| CHANGING ct_ret = ct_ret ).
+      RETURN.
+    ENDIF.
+    IF ls_p-is_partial = abap_true.
+      err( EXPORTING iv_text = '부분 폐기는 v1에서 지원하지 않습니다(isPartial = true)' CHANGING ct_ret = ct_ret ).
+      RETURN.
+    ENDIF.
+    IF ls_p-retire_type = 'SALE'.
+      err( EXPORTING iv_text = '매각(SALE)은 수익 필드·고객 계정(D-05) 확정 전이라 지원하지 않습니다. 폐기(SCRAP·LOSS)만 가능합니다' CHANGING ct_ret = ct_ret ).
+      RETURN.
+    ENDIF.
+    DATA(lv_tt) = zcl_alm_cfg=>map( iv_type = 'RETIRE_TT' iv_alm = ls_p-retire_type ).
+    IF lv_tt IS INITIAL.
+      err( EXPORTING iv_text = |ZALM_MAP RETIRE_TT에 { ls_p-retire_type } 매핑(거래유형)이 없습니다. ZALM_IF_CONFIG에서 등록하세요| CHANGING ct_ret = ct_ret ).
+      RETURN.
+    ENDIF.
+
+    " 3. 로그가 없어도 SAP에 이미 전기됐는지 확인: 헤더 텍스트(BKTXT) = postingId
+    DATA(lv_txt) = CONV bkpf-bktxt( is_item-posting_id ).
+    SELECT SINGLE belnr, gjahr FROM bkpf
+      WHERE bukrs = @is_item-company_code AND bktxt = @lv_txt
+      INTO @DATA(ls_old).
+    IF sy-subrc = 0.
+      es_doc = VALUE #( belnr = ls_old-belnr gjahr = ls_old-gjahr ).
+      io_log->add( |이미 SAP에 전기된 전표 { ls_old-belnr }/{ ls_old-gjahr }이(가) 있어 BAPI를 부르지 않고 그 번호로 POSTED 처리합니다| ).
+      RETURN.
+    ENDIF.
+    IF lv_deakt IS NOT INITIAL.
+      err( EXPORTING iv_text = |자산 { lv_a1 }-{ lv_a2 }은(는) SAP에서 이미 비활성(폐기일 { lv_deakt })입니다. 전표를 확인하세요| CHANGING ct_ret = ct_ret ).
+      RETURN.
+    ENDIF.
+
+    SELECT parameter, paramtype, structure FROM fupararef
+      WHERE funcname = @lc_fm AND r3state = 'A'
+      INTO CORRESPONDING FIELDS OF TABLE @lt_par.
+    IF lt_par IS INITIAL.
+      SELECT parameter, paramtype, structure FROM fupararef
+        WHERE funcname = @lc_fm
+        INTO CORRESPONDING FIELDS OF TABLE @lt_par.
+    ENDIF.
+    IF lt_par IS INITIAL.
+      err( EXPORTING iv_text = |함수 { lc_fm }의 인터페이스(FUPARAREF)를 읽지 못했습니다. SE37에서 확인하세요| CHANGING ct_ret = ct_ret ).
+      RETURN.
+    ENDIF.
+    io_log->add( |{ lc_fm } 인터페이스: { concat_lines_of( table = VALUE string_table( FOR p IN lt_par ( |{ p-parameter }({ p-paramtype }:{ p-structure })| ) ) sep = ` ` ) }| ).
+
+    DATA(lv_pd) = COND string( WHEN is_item-posting_date IS NOT INITIAL THEN is_item-posting_date
+                               ELSE |{ sy-datum(4) }-{ sy-datum+4(2) }-{ sy-datum+6(2) }| ).
+    DATA(lv_vd) = COND string( WHEN is_item-value_date IS NOT INITIAL THEN is_item-value_date ELSE lv_pd ).
+    DATA(lv_has_test) = xsdbool( line_exists( lt_par[ parameter = 'TESTRUN' ] ) ).
+    IF p_test = abap_true AND lv_has_test = abap_false.
+      io_log->add( |{ lc_fm }에 TESTRUN 파라미터가 없어 시험 실행은 BAPI를 호출하지 않고 입력 점검까지만 합니다| ).
+      RETURN.
+    ENDIF.
+
+    DATA(lt_ptab) = VALUE abap_func_parmbind_tab( ).
+    DATA(lv_bukrs) = CONV string( is_item-company_code ).
+    DATA(lv_a1s) = CONV string( lv_a1 ).
+    DATA(lv_a2s) = CONV string( lv_a2 ).
+    IF line_exists( lt_par[ parameter = 'GENERALPOSTINGDATA' ] ).
+      DATA(ls_g) = lt_par[ parameter = 'GENERALPOSTINGDATA' ].
+      CREATE DATA lr_g TYPE (ls_g-structure).
+      setf( EXPORTING ir_struct = lr_g iv_field = 'COMP_CODE' iv_val = lv_bukrs iv_type = 'GENERALPOSTINGDATA' CHANGING ct_ret = ct_ret ).
+      setf( EXPORTING ir_struct = lr_g iv_field = 'ASSETMAINO' iv_val = lv_a1s iv_type = 'GENERALPOSTINGDATA' CHANGING ct_ret = ct_ret ).
+      setf( EXPORTING ir_struct = lr_g iv_field = 'ASSETSUBNO' iv_val = lv_a2s iv_type = 'GENERALPOSTINGDATA' CHANGING ct_ret = ct_ret ).
+      setf( EXPORTING ir_struct = lr_g iv_field = 'PSTNG_DATE' iv_val = lv_pd iv_type = 'GENERALPOSTINGDATA' CHANGING ct_ret = ct_ret ).
+      setf( EXPORTING ir_struct = lr_g iv_field = 'DOC_DATE' iv_val = lv_pd iv_type = 'GENERALPOSTINGDATA' CHANGING ct_ret = ct_ret ).
+      setf( EXPORTING ir_struct = lr_g iv_field = 'ASVAL_DATE' iv_val = lv_vd iv_type = 'GENERALPOSTINGDATA' CHANGING ct_ret = ct_ret ).
+      setf( EXPORTING ir_struct = lr_g iv_field = 'ASSETTRTYP' iv_val = lv_tt iv_type = 'GENERALPOSTINGDATA' CHANGING ct_ret = ct_ret ).
+      setf( EXPORTING ir_struct = lr_g iv_field = 'HEADER_TXT' iv_val = is_item-posting_id iv_type = 'GENERALPOSTINGDATA' CHANGING ct_ret = ct_ret ).
+      IF ct_ret IS NOT INITIAL.
+        RETURN.
+      ENDIF.
+      INSERT VALUE #( name = 'GENERALPOSTINGDATA' kind = abap_func_exporting value = lr_g ) INTO TABLE lt_ptab.
+    ELSE.
+      addp( EXPORTING it_par = lt_par iv_name = 'COMPANYCODE' iv_val = lv_bukrs CHANGING ct_ptab = lt_ptab ).
+      addp( EXPORTING it_par = lt_par iv_name = 'ASSET' iv_val = lv_a1s iv_alpha = abap_true CHANGING ct_ptab = lt_ptab ).
+      addp( EXPORTING it_par = lt_par iv_name = 'SUBNUMBER' iv_val = lv_a2s iv_alpha = abap_true CHANGING ct_ptab = lt_ptab ).
+      addp( EXPORTING it_par = lt_par iv_name = 'DOCUMENTDATE' iv_val = lv_pd CHANGING ct_ptab = lt_ptab ).
+      addp( EXPORTING it_par = lt_par iv_name = 'POSTINGDATE' iv_val = lv_pd CHANGING ct_ptab = lt_ptab ).
+      addp( EXPORTING it_par = lt_par iv_name = 'ASSETVALDATE' iv_val = lv_vd CHANGING ct_ptab = lt_ptab ).
+      addp( EXPORTING it_par = lt_par iv_name = 'ASSETTRTYP' iv_val = lv_tt CHANGING ct_ptab = lt_ptab ).
+      addp( EXPORTING it_par = lt_par iv_name = 'REFERENCE' iv_val = is_item-posting_id CHANGING ct_ptab = lt_ptab ).
+    ENDIF.
+    IF lv_has_test = abap_true.
+      addp( EXPORTING it_par = lt_par iv_name = 'TESTRUN' iv_val = COND string( WHEN p_test = abap_true THEN 'X' ELSE ' ' ) CHANGING ct_ptab = lt_ptab ).
+    ENDIF.
+
+    call_bapi( EXPORTING iv_fm = lc_fm
+               IMPORTING ev_obj_type = ev_obj_type ev_obj_key = ev_obj_key
+               CHANGING ct_ptab = lt_ptab ct_ret = ct_ret ).
+  ENDMETHOD.
+
+
+  METHOD addp.
+    " 인터페이스(FUPARAREF)에 있는 입력 단일 파라미터만, 그 파라미터의 DDIC 유형으로 값을 만들어 넣는다
+    DATA lr TYPE REF TO data.
+    DATA lv_t TYPE c LENGTH 1.
+    FIELD-SYMBOLS <lv> TYPE any.
+
+    READ TABLE it_par INTO DATA(ls_par) WITH KEY parameter = iv_name.
+    IF sy-subrc <> 0 OR ls_par-paramtype <> 'I'.
+      RETURN.
+    ENDIF.
+    IF ls_par-structure IS INITIAL.
+      CREATE DATA lr TYPE string.
+    ELSE.
+      CREATE DATA lr TYPE (ls_par-structure).
+    ENDIF.
+    ASSIGN lr->* TO <lv>.
+    DESCRIBE FIELD <lv> TYPE lv_t.
+    IF lv_t = 'D'.
+      <lv> = to_date( iv_val ).
+    ELSEIF iv_alpha = abap_true.
+      DATA(lv_s) = CONV string( iv_val ).
+      <lv> = |{ lv_s ALPHA = IN }|.
+    ELSE.
+      <lv> = iv_val.
+    ENDIF.
+    INSERT VALUE #( name = iv_name kind = abap_func_exporting value = lr ) INTO TABLE ct_ptab.
+  ENDMETHOD.
+
+
+  METHOD find_doc.
+    " 폐기 전표: BAPI가 돌려준 문서 참조(AWTYP·AWKEY)로 BKPF를 찾고, 없으면 헤더 텍스트(postingId)로 찾는다
+    DATA lv_awtyp TYPE bkpf-awtyp.
+    DATA lv_awkey TYPE bkpf-awkey.
+    DATA lv_txt TYPE bkpf-bktxt.
+
+    lv_awtyp = iv_obj_type.
+    lv_awkey = iv_obj_key.
+    IF lv_awtyp IS NOT INITIAL AND lv_awkey IS NOT INITIAL.
+      SELECT SINGLE belnr, gjahr FROM bkpf
+        WHERE bukrs = @iv_bukrs AND awtyp = @lv_awtyp AND awkey = @lv_awkey
+        INTO @DATA(ls_b).
+      IF sy-subrc = 0.
+        rs_doc = VALUE #( belnr = ls_b-belnr gjahr = ls_b-gjahr ).
+        RETURN.
+      ENDIF.
+    ENDIF.
+    lv_txt = iv_text.
+    SELECT SINGLE belnr, gjahr FROM bkpf
+      WHERE bukrs = @iv_bukrs AND bktxt = @lv_txt
+      INTO @DATA(ls_t).
+    IF sy-subrc = 0.
+      rs_doc = VALUE #( belnr = ls_t-belnr gjahr = ls_t-gjahr ).
+    ENDIF.
+  ENDMETHOD.
+
+
   METHOD call_bapi.
     " BAPI의 메시지 파라미터 이름·종류는 릴리스마다 달라(RETURN이 없을 수 있음) 함수 인터페이스(FUPARAREF)에서 찾아 붙인다.
     " 인터페이스에 없는 선택 파라미터(TESTRUN·X 구조 등)는 빼고 경고를 남긴다
@@ -609,6 +853,19 @@ CLASS lcl_post IMPLEMENTATION.
         RETURN.
     ENDCASE.
 
+    " 문서 참조(DOCUMENTREFERENCE)가 있는 BAPI(폐기 등)는 OBJ_TYPE·OBJ_KEY를 받아 둔다
+    DATA lr_dr TYPE REF TO data.
+    READ TABLE lt_par INTO DATA(ls_dr) WITH KEY parameter = 'DOCUMENTREFERENCE'.
+    IF sy-subrc = 0 AND ls_dr-structure IS NOT INITIAL AND NOT line_exists( lt_keep[ name = 'DOCUMENTREFERENCE' ] ).
+      IF ls_dr-paramtype = 'T'.
+        CREATE DATA lr_dr TYPE STANDARD TABLE OF (ls_dr-structure).
+        INSERT VALUE #( name = 'DOCUMENTREFERENCE' kind = abap_func_tables value = lr_dr ) INTO TABLE lt_keep.
+      ELSEIF ls_dr-paramtype = 'E'.
+        CREATE DATA lr_dr TYPE (ls_dr-structure).
+        INSERT VALUE #( name = 'DOCUMENTREFERENCE' kind = abap_func_importing value = lr_dr ) INTO TABLE lt_keep.
+      ENDIF.
+    ENDIF.
+
     DATA(lt_etab) = VALUE abap_func_excpbind_tab( ( name = 'OTHERS' value = 99 ) ).
     TRY.
         CALL FUNCTION iv_fm
@@ -621,6 +878,35 @@ CLASS lcl_post IMPLEMENTATION.
         err( EXPORTING iv_text = |{ iv_fm } 호출 오류: { lx->get_text( ) }. 인터페이스 파라미터: { lv_list }| CHANGING ct_ret = ct_ret ).
         RETURN.
     ENDTRY.
+
+    IF lr_dr IS BOUND.
+      FIELD-SYMBOLS <lv_dr> TYPE any.
+      ASSIGN lr_dr->* TO <lv_dr>.
+      IF cl_abap_typedescr=>describe_by_data( <lv_dr> )->kind = cl_abap_typedescr=>kind_table.
+        FIELD-SYMBOLS <lt_dr> TYPE STANDARD TABLE.
+        ASSIGN lr_dr->* TO <lt_dr>.
+        LOOP AT <lt_dr> ASSIGNING FIELD-SYMBOL(<ls_dr>).
+          ASSIGN COMPONENT 'OBJ_TYPE' OF STRUCTURE <ls_dr> TO FIELD-SYMBOL(<lv_t1>).
+          IF sy-subrc = 0.
+            ev_obj_type = <lv_t1>.
+          ENDIF.
+          ASSIGN COMPONENT 'OBJ_KEY' OF STRUCTURE <ls_dr> TO FIELD-SYMBOL(<lv_k1>).
+          IF sy-subrc = 0.
+            ev_obj_key = <lv_k1>.
+          ENDIF.
+          EXIT.
+        ENDLOOP.
+      ELSE.
+        ASSIGN COMPONENT 'OBJ_TYPE' OF STRUCTURE <lv_dr> TO FIELD-SYMBOL(<lv_t2>).
+        IF sy-subrc = 0.
+          ev_obj_type = <lv_t2>.
+        ENDIF.
+        ASSIGN COMPONENT 'OBJ_KEY' OF STRUCTURE <lv_dr> TO FIELD-SYMBOL(<lv_k2>).
+        IF sy-subrc = 0.
+          ev_obj_key = <lv_k2>.
+        ENDIF.
+      ENDIF.
+    ENDIF.
 
     IF lr_ret IS BOUND.
       ASSIGN lr_ret->* TO <ls_x>.
@@ -755,12 +1041,15 @@ CLASS lcl_post IMPLEMENTATION.
     GET TIME STAMP FIELD lv_now.
     DATA(lv_from) = cl_abap_tstmp=>subtractsecs( tstmp = lv_now secs = 604800 ).
     SELECT * FROM zalm_if_log
-      WHERE bukrs = @mv_bukrs AND ( if_id = 'IF-AA-03' OR if_id = 'IF-AA-04' )
+      WHERE bukrs = @mv_bukrs AND ( if_id = 'IF-AA-03' OR if_id = 'IF-AA-04' OR if_id = 'IF-AA-06' )
         AND status = 'POSTED' AND http_status <> 200 AND start_ts >= @lv_from AND posting_id <> @space
       INTO TABLE @DATA(lt_rows).
     LOOP AT lt_rows INTO DATA(ls_row).
       DATA(ls_res) = VALUE gty_result( posting_id = ls_row-posting_id status = 'POSTED'
                                        asset = VALUE #( asset_no = ls_row-anln1 sub_no = ls_row-anln2 ) ).
+      IF ls_row-belnr IS NOT INITIAL.
+        ls_res-sap_document = VALUE #( belnr = ls_row-belnr gjahr = ls_row-gjahr ).
+      ENDIF.
       DATA(lv_http) = reply( is_res = ls_res iv_key = |{ ls_row-posting_id }-R{ mv_stamp(12) }| iv_log_id = ls_row-log_id ).
       WRITE: / ls_row-posting_id, '회신 재시도', lv_http.
     ENDLOOP.
