@@ -112,12 +112,19 @@ CLASS lcl_post DEFINITION FINAL.
       IMPORTING is_item  TYPE gty_item
                 io_log   TYPE REF TO zcl_alm_log
       EXPORTING es_asset TYPE gty_asref
-      CHANGING  ct_ret   TYPE bapirettab.
+      CHANGING  ct_ret   TYPE bapirettab
+      RAISING   cx_sy_create_data_error cx_sy_dyn_call_error.
     METHODS handle_change
       IMPORTING is_item  TYPE gty_item
                 io_log   TYPE REF TO zcl_alm_log
       EXPORTING es_asset TYPE gty_asref
-      CHANGING  ct_ret   TYPE bapirettab.
+      CHANGING  ct_ret   TYPE bapirettab
+      RAISING   cx_sy_create_data_error cx_sy_dyn_call_error.
+    METHODS call_bapi
+      IMPORTING iv_fm   TYPE csequence
+      CHANGING  ct_ptab TYPE abap_func_parmbind_tab
+                ct_ret  TYPE bapirettab
+      RAISING   cx_sy_create_data_error.
     METHODS reply
       IMPORTING is_res     TYPE gty_result
                 iv_key     TYPE csequence
@@ -384,7 +391,6 @@ CLASS lcl_post IMPLEMENTATION.
     DATA lv_cc TYPE bukrs.
     DATA lv_asset TYPE anln1.
     DATA lv_sub TYPE anln2.
-    DATA lt_return TYPE bapirettab.
 
     /ui2/cl_json=>deserialize( EXPORTING json = is_item-payload pretty_name = /ui2/cl_json=>pretty_mode-camel_case
                                CHANGING data = ls_p ).
@@ -441,16 +447,8 @@ CLASS lcl_post IMPLEMENTATION.
       ( name = 'TIMEDEPENDENTDATAX' kind = abap_func_exporting value = lr_tdx )
       ( name = 'COMPANYCODE'        kind = abap_func_importing value = REF #( lv_cc ) )
       ( name = 'ASSET'              kind = abap_func_importing value = REF #( lv_asset ) )
-      ( name = 'SUBNUMBER'          kind = abap_func_importing value = REF #( lv_sub ) )
-      ( name = 'RETURN'             kind = abap_func_tables    value = REF #( lt_return ) ) ).
-    DATA(lt_etab) = VALUE abap_func_excpbind_tab( ( name = 'OTHERS' value = 99 ) ).
-    CALL FUNCTION 'BAPI_FIXEDASSET_CREATE1'
-      PARAMETER-TABLE lt_ptab
-      EXCEPTION-TABLE lt_etab.
-    IF sy-subrc <> 0.
-      err( EXPORTING iv_text = |BAPI_FIXEDASSET_CREATE1 호출 예외(sy-subrc { sy-subrc })| CHANGING ct_ret = ct_ret ).
-    ENDIF.
-    APPEND LINES OF lt_return TO ct_ret.
+      ( name = 'SUBNUMBER'          kind = abap_func_importing value = REF #( lv_sub ) ) ).
+    call_bapi( EXPORTING iv_fm = 'BAPI_FIXEDASSET_CREATE1' CHANGING ct_ptab = lt_ptab ct_ret = ct_ret ).
     es_asset = VALUE #( asset_no = lv_asset sub_no = lv_sub ).
     IF p_test = abap_false AND lv_asset IS INITIAL AND NOT line_exists( ct_ret[ type = 'E' ] ) AND NOT line_exists( ct_ret[ type = 'A' ] ).
       err( EXPORTING iv_text = 'BAPI가 오류 없이 끝났지만 자산번호를 돌려주지 않았습니다' CHANGING ct_ret = ct_ret ).
@@ -466,7 +464,6 @@ CLASS lcl_post IMPLEMENTATION.
     DATA lr_td TYPE REF TO data.
     DATA lr_tdx TYPE REF TO data.
     DATA lv_testrun TYPE c LENGTH 1.
-    DATA lt_return TYPE bapirettab.
 
     /ui2/cl_json=>deserialize( EXPORTING json = is_item-payload pretty_name = /ui2/cl_json=>pretty_mode-camel_case
                                CHANGING data = ls_p ).
@@ -518,14 +515,106 @@ CLASS lcl_post IMPLEMENTATION.
       ( name = 'GENERALDATA'        kind = abap_func_exporting value = lr_gd )
       ( name = 'GENERALDATAX'       kind = abap_func_exporting value = lr_gdx )
       ( name = 'TIMEDEPENDENTDATA'  kind = abap_func_exporting value = lr_td )
-      ( name = 'TIMEDEPENDENTDATAX' kind = abap_func_exporting value = lr_tdx )
-      ( name = 'RETURN'             kind = abap_func_tables    value = REF #( lt_return ) ) ).
+      ( name = 'TIMEDEPENDENTDATAX' kind = abap_func_exporting value = lr_tdx ) ).
+    call_bapi( EXPORTING iv_fm = 'BAPI_FIXEDASSET_CHANGE' CHANGING ct_ptab = lt_ptab ct_ret = ct_ret ).
+  ENDMETHOD.
+
+
+  METHOD call_bapi.
+    " BAPI의 메시지 파라미터 이름·종류는 릴리스마다 달라(RETURN이 없을 수 있음) 함수 인터페이스(FUPARAREF)에서 찾아 붙인다.
+    " 인터페이스에 없는 선택 파라미터(TESTRUN·X 구조 등)는 빼고 경고를 남긴다
+    TYPES: BEGIN OF lty_par,
+             parameter TYPE fupararef-parameter,
+             paramtype TYPE fupararef-paramtype,
+             structure TYPE fupararef-structure,
+           END OF lty_par.
+    DATA lt_par TYPE STANDARD TABLE OF lty_par WITH EMPTY KEY.
+    DATA lv_fm TYPE fupararef-funcname.
+    DATA lr_ret TYPE REF TO data.
+    DATA lt_return TYPE bapirettab.
+    DATA ls_r TYPE bapiret2.
+    DATA lv_dropped TYPE string.
+    DATA lv_list TYPE string.
+    FIELD-SYMBOLS <ls_x> TYPE any.
+    FIELD-SYMBOLS <lt_x> TYPE ANY TABLE.
+    FIELD-SYMBOLS <ls_row> TYPE any.
+
+    lv_fm = iv_fm.
+    SELECT parameter, paramtype, structure FROM fupararef
+      WHERE funcname = @lv_fm AND r3state = 'A'
+      INTO CORRESPONDING FIELDS OF TABLE @lt_par.
+    IF lt_par IS INITIAL.
+      SELECT parameter, paramtype, structure FROM fupararef
+        WHERE funcname = @lv_fm
+        INTO CORRESPONDING FIELDS OF TABLE @lt_par.
+    ENDIF.
+    IF lt_par IS INITIAL.
+      err( EXPORTING iv_text = |함수 { iv_fm }의 인터페이스(FUPARAREF)를 읽지 못했습니다. SE37에서 함수가 있는지 확인하세요| CHANGING ct_ret = ct_ret ).
+      RETURN.
+    ENDIF.
+    lv_list = concat_lines_of( table = VALUE string_table( FOR p IN lt_par ( |{ p-parameter }({ p-paramtype })| ) ) sep = ` ` ).
+
+    DATA(lt_keep) = VALUE abap_func_parmbind_tab( ).
+    LOOP AT ct_ptab INTO DATA(ls_pt).
+      IF line_exists( lt_par[ parameter = ls_pt-name ] ).
+        APPEND ls_pt TO lt_keep.
+      ELSE.
+        lv_dropped = |{ lv_dropped } { ls_pt-name }|.
+      ENDIF.
+    ENDLOOP.
+    IF lv_dropped IS NOT INITIAL.
+      APPEND VALUE #( type = 'W' id = 'ZALM' number = '000' message = |{ iv_fm }에 없는 파라미터를 뺐습니다:{ lv_dropped }| ) TO ct_ret.
+    ENDIF.
+
+    " 메시지 파라미터: 구조가 BAPIRET*이거나 이름이 RETURN
+    DATA(lv_found) = abap_false.
+    LOOP AT lt_par INTO DATA(ls_par) WHERE structure CP 'BAPIRET*' OR parameter = 'RETURN'.
+      lv_found = abap_true.
+      EXIT.
+    ENDLOOP.
+    IF lv_found = abap_false.
+      err( EXPORTING iv_text = |{ iv_fm }에서 메시지(BAPIRET2) 파라미터를 찾지 못했습니다. 파라미터: { lv_list }| CHANGING ct_ret = ct_ret ).
+      RETURN.
+    ENDIF.
+    CASE ls_par-paramtype.
+      WHEN 'T'.
+        APPEND VALUE #( name = ls_par-parameter kind = abap_func_tables value = REF #( lt_return ) ) TO lt_keep.
+      WHEN 'E'.
+        CREATE DATA lr_ret TYPE (ls_par-structure).
+        APPEND VALUE #( name = ls_par-parameter kind = abap_func_importing value = lr_ret ) TO lt_keep.
+      WHEN OTHERS.
+        err( EXPORTING iv_text = |{ iv_fm } 메시지 파라미터 { ls_par-parameter }의 종류({ ls_par-paramtype })를 지원하지 않습니다. 파라미터: { lv_list }| CHANGING ct_ret = ct_ret ).
+        RETURN.
+    ENDCASE.
+
     DATA(lt_etab) = VALUE abap_func_excpbind_tab( ( name = 'OTHERS' value = 99 ) ).
-    CALL FUNCTION 'BAPI_FIXEDASSET_CHANGE'
-      PARAMETER-TABLE lt_ptab
-      EXCEPTION-TABLE lt_etab.
-    IF sy-subrc <> 0.
-      err( EXPORTING iv_text = |BAPI_FIXEDASSET_CHANGE 호출 예외(sy-subrc { sy-subrc })| CHANGING ct_ret = ct_ret ).
+    TRY.
+        CALL FUNCTION iv_fm
+          PARAMETER-TABLE lt_keep
+          EXCEPTION-TABLE lt_etab.
+        IF sy-subrc <> 0.
+          err( EXPORTING iv_text = |{ iv_fm } 호출 예외(sy-subrc { sy-subrc })| CHANGING ct_ret = ct_ret ).
+        ENDIF.
+      CATCH cx_sy_dyn_call_error INTO DATA(lx).
+        err( EXPORTING iv_text = |{ iv_fm } 호출 오류: { lx->get_text( ) }. 인터페이스 파라미터: { lv_list }| CHANGING ct_ret = ct_ret ).
+        RETURN.
+    ENDTRY.
+
+    IF lr_ret IS BOUND.
+      ASSIGN lr_ret->* TO <ls_x>.
+      IF cl_abap_typedescr=>describe_by_data( <ls_x> )->kind = cl_abap_typedescr=>kind_table.
+        ASSIGN lr_ret->* TO <lt_x>.
+        LOOP AT <lt_x> ASSIGNING <ls_row>.
+          CLEAR ls_r.
+          MOVE-CORRESPONDING <ls_row> TO ls_r.
+          APPEND ls_r TO lt_return.
+        ENDLOOP.
+      ELSE.
+        MOVE-CORRESPONDING <ls_x> TO ls_r.
+        IF ls_r IS NOT INITIAL.
+          APPEND ls_r TO lt_return.
+        ENDIF.
+      ENDIF.
     ENDIF.
     APPEND LINES OF lt_return TO ct_ret.
   ENDMETHOD.
