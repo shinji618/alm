@@ -52,6 +52,7 @@ TYPES:
   BEGIN OF gty_create,
     asset_class  TYPE string,
     description  TYPE string,
+    description2 TYPE string,
     cost_center  TYPE string,
     cap_date     TYPE string,
     serial_no    TYPE string,
@@ -63,6 +64,7 @@ TYPES:
   END OF gty_create,
   BEGIN OF gty_fields,
     description  TYPE string,
+    description2 TYPE string,
     serial_no    TYPE string,
     inventory_no TYPE string,
     location     TYPE string,
@@ -356,7 +358,7 @@ CLASS lcl_post IMPLEMENTATION.
                                    ELSE concat_lines_of( table = lt_sk sep = ',' ) ).
     DATA(lv_inv_txt) = COND string( WHEN zcl_alm_cfg=>get( iv_param = 'SEND_INVNO' ) IS NOT INITIAL THEN 'X'
                                     ELSE '(꺼짐)' ).
-    lo_log->add( |버전 v11 · POST_SKIP: { lv_sk_txt } · SEND_INVNO: { lv_inv_txt }| ).
+    lo_log->add( |버전 v12 · POST_SKIP: { lv_sk_txt } · SEND_INVNO: { lv_inv_txt }| ).
     lo_log->set_result( iv_status = zcl_alm_log=>c_success iv_rec_cnt = lines( ls_claim-items ) ).
     IF p_test = abap_false.
       lo_log->save( iv_commit = abap_true ).
@@ -543,6 +545,7 @@ CLASS lcl_post IMPLEMENTATION.
     setf( EXPORTING ir_struct = lr_key iv_field = 'COMPANYCODE' iv_val = is_item-company_code iv_type = 'KEY' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'ASSETCLASS' iv_val = ls_p-asset_class iv_alpha = abap_true iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'DESCRIPT' iv_val = ls_p-description iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
+    setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'DESCRIPT2' iv_val = ls_p-description2 iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'SERIAL_NO' iv_val = ls_p-serial_no iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'INVENT_NO' iv_val = COND string( WHEN lv_sendinv = abap_true THEN ls_p-inventory_no ) iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_pi ir_x = lr_pix iv_field = 'CAP_DATE' iv_val = ls_p-cap_date iv_type = 'POSTINGINFORMATION' CHANGING ct_ret = ct_ret ).
@@ -612,6 +615,7 @@ CLASS lcl_post IMPLEMENTATION.
     CREATE DATA lr_tdx TYPE ('BAPI1022_FEGLG003X').
 
     setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'DESCRIPT' iv_val = ls_p-fields-description iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
+    setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'DESCRIPT2' iv_val = ls_p-fields-description2 iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'SERIAL_NO' iv_val = ls_p-fields-serial_no iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'INVENT_NO' iv_val = COND string( WHEN zcl_alm_cfg=>get( iv_param = 'SEND_INVNO' ) IS NOT INITIAL THEN ls_p-fields-inventory_no ) iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_td ir_x = lr_tdx iv_field = 'COSTCENTER' iv_val = ls_p-fields-cost_center iv_alpha = abap_true iv_type = 'TIMEDEPENDENTDATA' CHANGING ct_ret = ct_ret ).

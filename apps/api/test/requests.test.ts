@@ -218,7 +218,7 @@ test('신규 SAP 등록(NEW_ASSET) payload, CHANGE 룸 변경 취소, 전기 중
   await call('acct', 'POST', `/approvals/${await step(n.body.id, 2)}:approve`, {});
   const [pst] = await q(`SELECT posting_type, payload FROM sap_posting WHERE asset_request_id = $1`, [n.body.id]);
   assert.equal(pst.posting_type, 'ASSET_CREATE');
-  assert.deepEqual(pst.payload, { assetClass: '00003200', description: 'AT-000002 laptop', costCenter: 'CC100', capDate: '2026-10-15', inventoryNo: 'AT-000002', location: 'ATL-101' });
+  assert.deepEqual(pst.payload, { assetClass: '00003200', description: 'AT-000002 laptop', costCenter: 'CC100', capDate: '2026-10-15', inventoryNo: 'AT-000002', description2: 'Location: ATL | Room: ATL-101' });
   await sapResult(n.body.requestNo, { status: 'POSTED', asset: { assetNo: '000001000009', subNo: '0000' } });
   const [a] = await q('SELECT sap_asset_no, asset_class_id, is_capitalized FROM asset WHERE id = $1', [ids.localB]);
   assert.deepEqual(a, { sap_asset_no: '000001000009', asset_class_id: ids.cls, is_capitalized: true });
@@ -234,7 +234,7 @@ test('신규 SAP 등록(NEW_ASSET) payload, CHANGE 룸 변경 취소, 전기 중
   await call('dept1', 'POST', `/approvals/${await step(c2.body.id, 1)}:approve`, {});
   await call('acct', 'POST', `/approvals/${await step(c2.body.id, 2)}:approve`, {});
   const [p2] = await q(`SELECT payload FROM sap_posting WHERE asset_request_id = $1`, [c2.body.id]);
-  assert.deepEqual(p2.payload, { fields: { serialNo: 'SN-NEW', location: 'ATL-201' } });
+  assert.deepEqual(p2.payload, { fields: { serialNo: 'SN-NEW', description2: 'Location: ATL | Room: ATL-201' } });
   await q(`UPDATE sap_posting SET status = 'CLAIMED', lease_until = now() + interval '15 minutes' WHERE asset_request_id = $1`, [c2.body.id]);
   assert.equal((await call('mgr', 'POST', `/asset-requests/${c2.body.id}:cancel`)).status, 409, 'SAP이 전기 중');
   await sapResult(c2.body.requestNo, { status: 'POSTED' });

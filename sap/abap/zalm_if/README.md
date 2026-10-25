@@ -113,6 +113,7 @@ ALM에서 승인된 요청(READY)을 가져와 SAP에 전기한다. 이번 단�
 | 항목 | 내용 |
 | --- | --- |
 | 재고번호 | 기본은 SAP에 보내지 않음(자산클래스 화면 레이아웃이 입력 불가면 AY219). 보내려면 ZALM_CFG `SEND_INVNO` = `X`(SE38 ZALM_IF_CONFIG). 안 보내면 중복 확인은 자산명+클래스+사용자+승인일로 한다 |
+| 위치·룸 | ALM의 사이트·룸은 SAP 위치(STORT)가 아니라 자산 설명 2행(GENERALDATA-DESCRIPT2)에 `Location: <사이트> \| Room: <룸>` 형식으로 보낸다(생성·변경 전기, v12). SAP 위치 마스터(T499S) 등록이 필요 없다 |
 | 입력 불가 필드 | 자산클래스 화면 레이아웃이 입력 불가인 필드(AY219: Location, Serial number 등)는 ZALM_CFG `POST_SKIP`(여러 행, BAPI 필드 이름: `SERIAL_NO`, `LOCATION`, `ROOM`, `INVENT_NO`)에 넣으면 보내지 않는다. 정식 해결은 OAOA 화면 레이아웃에서 선택 입력으로 바꾸는 것 |
 | 폐기(IF-AA-06) | ASSET_RETIRE: BAPI_ASSET_RETIREMENT_POST를 인터페이스(FUPARAREF)에 맞춰 호출(구조형 GENERALPOSTINGDATA 또는 단일 파라미터). 거래유형은 ZALM_MAP `RETIRE_TT`(SCRAP·LOSS 등록 필요, SCRAP=200 DEV 확인). 매각(SALE)·부분 폐기는 미지원(D-05)으로 FAILED. 전표번호는 BAPI 문서 참조(AWTYP·AWKEY)→BKPF, 없으면 BKTXT=postingId로 찾아 `sapDocument`로 회신. 이미 같은 BKTXT 전표가 있으면 BAPI를 다시 부르지 않는다. 로그 첫 줄에 BAPI 인터페이스를 찍는다(시험 실행에서도) |
 | 실사 결과(IF-AA-07) | COUNT_RESULT: BAPI_FIXEDASSET_CHANGE의 INVENTORY·INVENTORYX(실사일·메모, 필드명은 후보를 차례로 찾고 구조 필드 목록을 로그에 찍음). 전표 없음 → sapDocument 없이 POSTED 회신. 값이 모두 비면 변경 없음으로 POSTED. TESTRUN이 없어 시험 실행은 입력 점검까지만 |

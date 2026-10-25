@@ -622,7 +622,7 @@ async function stepOut(c: PoolClient, id: string) {
 
 // 최종 승인: SAP 대상이면 전기 건(READY), 아니면 ALM에 바로 반영
 async function finalize(c: PoolClient, p: Principal, r: Record<string, any>) {
-  const a = (await c.query(`SELECT a.*, r.room_code, cc.cost_center_code FROM asset a LEFT JOIN room r ON r.id = a.room_id
+  const a = (await c.query(`SELECT a.*, r.room_code, st.site_code, cc.cost_center_code FROM asset a LEFT JOIN room r ON r.id = a.room_id LEFT JOIN site st ON st.id = r.site_id
      LEFT JOIN cost_center cc ON cc.id = a.cost_center_id WHERE a.id = $1 FOR UPDATE OF a`, [r.asset_id])).rows[0];
   if (!a) throw new AlmError(409, 'ALM-E322', '대상 자산이 없습니다');
   if (['RETIRED', 'DISPOSED'].includes(a.status)) throw new AlmError(409, 'ALM-E322', '대상 자산이 이미 폐기·처분되었습니다');
@@ -657,7 +657,7 @@ async function upsertPosting(c: PoolClient, p: Principal, r: Record<string, any>
 // 재전기(ALM-310 :retry)·보정(:fix): 요청의 지금 값으로 payload를 다시 만든다. 요청이 없거나 SAP 대상이 아니면 undefined
 export async function rebuildPosting(c: PoolClient, requestId: string): Promise<{ postingType: string; payload: Record<string, unknown> } | undefined> {
   const r = await load(c, requestId);
-  const a = (await c.query(`SELECT a.*, r.room_code FROM asset a LEFT JOIN room r ON r.id = a.room_id WHERE a.id = $1`, [r.asset_id])).rows[0];
+  const a = (await c.query(`SELECT a.*, r.room_code, st.site_code FROM asset a LEFT JOIN room r ON r.id = a.room_id LEFT JOIN site st ON st.id = r.site_id WHERE a.id = $1`, [r.asset_id])).rows[0];
   if (!a || !r.sap_enabled) return undefined;
   return buildPosting(c, r, a);
 }
@@ -736,11 +736,15 @@ export async function fixRequest(c: PoolClient, p: Principal, id: string, ifMatc
   return detail(c, p, await load(c, id));
 }
 
+// SAP 자산 설명 2행(GENERALDATA-DESCRIPT2, 50자): 위치(사이트)와 룸. SAP 위치 마스터(T499S)에 의존하지 않도록 설명에 넣는다
+const desc2 = (siteCode?: string | null, roomCode?: string | null) =>
+  siteCode || roomCode ? [siteCode ? `Location: ${siteCode}` : '', roomCode ? `Room: ${roomCode}` : ''].filter(Boolean).join(' | ').slice(0, 50) : undefined;
+
 async function buildPosting(c: PoolClient, r: Record<string, any>, a: Record<string, any>): Promise<{ postingType: string; payload: Record<string, unknown> }> {
   const code = async (sql: string, id: string | null) => (id ? (await c.query(sql, [id])).rows[0] : undefined);
   const tcc = await code(`SELECT cc.cost_center_code, pc.profit_center_code FROM cost_center cc LEFT JOIN profit_center pc ON pc.id = cc.profit_center_id
      WHERE cc.id = $1`, r.target_cost_center_id);
-  const room = await code('SELECT room_code FROM room WHERE id = $1', r.target_room_id);
+  const room = await code('SELECT r.room_code, s.site_code FROM room r JOIN site s ON s.id = r.site_id WHERE r.id = $1', r.target_room_id);
   switch (r.request_type as ReqType) {
     case 'NEW_ASSET': {
       const cls = await code('SELECT class_code FROM asset_class WHERE id = $1', r.asset_class_id);
@@ -748,11 +752,11 @@ async function buildPosting(c: PoolClient, r: Record<string, any>, a: Record<str
       return { postingType: 'ASSET_CREATE', payload: clean({
         assetClass: cls?.class_code, description: a.description, costCenter: tcc?.cost_center_code, capDate: day(r.effective_date),
         serialNo: a.serial_no ? String(a.serial_no).slice(0, 18) : undefined, inventoryNo: a.asset_tag,
-        location: a.room_code ? String(a.room_code).slice(0, 10) : undefined, poNo: po?.po_no, poItem: po?.item_no }) };
+        description2: desc2(a.site_code, a.room_code), poNo: po?.po_no, poItem: po?.item_no }) };
     }
     case 'CHANGE': {
       const ch = (r.changes ?? {}) as Record<string, string>;
-      const fields = clean({ description: ch.description, serialNo: ch.serialNo, location: room?.room_code ? String(room.room_code).slice(0, 10) : undefined });
+      const fields = clean({ description: ch.description, serialNo: ch.serialNo, description2: desc2(room?.site_code, room?.room_code) });
       return { postingType: 'ASSET_CHANGE', payload: { fields } };
     }
     case 'TRANSFER':
@@ -761,7 +765,7 @@ async function buildPosting(c: PoolClient, r: Record<string, any>, a: Record<str
           percent: 100, createNewSubNo: false } };
       }
       return { postingType: 'ASSET_CHANGE', payload: clean({ fields: clean({ costCenter: tcc?.cost_center_code,
-        location: room?.room_code ? String(room.room_code).slice(0, 10) : undefined }), costCenterValidFrom: day(r.effective_date) }) };
+        description2: desc2(room?.site_code, room?.room_code) }), costCenterValidFrom: day(r.effective_date) }) };
     case 'RETIRE':
       return { postingType: 'ASSET_RETIRE', payload: { retireType: r.retire_type, isPartial: false, reason: String(r.reason ?? '').slice(0, 50) } };
     case 'SALE':

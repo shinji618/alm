@@ -187,7 +187,7 @@ test('수정: If-Match·버전 충돌·SAP 필드 422, 범위, SAP 자산 변경
   assert.equal(ch.status, 200);
   assert.deepEqual(ch.body.createdRequests.map((x: { requestType: string; status: string }) => [x.requestType, x.status]), [['CHANGE', 'ACCT_APPROVED']]);
   const post = (await q(`SELECT posting_id, posting_type, status, payload FROM sap_posting`))[0];
-  assert.deepEqual([post.posting_type, post.status, post.payload], ['ASSET_CHANGE', 'READY', { fields: { description: 'Latitude 7450 (IT)', location: 'ATL-102' } }]);
+  assert.deepEqual([post.posting_type, post.status, post.payload], ['ASSET_CHANGE', 'READY', { fields: { description: 'Latitude 7450 (IT)', description2: 'Location: ATL | Room: ATL-102' } }]);
   assert.equal(post.posting_id, ch.body.createdRequests[0].requestNo);
   assert.equal((await call('mgr', 'PATCH', url, { roomId: ids.roomWest }, { 'if-match': '"3"' })).status, 200, '전체 범위 관리자는 다른 사이트로 이동 가능');
   assert.equal((await call('mgr', 'PATCH', url, { serialNo: 'S'.repeat(19) }, { 'if-match': '"4"' })).status, 400, 'SAP 자산 시리얼 18자');

@@ -399,13 +399,12 @@ costCenter | string(10) | Y | KOSTL
 capDate | date | N | AKTIV(빈 값 가능)
 serialNo | string(18) | N | SERNR
 inventoryNo | string(25) | Y | INVNR
-location | string(10) | N | STORT = 룸 코드
-room | string(8) | N | RAUMNR 약어
+description2 | string(50) | N | DESCRIPT2(자산 설명 2행) = `Location: 사이트코드 | Room: 룸코드`. 위치·룸 값은 SAP 위치 필드 대신 여기로 보낸다
 poNo | string(10) | N | 참조 PO
 poItem | string(5) | N | 참조 PO 항목
 ''')
 schema('AssetChangePayload', 'ASSET_CHANGE (IF-AA-04, BAPI_FIXEDASSET_CHANGE)', '''
-fields | object | Y | 변경 필드만: description, serialNo, inventoryNo, location, room, costCenter
+fields | object | Y | 변경 필드만: description, description2(위치·룸 설명 2행), serialNo, inventoryNo, costCenter
 costCenterValidFrom | date | N | 코스트센터 변경 시 시간종속 유효시작일
 ''')
 schema('AssetTransferPayload', 'ASSET_TRANSFER (IF-AA-05, ABUMN)', '''
