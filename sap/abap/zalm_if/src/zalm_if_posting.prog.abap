@@ -157,6 +157,16 @@ CLASS lcl_post DEFINITION FINAL.
                 iv_alpha TYPE abap_bool DEFAULT abap_false
       CHANGING  ct_ptab  TYPE abap_func_parmbind_tab
       RAISING   cx_sy_create_data_error.
+    METHODS struct_fields
+      IMPORTING iv_struct TYPE csequence
+      RETURNING VALUE(rv_list) TYPE string.
+    METHODS setf_opt
+      IMPORTING ir_struct TYPE REF TO data
+                it_names  TYPE string_table
+                iv_val    TYPE csequence
+                iv_type   TYPE csequence
+                io_log    TYPE REF TO zcl_alm_log
+      CHANGING  ct_ret    TYPE bapirettab.
     METHODS find_doc
       IMPORTING iv_bukrs    TYPE bukrs
                 iv_obj_type TYPE awtyp
@@ -334,7 +344,7 @@ CLASS lcl_post IMPLEMENTATION.
                                    ELSE concat_lines_of( table = lt_sk sep = ',' ) ).
     DATA(lv_inv_txt) = COND string( WHEN zcl_alm_cfg=>get( iv_param = 'SEND_INVNO' ) IS NOT INITIAL THEN 'X'
                                     ELSE '(꺼짐)' ).
-    lo_log->add( |버전 v8 · POST_SKIP: { lv_sk_txt } · SEND_INVNO: { lv_inv_txt }| ).
+    lo_log->add( |버전 v9 · POST_SKIP: { lv_sk_txt } · SEND_INVNO: { lv_inv_txt }| ).
     lo_log->set_result( iv_status = zcl_alm_log=>c_success iv_rec_cnt = lines( ls_claim-items ) ).
     IF p_test = abap_false.
       lo_log->save( iv_commit = abap_true ).
@@ -686,6 +696,10 @@ CLASS lcl_post IMPLEMENTATION.
     ENDIF.
     io_log->add( |{ lc_fm } 인터페이스: { concat_lines_of( table = VALUE string_table( FOR p IN lt_par ( |{ p-parameter }({ p-paramtype }:{ p-structure })| ) ) sep = ` ` ) }| ).
 
+    LOOP AT lt_par INTO DATA(ls_sp) WHERE paramtype = 'I' AND structure IS NOT INITIAL.
+      io_log->add( |구조 { ls_sp-parameter }({ ls_sp-structure }): { struct_fields( ls_sp-structure ) }| ).
+    ENDLOOP.
+
     DATA(lv_pd) = COND string( WHEN is_item-posting_date IS NOT INITIAL THEN is_item-posting_date
                                ELSE |{ sy-datum(4) }-{ sy-datum+4(2) }-{ sy-datum+6(2) }| ).
     DATA(lv_vd) = COND string( WHEN is_item-value_date IS NOT INITIAL THEN is_item-value_date ELSE lv_pd ).
@@ -707,9 +721,12 @@ CLASS lcl_post IMPLEMENTATION.
       setf( EXPORTING ir_struct = lr_g iv_field = 'ASSETSUBNO' iv_val = lv_a2s iv_type = 'GENERALPOSTINGDATA' CHANGING ct_ret = ct_ret ).
       setf( EXPORTING ir_struct = lr_g iv_field = 'PSTNG_DATE' iv_val = lv_pd iv_type = 'GENERALPOSTINGDATA' CHANGING ct_ret = ct_ret ).
       setf( EXPORTING ir_struct = lr_g iv_field = 'DOC_DATE' iv_val = lv_pd iv_type = 'GENERALPOSTINGDATA' CHANGING ct_ret = ct_ret ).
-      setf( EXPORTING ir_struct = lr_g iv_field = 'ASVAL_DATE' iv_val = lv_vd iv_type = 'GENERALPOSTINGDATA' CHANGING ct_ret = ct_ret ).
       setf( EXPORTING ir_struct = lr_g iv_field = 'ASSETTRTYP' iv_val = lv_tt iv_type = 'GENERALPOSTINGDATA' CHANGING ct_ret = ct_ret ).
-      setf( EXPORTING ir_struct = lr_g iv_field = 'HEADER_TXT' iv_val = is_item-posting_id iv_type = 'GENERALPOSTINGDATA' CHANGING ct_ret = ct_ret ).
+      " 가치일·헤더 텍스트 필드명은 릴리스마다 달라 후보 이름을 차례로 찾는다. 없으면 경고만 하고 보내지 않는다
+      setf_opt( EXPORTING ir_struct = lr_g it_names = VALUE #( ( `ASVAL_DATE` ) ( `ASSETVALDATE` ) ( `VALUE_DATE` ) ( `ASSET_VAL_DATE` ) )
+                          iv_val = lv_vd iv_type = 'GENERALPOSTINGDATA' io_log = io_log CHANGING ct_ret = ct_ret ).
+      setf_opt( EXPORTING ir_struct = lr_g it_names = VALUE #( ( `HEADER_TXT` ) ( `BKTXT` ) ( `HEADERTXT` ) ( `REF_DOC_NO` ) ( `REFERENCE` ) )
+                          iv_val = is_item-posting_id iv_type = 'GENERALPOSTINGDATA' io_log = io_log CHANGING ct_ret = ct_ret ).
       IF ct_ret IS NOT INITIAL.
         RETURN.
       ENDIF.
@@ -731,6 +748,39 @@ CLASS lcl_post IMPLEMENTATION.
     call_bapi( EXPORTING iv_fm = lc_fm
                IMPORTING ev_obj_type = ev_obj_type ev_obj_key = ev_obj_key
                CHANGING ct_ptab = lt_ptab ct_ret = ct_ret ).
+  ENDMETHOD.
+
+
+  METHOD struct_fields.
+    " DDIC 구조의 필드 이름 목록(릴리스별 BAPI 필드명 확인용 로그)
+    TRY.
+        DATA(lo_t) = cl_abap_typedescr=>describe_by_name( iv_struct ).
+        IF lo_t->kind <> cl_abap_typedescr=>kind_struct.
+          rv_list = |({ lo_t->type_kind })|.
+          RETURN.
+        ENDIF.
+        DATA(lt_comp) = CAST cl_abap_structdescr( lo_t )->get_components( ).
+        LOOP AT lt_comp INTO DATA(ls_c).
+          rv_list = COND #( WHEN rv_list IS INITIAL THEN ls_c-name ELSE |{ rv_list } { ls_c-name }| ).
+        ENDLOOP.
+      CATCH cx_root.
+        rv_list = '(구조를 읽지 못함)'.
+    ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD setf_opt.
+    " 후보 필드 이름 중 구조에 있는 첫 이름으로 값을 넣는다. 하나도 없으면 오류가 아니라 경고
+    FIELD-SYMBOLS <ls_s> TYPE any.
+    ASSIGN ir_struct->* TO <ls_s>.
+    LOOP AT it_names INTO DATA(lv_name).
+      ASSIGN COMPONENT lv_name OF STRUCTURE <ls_s> TO FIELD-SYMBOL(<lv_f>).
+      IF sy-subrc = 0.
+        setf( EXPORTING ir_struct = ir_struct iv_field = lv_name iv_val = iv_val iv_type = iv_type CHANGING ct_ret = ct_ret ).
+        RETURN.
+      ENDIF.
+    ENDLOOP.
+    io_log->add( iv_type = 'W' iv_text = |{ iv_type }에 후보 필드({ concat_lines_of( table = it_names sep = '/' ) })가 없어 보내지 않습니다| ).
   ENDMETHOD.
 
 
