@@ -394,20 +394,32 @@ CLASS lcl_post IMPLEMENTATION.
 
     /ui2/cl_json=>deserialize( EXPORTING json = is_item-payload pretty_name = /ui2/cl_json=>pretty_mode-camel_case
                                CHANGING data = ls_p ).
-    IF ls_p-asset_class IS INITIAL OR ls_p-description IS INITIAL OR ls_p-cost_center IS INITIAL OR ls_p-inventory_no IS INITIAL.
-      err( EXPORTING iv_text = 'ASSET_CREATE payload에 assetClass·description·costCenter·inventoryNo가 모두 필요합니다' CHANGING ct_ret = ct_ret ).
+    " 재고번호는 ZALM_CFG SEND_INVNO = X일 때만 SAP에 보낸다(자산클래스 화면 레이아웃이 입력 불가면 AY219)
+    DATA(lv_sendinv) = xsdbool( zcl_alm_cfg=>get( iv_param = 'SEND_INVNO' ) IS NOT INITIAL ).
+    IF ls_p-asset_class IS INITIAL OR ls_p-description IS INITIAL OR ls_p-cost_center IS INITIAL
+       OR ( lv_sendinv = abap_true AND ls_p-inventory_no IS INITIAL ).
+      err( EXPORTING iv_text = 'ASSET_CREATE payload에 assetClass·description·costCenter(및 SEND_INVNO=X이면 inventoryNo)가 필요합니다' CHANGING ct_ret = ct_ret ).
       RETURN.
     ENDIF.
 
     " 3. 로그가 없어도 SAP에 이미 만들어졌는지 확인(로그 유실·덤프 대비). 조건을 좁혀 사람이 만든 같은 태그 자산을 잡지 않게 한다
     DATA(lv_cls) = CONV anla-anlkl( |{ ls_p-asset_class ALPHA = IN }| ).
     DATA(lv_inv) = CONV anla-invnr( ls_p-inventory_no ).
+    DATA(lv_txt) = CONV anla-txt50( ls_p-description ).
     DATA lv_from TYPE d.
     lv_from = approved_date( is_item-approved_at ) - 1.
-    SELECT SINGLE anln1, anln2 FROM anla
-      WHERE bukrs = @is_item-company_code AND invnr = @lv_inv AND anlkl = @lv_cls
-        AND ernam = @sy-uname AND erdat >= @lv_from AND deakt = '00000000'
-      INTO @DATA(ls_dup).
+    IF lv_sendinv = abap_true.
+      SELECT SINGLE anln1, anln2 FROM anla
+        WHERE bukrs = @is_item-company_code AND invnr = @lv_inv AND anlkl = @lv_cls
+          AND ernam = @sy-uname AND erdat >= @lv_from AND deakt = '00000000'
+        INTO @DATA(ls_dup).
+    ELSE.
+      " 재고번호를 안 보내면 자산명으로 좁힌다(같은 클래스·같은 이름·같은 사용자·승인일 이후)
+      SELECT SINGLE anln1, anln2 FROM anla
+        WHERE bukrs = @is_item-company_code AND txt50 = @lv_txt AND anlkl = @lv_cls
+          AND ernam = @sy-uname AND erdat >= @lv_from AND deakt = '00000000'
+        INTO @ls_dup.
+    ENDIF.
     IF sy-subrc = 0.
       es_asset = VALUE #( asset_no = ls_dup-anln1 sub_no = ls_dup-anln2 ).
       io_log->add( |이미 SAP에 생성된 자산 { ls_dup-anln1 }-{ ls_dup-anln2 }이(가) 있어 BAPI를 부르지 않고 그 번호로 POSTED 처리합니다| ).
@@ -426,7 +438,7 @@ CLASS lcl_post IMPLEMENTATION.
     setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'ASSETCLASS' iv_val = ls_p-asset_class iv_alpha = abap_true iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'DESCRIPT' iv_val = ls_p-description iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'SERIAL_NO' iv_val = ls_p-serial_no iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
-    setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'INVENT_NO' iv_val = ls_p-inventory_no iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
+    setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'INVENT_NO' iv_val = COND string( WHEN lv_sendinv = abap_true THEN ls_p-inventory_no ) iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_pi ir_x = lr_pix iv_field = 'CAP_DATE' iv_val = ls_p-cap_date iv_type = 'POSTINGINFORMATION' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_td ir_x = lr_tdx iv_field = 'COSTCENTER' iv_val = ls_p-cost_center iv_alpha = abap_true iv_type = 'TIMEDEPENDENTDATA' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_td ir_x = lr_tdx iv_field = 'LOCATION' iv_val = ls_p-location iv_type = 'TIMEDEPENDENTDATA' CHANGING ct_ret = ct_ret ).
@@ -500,7 +512,7 @@ CLASS lcl_post IMPLEMENTATION.
     setf( EXPORTING ir_struct = lr_key iv_field = 'SUBNUMBER' iv_val = lv_a2 iv_type = 'KEY' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'DESCRIPT' iv_val = ls_p-fields-description iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'SERIAL_NO' iv_val = ls_p-fields-serial_no iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
-    setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'INVENT_NO' iv_val = ls_p-fields-inventory_no iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
+    setf( EXPORTING ir_struct = lr_gd ir_x = lr_gdx iv_field = 'INVENT_NO' iv_val = COND string( WHEN zcl_alm_cfg=>get( iv_param = 'SEND_INVNO' ) IS NOT INITIAL THEN ls_p-fields-inventory_no ) iv_type = 'GENERALDATA' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_td ir_x = lr_tdx iv_field = 'COSTCENTER' iv_val = ls_p-fields-cost_center iv_alpha = abap_true iv_type = 'TIMEDEPENDENTDATA' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_td ir_x = lr_tdx iv_field = 'LOCATION' iv_val = ls_p-fields-location iv_type = 'TIMEDEPENDENTDATA' CHANGING ct_ret = ct_ret ).
     setf( EXPORTING ir_struct = lr_td ir_x = lr_tdx iv_field = 'ROOM' iv_val = ls_p-fields-room iv_type = 'TIMEDEPENDENTDATA' CHANGING ct_ret = ct_ret ).
