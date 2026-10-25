@@ -59,6 +59,12 @@
     </item>
     <item>
      <ID>S</ID>
+     <KEY>P_CAMP</KEY>
+     <ENTRY>        Count campaign code (RC01)</ENTRY>
+     <LENGTH>34</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
      <KEY>P_REQ</KEY>
      <ENTRY>        Run request id (IF-OP-01)</ENTRY>
      <LENGTH>33</LENGTH>

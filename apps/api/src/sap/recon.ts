@@ -8,9 +8,9 @@
 //   SAP_ONLY     SAP 자산이 ALM에 없음(SAP 비활성 제외)              SAP_TO_ALM(ALM에 생성)
 //   ALM_ONLY     SAP 번호가 있는 ALM 자산이 스냅샷에 없음             REVIEW
 //   COST_CENTER  KOSTL ≠ ALM 코스트센터                              SAP_TO_ALM
-//   LOCATION     STORT ≠ ALM 룸 코드(D-09)                           ALM_TO_SAP(IF-AA-04)
+//   LOCATION     설명 2행(TXA50) ≠ ALM 사이트·룸(desc2, D-09 변경)   ALM_TO_SAP(IF-AA-04 description2)
 //   SERIAL       SERNR ≠ ALM 시리얼                                  ALM_TO_SAP
-//   TAG          INVNR ≠ ALM 자산태그                                ALM_TO_SAP
+//   TAG          INVNR이 있고 ≠ ALM 자산태그(INVNR 빈 값은 비교 안 함: 기본 SEND_INVNO 꺼짐)  ALM_TO_SAP
 //   RETIRED      DEAKT 있음, ALM 활성                                SAP_TO_ALM(ALM RETIRED)
 import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
@@ -22,7 +22,7 @@ export const RC_MAX = 5000;
 const chunkKey = (n: number) => `CHUNK:RC:${n}`;
 
 interface Snap { assetNo: string; subNo: string; inventoryNo: string | null; serialNo: string | null; costCenter: string | null;
-  location: string | null; room: string | null; deactDate: string | null }
+  location: string | null; room: string | null; deactDate: string | null; description2: string | null }
 
 export async function postReconciliation(c: PoolClient, conn: SapConn, body: unknown, correlationId?: string): Promise<{ status: number; body: unknown }> {
   const b = (body && typeof body === 'object' && !Array.isArray(body) ? body : {}) as Record<string, unknown>;
@@ -53,7 +53,7 @@ export async function postReconciliation(c: PoolClient, conn: SapConn, body: unk
       if (cc !== conn.companyCode) throw new RecError('ALM-E401', `연결(${conn.companyCode})에 허용되지 않은 회사코드 ${cc}`);
       snaps.push({ assetNo: f.str('assetNo', 12, true)!, subNo: f.str('subNo', 4, true)!, inventoryNo: f.str('inventoryNo', 25) ?? null,
         serialNo: f.str('serialNo', 18) ?? null, costCenter: f.str('costCenter', 10) ?? null, location: f.str('location', 10) ?? null,
-        room: f.str('room', 8) ?? null, deactDate: f.date('deactDate') ?? null });
+        room: f.str('room', 8) ?? null, deactDate: f.date('deactDate') ?? null, description2: f.str('description2', 50) ?? null });
     } catch (e) { errors.push({ index: i, code: (e as RecError).code ?? 'ALM-E100', message: (e as Error).message }); }
   });
   if (errors.length) throw new AlmError(400, errors[0].code, `입력 값을 확인하세요: records[${errors[0].index}] ${errors[0].message} 외 ${errors.length - 1}건`,
@@ -80,12 +80,12 @@ export async function postReconciliation(c: PoolClient, conn: SapConn, body: unk
   }
 
   const ins = snaps.length ? (await c.query(
-    `INSERT INTO recon_snapshot (id, tenant_id, run_id, company_code, sap_asset_no, sap_sub_no, inventory_no, serial_no, cost_center_code, location, room_no, deact_date)
-     SELECT gen_random_uuid(), $1, $2, $3, x.a, x.s, x.inv, x.ser, x.cc, x.loc, x.room, x.deact
-       FROM unnest($4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[], $10::text[], $11::date[]) AS x(a, s, inv, ser, cc, loc, room, deact)
+    `INSERT INTO recon_snapshot (id, tenant_id, run_id, company_code, sap_asset_no, sap_sub_no, inventory_no, serial_no, cost_center_code, location, room_no, deact_date, description2)
+     SELECT gen_random_uuid(), $1, $2, $3, x.a, x.s, x.inv, x.ser, x.cc, x.loc, x.room, x.deact, x.d2
+       FROM unnest($4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[], $10::text[], $11::date[], $12::text[]) AS x(a, s, inv, ser, cc, loc, room, deact, d2)
      ON CONFLICT (run_id, company_code, sap_asset_no, sap_sub_no) DO NOTHING`,
     [conn.tenantId, run.id, conn.companyCode, snaps.map((s) => s.assetNo), snaps.map((s) => s.subNo), snaps.map((s) => s.inventoryNo), snaps.map((s) => s.serialNo),
-      snaps.map((s) => s.costCenter), snaps.map((s) => s.location), snaps.map((s) => s.room), snaps.map((s) => s.deactDate)])).rowCount ?? 0 : 0;
+      snaps.map((s) => s.costCenter), snaps.map((s) => s.location), snaps.map((s) => s.room), snaps.map((s) => s.deactDate), snaps.map((s) => s.description2)])).rowCount ?? 0 : 0;
   await c.query('UPDATE recon_run SET sap_count = sap_count + $2, updated_at = now(), version = version + 1 WHERE id = $1', [run.id, ins]);
 
   const batch = new Batch(batchId, snaps.length);
@@ -102,15 +102,17 @@ export async function postReconciliation(c: PoolClient, conn: SapConn, body: unk
 }
 
 export async function computeDiffs(c: PoolClient, conn: SapConn, runId: string): Promise<{ alm: number; diffs: number }> {
-  const scope = `SELECT a.id, a.sap_asset_no, a.sap_sub_no, a.asset_tag, a.serial_no, a.status, cc.cost_center_code, rm.room_code
-      FROM asset a LEFT JOIN cost_center cc ON cc.id = a.cost_center_id LEFT JOIN room rm ON rm.id = a.room_id
+  // desc2(사이트, 룸)와 같은 규칙(common/sap-text): 'Location: 사이트 | Room: 룸', 없는 쪽은 빼고 50자
+  const scope = `SELECT a.id, a.sap_asset_no, a.sap_sub_no, a.asset_tag, a.serial_no, a.status, cc.cost_center_code, rm.room_code,
+           nullif(left(concat_ws(' | ', 'Location: ' || st.site_code, 'Room: ' || rm.room_code), 50), '') AS desc2
+      FROM asset a LEFT JOIN cost_center cc ON cc.id = a.cost_center_id LEFT JOIN room rm ON rm.id = a.room_id LEFT JOIN site st ON st.id = rm.site_id
      WHERE a.company_id = $2 AND (a.status NOT IN ('RETIRED', 'DISPOSED')
            OR coalesce(a.sap_deact_date, a.updated_at::date) >= current_date - interval '12 months')`;
   const alm = (await c.query(`SELECT count(*)::int AS n FROM (${scope.replace('$2', '$1')}) s`, [conn.companyId])).rows[0].n as number;
   const r = await c.query(
     `WITH alm AS (${scope}),
           snap AS (SELECT * FROM recon_snapshot WHERE run_id = $1),
-          m AS (SELECT s.*, a.id AS asset_id, a.asset_tag, a.serial_no AS alm_serial, a.status, a.cost_center_code AS alm_cc, a.room_code
+          m AS (SELECT s.*, a.id AS asset_id, a.asset_tag, a.serial_no AS alm_serial, a.status, a.cost_center_code AS alm_cc, a.room_code, a.desc2
                   FROM snap s JOIN alm a ON a.sap_asset_no = s.sap_asset_no AND a.sap_sub_no = s.sap_sub_no)
      INSERT INTO recon_diff (id, tenant_id, run_id, diff_type, asset_id, sap_asset_no, sap_sub_no, alm_value, sap_value, action)
      SELECT gen_random_uuid(), $3, $1, d.t::recon_diff_type, d.asset_id, d.no, d.sub, left(d.alm, 100), left(d.sap, 100), d.act::recon_action FROM (
@@ -128,14 +130,14 @@ export async function computeDiffs(c: PoolClient, conn: SapConn, runId: string):
        SELECT 'COST_CENTER', asset_id, sap_asset_no, sap_sub_no, alm_cc, cost_center_code, 'SAP_TO_ALM'
          FROM m WHERE deact_date IS NULL AND cost_center_code IS NOT NULL AND cost_center_code IS DISTINCT FROM alm_cc
        UNION ALL
-       SELECT 'LOCATION', asset_id, sap_asset_no, sap_sub_no, room_code, location, 'ALM_TO_SAP'
-         FROM m WHERE deact_date IS NULL AND coalesce(location, '') <> coalesce(room_code, '')
+       SELECT 'LOCATION', asset_id, sap_asset_no, sap_sub_no, desc2, description2, 'ALM_TO_SAP'
+         FROM m WHERE deact_date IS NULL AND coalesce(description2, '') <> coalesce(desc2, '')
        UNION ALL
        SELECT 'SERIAL', asset_id, sap_asset_no, sap_sub_no, alm_serial, serial_no, 'ALM_TO_SAP'
          FROM m WHERE deact_date IS NULL AND coalesce(serial_no, '') <> coalesce(alm_serial, '')
        UNION ALL
        SELECT 'TAG', asset_id, sap_asset_no, sap_sub_no, asset_tag, inventory_no, 'ALM_TO_SAP'
-         FROM m WHERE deact_date IS NULL AND coalesce(inventory_no, '') <> asset_tag
+         FROM m WHERE deact_date IS NULL AND coalesce(inventory_no, '') <> '' AND inventory_no <> asset_tag
      ) d`, [runId, conn.companyId, conn.tenantId]);
   return { alm, diffs: r.rowCount ?? 0 };
 }

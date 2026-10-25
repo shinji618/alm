@@ -708,6 +708,7 @@ cost_center_code | vc(10) | | KOSTL
 location | vc(10) | | STORT
 room_no | vc(8) | | RAUMNR
 deact_date | date | | DEAKT
+description2 | vc(50) | | ANLA-TXA50 자산 설명 2행 = ALM 위치·룸(Location: 사이트 · Room: 룸, D-09 2026-10-25)
 ''', uniques=[('run_id','company_code','sap_asset_no','sap_sub_no')], mode='log', screens='ALM-310')
 t('sap','recon_diff','대사 차이','차이 1건과 조치', '''
 run_id | ->recon_run | NN | 대사 실행

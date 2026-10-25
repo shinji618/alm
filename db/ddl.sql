@@ -2129,6 +2129,7 @@ CREATE TABLE recon_snapshot (
   location varchar(10),
   room_no varchar(8),
   deact_date date,
+  description2 varchar(50),
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (run_id, company_code, sap_asset_no, sap_sub_no)
 );
@@ -2144,6 +2145,7 @@ COMMENT ON COLUMN recon_snapshot.cost_center_code IS 'KOSTL';
 COMMENT ON COLUMN recon_snapshot.location IS 'STORT';
 COMMENT ON COLUMN recon_snapshot.room_no IS 'RAUMNR';
 COMMENT ON COLUMN recon_snapshot.deact_date IS 'DEAKT';
+COMMENT ON COLUMN recon_snapshot.description2 IS 'ANLA-TXA50 자산 설명 2행 = ALM 위치·룸(Location: 사이트 · Room: 룸, D-09 2026-10-25)';
 COMMENT ON COLUMN recon_snapshot.created_at IS '생성 일시';
 COMMENT ON TABLE recon_snapshot IS '대사 스냅샷 — SAP 자본화 자산 스냅샷 원본(분할 수신)';
 

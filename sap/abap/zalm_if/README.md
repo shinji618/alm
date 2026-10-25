@@ -16,7 +16,7 @@
 | ZALM_IF_PING | 프로그램 | 연결 시험(토큰 → GET /sap/ping), 로그 남김 |
 | ZALM_IF_CONFIG | 프로그램 | ZALM_CFG·ZALM_MAP 조회·저장·삭제, 기본값 넣기 |
 | ZALM_IF_POSTING | 프로그램 | 7.6 전기 잡 1단계: claim(ASSET_CREATE·ASSET_CHANGE) → BAPI_FIXEDASSET_CREATE1/CHANGE(동적 호출) → 로그 후 커밋 → 결과 회신 → 회신 실패 재회신. 이관·폐기·실사 결과(IF-AA-05~07)는 이어서 추가 |
-| ZALM_IF_MASTER_SEND | 프로그램 | 7.4 IF-MD-01 조직·코드 마스터 전체 송신(변형 MD01). 수동 실행과 잡 겸용. 변형 AA01(IF-AA-01 자산 마스터 델타, 7.5). 변형 AA02(IF-AA-02 자산 금액, 7.5). AA02는 PO·AuC 출처(origins)도 함께 송신. MM01(PO 송신)은 보류 |
+| ZALM_IF_MASTER_SEND | 프로그램 | 7.4 IF-MD-01 조직·코드 마스터 전체 송신(변형 MD01). 수동 실행과 잡 겸용. 변형 AA01(IF-AA-01 자산 마스터 델타, 7.5). 변형 AA02(IF-AA-02 자산 금액, 7.5). AA02는 PO·AuC 출처(origins)도 함께 송신. 변형 RC01(IF-RC-01 대사 스냅샷, 7.8). MM01(PO 송신)은 보류 |
 
 명세서와 다른 점: 잡 겹침 방지는 잠금 객체 EZALM_RUN 대신 표준 `ENQUEUE_E_TABLE`(테이블 ZALM_IF_LOG, 키 = 잡 이름)을 쓴다(7.6에서 사용).
 
@@ -134,3 +134,22 @@ ALM에서 승인된 요청(READY)을 가져와 SAP에 전기한다. 이번 단�
 `abaplint.json`(SAP_BASIS 7.50 문법, Z 네임스페이스만 엄격히). 표준 객체 정의는 `abaplint/deps`를 `/deps`에 받아 둔 곳에서 `npx @abaplint/cli abaplint.json`.
 
 DDIC XML은 `../tools/gen_ddic.py`에서 만든다(테이블·메시지 클래스를 고치면 다시 실행).
+
+
+## 7.8 IF-RC-01 대사 스냅샷 (변형 RC01)
+
+같은 프로그램 `ZALM_IF_MASTER_SEND`, **변형 RC01**. `POST /sap/reconciliation`에 5,000건씩 보낸다(마지막 분할 isLast).
+
+| 화면 | 값 |
+|---|---|
+| 변형 | RC01 |
+| 회사코드 | S_BUKRS(비우면 ZALM_CFG BUKRS) |
+| 캠페인 코드 P_CAMP | 비우면 주간(WEEKLY), 넣으면 실사 종료 대사(CAMPAIGN, 6자) |
+| 요청번호 P_REQ | ALM 화면 IF-OP-01 요청이면 그 번호 |
+
+- 대상: 삭제 표시 아닌 자산, 비활성일이 없거나 최근 12개월 이내. 코스트센터는 오늘 유효한 ANLZ 행
+- 보내는 값: 자산번호, INVNR, SERNR, KOSTL, DEAKT, 설명2(ANLA-TXA50, `Location: .. | Room: ..`)
+- 위치 차이(LOCATION)는 ALM 위치·룸으로 만든 설명2와 SAP 설명2를 비교한다(D-09)
+- 차이 계산은 ALM이 비동기로 한다. 결과는 ALM 대사 화면에서 확인
+- 시험 실행(P_DRY)은 건수만 로그에 남기고 보내지 않는다
+- **필요한 ALM 서버 버전**: 설명2 필드(migration 0014)가 DEV에 배포돼 있어야 한다

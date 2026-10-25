@@ -506,6 +506,7 @@ costCenter | string(10) | N | KOSTL
 location | string(10) | N | STORT
 room | string(8) | N | RAUMNR
 deactDate | date | N | DEAKT
+description2 | string(50) | N | ANLA-TXA50 자산 설명 2행. ALM 위치·룸 비교(LOCATION 차이, D-09)
 ''')
 schema('ReconRequest', 'IF-RC-01 요청(분할 전송)', '''
 batchId | string(40) | Y | 배치 ID(모든 분할이 같은 값)

@@ -18,6 +18,11 @@
 *&   - 성공(HTTP 오류 없음)하면 잡 시작 시각을 저장한다. 건별 ERROR(예: 코스트센터 없음)는 ALM이 다음 IF-MD-01 뒤 자동 재처리하므로 시각은 올린다
 *&   - 삭제 표시(XLOEV) 자산은 보내지 않는다(ALM 쪽 정리는 IF-RC-01 대사). 설명·클래스·코스트센터가 빈 자산은 빼고 경고(T31)
 *&   - 결과는 ZALM_IF_LOG(IF_ID = IF-AA-01)·SLG1. 유형별 요약: 반영 a / 변경 없음 b / 오류 c
+*& RC01 (IF-RC-01, 08 5.6 대사 스냅샷)
+*&   - 대상: 회사코드의 삭제 표시(XLOEV) 아닌 자산 중 비활성일(DEAKT)이 없거나 최근 12개월 안인 것. 오늘 유효한 시간종속(ANLZ) 코스트센터
+*&   - 보내는 값: 자산번호, 인벤토리번호(INVNR), 시리얼(SERNR), 코스트센터, 비활성일, 설명2(ANLA-TXA50 = "Location: .. | Room: .." , D-09)
+*&   - 5,000건 분할, 마지막 분할에 isLast. runType = 주간 WEEKLY, 화면 P_CAMP(실사 캠페인 코드, 6자)를 넣으면 CAMPAIGN
+*&   - 차이 계산은 ALM이 비동기로 한다(SAP_ONLY·ALM_ONLY·COST_CENTER·LOCATION·SERIAL·TAG·RETIRED). IF-OP-01 요청이면 P_REQ에 요청번호
 *& AA02 (IF-AA-02, 08 5.3, D-06 초안 산식)
 *&   - 대상: 회사코드의 삭제 표시 아닌 자산 전체(매일 전체, 같은 값이면 ALM이 SKIPPED). 상각영역 01만
 *&   - 기간: 올해 회계연도(GET_CURRENT_YEAR)의 ANLC 행. period = 화면 P_PER(1~16, 마감 실행은 이 값을 지정), 0이면 ANLC-PERAF가 있으면 그 값,
@@ -36,7 +41,8 @@ REPORT zalm_if_master_send.
 
 CONSTANTS: gc_if_md TYPE c LENGTH 10 VALUE 'IF-MD-01',
            gc_if_aa TYPE c LENGTH 10 VALUE 'IF-AA-01',
-           gc_if_av TYPE c LENGTH 10 VALUE 'IF-AA-02'.
+           gc_if_av TYPE c LENGTH 10 VALUE 'IF-AA-02',
+           gc_if_rc TYPE c LENGTH 10 VALUE 'IF-RC-01'.
 
 DATA gv_bukrs_sel TYPE bukrs.
 
@@ -46,6 +52,7 @@ PARAMETERS: p_api   TYPE rfcdest DEFAULT 'ZALM_API' OBLIGATORY,
             p_tok   TYPE rfcdest DEFAULT 'ZALM_TOKEN' OBLIGATORY,
             p_chunk TYPE i DEFAULT 5000 OBLIGATORY,
             p_req   TYPE c LENGTH 8,
+            p_camp  TYPE c LENGTH 6,
             p_full  AS CHECKBOX DEFAULT ' ',
             p_close AS CHECKBOX DEFAULT ' ',
             p_per   TYPE i DEFAULT 0,
@@ -117,6 +124,17 @@ TYPES:
     changed_at      TYPE string,
   END OF gty_asset,
   gtt_asset TYPE STANDARD TABLE OF gty_asset WITH EMPTY KEY,
+  BEGIN OF gty_recon,
+    company_code TYPE string,
+    asset_no     TYPE string,
+    sub_no       TYPE string,
+    inventory_no TYPE string,
+    serial_no    TYPE string,
+    cost_center  TYPE string,
+    deact_date   TYPE string,
+    description2 TYPE string,
+  END OF gty_recon,
+  gtt_recon TYPE STANDARD TABLE OF gty_recon WITH EMPTY KEY,
   BEGIN OF gty_akey,
     bukrs TYPE bukrs,
     anln1 TYPE anln1,
@@ -196,6 +214,11 @@ CLASS lcl_run DEFINITION FINAL.
       IMPORTING iv_bukrs TYPE bukrs.
     METHODS one_company_aa02
       IMPORTING iv_bukrs TYPE bukrs.
+    METHODS one_company_rc01
+      IMPORTING iv_bukrs TYPE bukrs.
+    METHODS sel_recon
+      IMPORTING iv_bukrs       TYPE bukrs
+      RETURNING VALUE(rt_recon) TYPE gtt_recon.
     METHODS sel_values
       IMPORTING iv_bukrs        TYPE bukrs
       RETURNING VALUE(rt_value) TYPE gtt_value.
@@ -236,7 +259,7 @@ CLASS lcl_run IMPLEMENTATION.
     GET TIME STAMP FIELD lv_ts.
     mv_ts = lv_ts.
     mv_stamp = |{ lv_ts }|.
-    mv_if = SWITCH #( p_var WHEN 'AA01' THEN gc_if_aa WHEN 'AA02' THEN gc_if_av ELSE gc_if_md ).
+    mv_if = SWITCH #( p_var WHEN 'AA01' THEN gc_if_aa WHEN 'AA02' THEN gc_if_av WHEN 'RC01' THEN gc_if_rc ELSE gc_if_md ).
 
     targets( ).
     IF mt_bukrs IS INITIAL.
@@ -252,6 +275,8 @@ CLASS lcl_run IMPLEMENTATION.
         one_company_aa01( lv_bukrs ).
       ELSEIF p_var = 'AA02'.
         one_company_aa02( lv_bukrs ).
+      ELSEIF p_var = 'RC01'.
+        one_company_rc01( lv_bukrs ).
       ELSE.
         one_company( iv_bukrs = lv_bukrs iv_first = xsdbool( sy-tabix = 1 ) ).
       ENDIF.
@@ -404,7 +429,7 @@ CLASS lcl_run IMPLEMENTATION.
 
     lv_batch = mv_batch.
     " 분할 상한: 마스터 5,000건, 자산 1,000건(08 4.3)
-    DATA(lv_chunk) = COND i( WHEN iv_path = '/sap/master-data' THEN p_chunk ELSE nmin( val1 = p_chunk val2 = 1000 ) ).
+    DATA(lv_chunk) = COND i( WHEN iv_path = '/sap/master-data' OR iv_path = '/sap/reconciliation' THEN p_chunk ELSE nmin( val1 = p_chunk val2 = 1000 ) ).
     DO 2 TIMES.
       DATA(lv_try) = sy-index.
       CLEAR: lt_chunks, lv_retry.
@@ -678,6 +703,51 @@ CLASS lcl_run IMPLEMENTATION.
       mv_any_failed = abap_true.
     ENDIF.
     save_log( ).
+  ENDMETHOD.
+
+
+  METHOD one_company_rc01.
+    DATA(lv_req) = COND string( WHEN p_req IS NOT INITIAL THEN |-REQ{ p_req }| ).
+    mv_batch = |RC01-{ mv_stamp(12) }-{ iv_bukrs }{ lv_req }|.
+    CLEAR: mv_failed, mv_sent, mv_err, mv_http.
+
+    mo_log = NEW #( iv_if_id = gc_if_rc iv_batch_id = mv_batch iv_bukrs = iv_bukrs ).
+    mo_api = NEW #( iv_bukrs = iv_bukrs iv_dest_api = p_api iv_dest_token = p_tok ).
+    DATA(lv_type) = COND string( WHEN p_camp IS NOT INITIAL THEN `CAMPAIGN` ELSE `WEEKLY` ).
+    mo_log->add( |IF-RC-01 { COND string( WHEN p_dry = abap_true THEN `시험 실행(보내지 않음)` ELSE `송신` ) }: 회사코드 { iv_bukrs }, 배치 { mv_batch }, { lv_type }{
+                 COND string( WHEN p_camp IS NOT INITIAL THEN | { p_camp }| ) }, SAP 시스템 { mo_api->system_id( ) }| ).
+
+    DATA(lt_recon) = sel_recon( iv_bukrs ).
+    IF lt_recon IS INITIAL.
+      mo_log->add( iv_type = 'W' iv_text = 'RECON: 보낼 자산이 없습니다' ).
+    ELSE.
+      DATA(lv_head) = |"runType":"{ lv_type }",{ COND string( WHEN p_camp IS NOT INITIAL THEN |"campaignCode":"{ p_camp }",| ) }"snapshotAt":"{ mv_ts TIMESTAMP = ISO }Z"|.
+      send( iv_type = 'RECON' it_records = lt_recon iv_path = '/sap/reconciliation' iv_chunked = abap_true iv_compress = abap_true
+            iv_head = lv_head ).
+    ENDIF.
+
+    IF mv_failed = abap_true.
+      mv_any_failed = abap_true.
+    ENDIF.
+    save_log( ).
+  ENDMETHOD.
+
+
+  METHOD sel_recon.
+    DATA(lv_cut) = CONV d( sy-datum - 365 ).
+    SELECT a~anln1, a~anln2, a~invnr, a~sernr, a~deakt, a~txa50, z~kostl
+      FROM anla AS a
+      LEFT OUTER JOIN anlz AS z ON z~bukrs = a~bukrs AND z~anln1 = a~anln1 AND z~anln2 = a~anln2
+                               AND z~adatu <= @sy-datum AND z~bdatu >= @sy-datum
+      WHERE a~bukrs = @iv_bukrs AND a~xloev = @space
+        AND ( a~deakt = '00000000' OR a~deakt >= @lv_cut )
+      ORDER BY a~anln1, a~anln2
+      INTO TABLE @DATA(lt_snap).
+    rt_recon = VALUE #( FOR s IN lt_snap
+                        ( company_code = iv_bukrs asset_no = s-anln1 sub_no = s-anln2
+                          inventory_no = condense( s-invnr ) serial_no = condense( s-sernr )
+                          cost_center = s-kostl description2 = condense( s-txa50 )
+                          deact_date = COND #( WHEN s-deakt IS NOT INITIAL AND s-deakt <> '00000000' THEN |{ s-deakt DATE = ISO }| ) ) ).
   ENDMETHOD.
 
 
@@ -1027,8 +1097,11 @@ ENDCLASS.
 
 
 AT SELECTION-SCREEN.
-  IF p_var <> 'MD01' AND p_var <> 'AA01' AND p_var <> 'AA02'.
-    MESSAGE '변형은 MD01(조직·코드 마스터), AA01(자산 마스터 델타), AA02(자산 금액)입니다. MM01은 이어서 추가합니다' TYPE 'E'.
+  IF p_var <> 'MD01' AND p_var <> 'AA01' AND p_var <> 'AA02' AND p_var <> 'RC01'.
+    MESSAGE '변형은 MD01(조직·코드 마스터), AA01(자산 마스터 델타), AA02(자산 금액), RC01(대사 스냅샷)입니다' TYPE 'E'.
+  ENDIF.
+  IF p_camp IS NOT INITIAL AND p_var <> 'RC01'.
+    MESSAGE '캠페인 코드(P_CAMP)는 RC01에서만 씁니다' TYPE 'E'.
   ENDIF.
   IF p_per < 0 OR p_per > 16.
     MESSAGE '기간은 0(자동) 또는 1~16입니다' TYPE 'E'.

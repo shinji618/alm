@@ -12398,6 +12398,10 @@ components:
           type: string
           format: date
           description: DEAKT
+        description2:
+          type: string
+          maxLength: 50
+          description: ANLA-TXA50 자산 설명 2행. ALM 위치·룸 비교(LOCATION 차이, D-09)
       required:
       - companyCode
       - assetNo

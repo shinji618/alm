@@ -2,6 +2,7 @@
 //   openapi getSapStatus·listSapRuns·listSapRunMessages·listPostings·getPosting·retryPosting·releasePosting·cancelPosting·createRunRequest
 //           listReconRuns·listReconDiffs·resolveReconDiffs·listFieldMappings·patchFieldMapping·listSapConnections
 //   SAP 연계를 끈 회사의 데이터도 그대로 조회한다(기록). 처리(재전기·대사 처리)는 SAP 연계 회사만
+import { desc2 } from '../common/sap-text';
 import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { AlmError, E } from '../common/errors';
@@ -385,8 +386,9 @@ async function almToSap(c: PoolClient, p: Principal, d: Record<string, any>): Pr
   if (d.sap_enabled === false) throw new ItemError('ALM-E322', '이 회사는 SAP 연계를 쓰지 않습니다');
   const open = (await c.query(`SELECT request_no FROM asset_request WHERE asset_id = $1 AND status NOT IN ('POSTED', 'REJECTED', 'CANCELLED') LIMIT 1`, [d.asset_id])).rows[0];
   if (open) throw new ItemError('ALM-E315', `이 자산에 진행 중인 요청(${open.request_no})이 있습니다`);
-  const a = (await c.query('SELECT a.*, r.room_code FROM asset a LEFT JOIN room r ON r.id = a.room_id WHERE a.id = $1', [d.asset_id])).rows[0];
-  const fields = d.diff_type === 'LOCATION' ? { location: String(a.room_code ?? '').slice(0, 10) }
+  const a = (await c.query('SELECT a.*, r.room_code, st.site_code FROM asset a LEFT JOIN room r ON r.id = a.room_id LEFT JOIN site st ON st.id = r.site_id WHERE a.id = $1', [d.asset_id])).rows[0];
+  // 위치·룸은 설명 2행(D-09 변경)
+  const fields = d.diff_type === 'LOCATION' ? { description2: desc2(a.site_code, a.room_code) ?? '' }
     : d.diff_type === 'SERIAL' ? { serialNo: String(a.serial_no ?? '').slice(0, 18) } : { inventoryNo: a.asset_tag };
   const id = randomUUID();
   const [no] = await nextNumbers(c, p.tenantId, 'asset_request');

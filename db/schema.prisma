@@ -2433,6 +2433,8 @@ model ReconSnapshot {
   roomNo String? @map("room_no") @db.VarChar(8)
   /// DEAKT
   deactDate DateTime? @map("deact_date") @db.Date
+  /// ANLA-TXA50 자산 설명 2행 = ALM 위치·룸(Location: 사이트 · Room: 룸, D-09 2026-10-25)
+  description2 String? @db.VarChar(50)
   /// 생성 일시
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   @@unique([runId, companyCode, sapAssetNo, sapSubNo])

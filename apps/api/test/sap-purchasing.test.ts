@@ -131,7 +131,7 @@ test('입고: IF-AA-01이 먼저 만든 SAP 자산은 새로 만들지 않고 �
   assert.equal((await post('/sap/goods-receipts', { batchId: 'GR-5', records: [gr({ materialDoc: '5000000004', quantity: 1.5 })] })).body.results[0].code, 'ALM-E100', '소수 수량');
 });
 
-test('대사: 분할 순서 E303, 마지막 분할에서 차이 7유형 계산(202)', { skip }, async () => {
+test('대사: 분할 순서 E303, 마지막 분할에서 차이 7유형 계산(202), 위치는 설명 2행, 빈 INVNR은 TAG 비교 안 함', { skip }, async () => {
   const mk = (tag: string, no: string, o: Record<string, unknown> = {}) => owner.query(`INSERT INTO asset (id, tenant_id, asset_tag, description, category_id, status, source,
       company_id, sap_asset_no, sap_sub_no, serial_no, cost_center_id, room_id) VALUES (gen_random_uuid(), $1, $2, 'x', $3, $4, 'SAP', $5, $6, '0000', $7, $8, $9)`,
     [tenantId, tag, cat, o.status ?? 'IN_USE', co, no, o.serial ?? null, o.cc ?? cc1, o.room ?? r1]);
@@ -139,28 +139,29 @@ test('대사: 분할 순서 E303, 마지막 분할에서 차이 7유형 계산(2
   await mk('BSG-B', '000000300002');
   await mk('BSG-C', '000000300003');
   await mk('BSG-D', '000000300004');
-  const rec = (no: string, o: Record<string, unknown> = {}) => ({ companyCode: '1000', assetNo: no, subNo: '0000', costCenter: 'CC1', location: 'R1', ...o });
+  await mk('BSG-E', '000000300005');
+  const rec = (no: string, o: Record<string, unknown> = {}) => ({ companyCode: '1000', assetNo: no, subNo: '0000', costCenter: 'CC1', description2: 'Location: ATL | Room: R1', ...o });
   const snap = { batchId: 'RC-1', runType: 'WEEKLY', snapshotAt: '2026-10-12T12:00:00Z' };
 
   const bad = await post('/sap/reconciliation', { ...snap, chunkNo: 2, records: [] });
   assert.equal(bad.status, 409); assert.equal(bad.body.code, 'ALM-E303');
   const c1 = await post('/sap/reconciliation', { ...snap, chunkNo: 1, records: [
-    rec('000000300001', { inventoryNo: 'BSG-A', serialNo: 'SNX', costCenter: 'CC2', location: 'R2' }),
+    rec('000000300001', { inventoryNo: 'BSG-A', serialNo: 'SNX', costCenter: 'CC2', description2: 'Location: ATL | Room: R2' }),
     rec('000000300002', { inventoryNo: 'BSG-B', deactDate: '2026-10-01' }),
   ] });
   assert.equal(c1.status, 200); assert.equal(c1.body.status, 'RECEIVING');
   const c2 = await post('/sap/reconciliation', { ...snap, chunkNo: 2, isLast: true, records: [
-    rec('000000300004', { inventoryNo: 'OLD' }), rec('000000399999', { inventoryNo: 'X' }), rec('000000400000', { deactDate: '2026-01-01' }),
+    rec('000000300004', { inventoryNo: 'OLD' }), rec('000000300005'), rec('000000399999', { inventoryNo: 'X' }), rec('000000400000', { deactDate: '2026-01-01' }),
   ] });
   assert.equal(c2.status, 202);
-  assert.deepEqual({ ...c2.body, runId: undefined }, { batchId: 'RC-1', runId: undefined, received: 3, status: 'PROCESSING' });
+  assert.deepEqual({ ...c2.body, runId: undefined }, { batchId: 'RC-1', runId: undefined, received: 4, status: 'PROCESSING' });
   assert.equal((await post('/sap/reconciliation', { ...snap, chunkNo: 3, records: [] })).body.code, 'ALM-E303', '끝난 배치');
 
   const diffs = await q(`SELECT d.diff_type, d.sap_asset_no, d.alm_value, d.sap_value, d.action FROM recon_diff d
     WHERE d.sap_asset_no LIKE '0000003%' OR d.sap_asset_no LIKE '0000004%' ORDER BY d.sap_asset_no, d.diff_type`);
   assert.deepEqual(diffs.map((d) => [d.diff_type, d.sap_asset_no.slice(-6), d.alm_value, d.sap_value, d.action]), [
     ['COST_CENTER', '300001', 'CC1', 'CC2', 'SAP_TO_ALM'],
-    ['LOCATION', '300001', 'R1', 'R2', 'ALM_TO_SAP'],
+    ['LOCATION', '300001', 'Location: ATL | Room: R1', 'Location: ATL | Room: R2', 'ALM_TO_SAP'],
     ['SERIAL', '300001', 'SN1', 'SNX', 'ALM_TO_SAP'],
     ['RETIRED', '300002', 'IN_USE', '2026-10-01', 'SAP_TO_ALM'],
     ['ALM_ONLY', '300003', 'BSG-C', null, 'REVIEW'],
@@ -168,7 +169,7 @@ test('대사: 분할 순서 E303, 마지막 분할에서 차이 7유형 계산(2
     ['SAP_ONLY', '399999', null, 'X', 'SAP_TO_ALM'],
   ]);
   const run = (await q(`SELECT status, sap_count, diff_count FROM recon_run WHERE batch_id = 'RC-1'`))[0];
-  assert.equal(run.status, 'SUCCEEDED'); assert.equal(run.sap_count, 5);
+  assert.equal(run.status, 'SUCCEEDED'); assert.equal(run.sap_count, 6);
   assert.equal(run.diff_count, (await q(`SELECT count(*)::int AS n FROM recon_diff`))[0].n);
   assert.equal((await post('/sap/reconciliation', { ...snap, batchId: 'RC-2', chunkNo: 1, records: [rec('1', { companyCode: '2000' })] })).body.code, 'ALM-E401');
 });
