@@ -304,8 +304,8 @@ CLASS lcl_run IMPLEMENTATION.
       LOOP AT lt_cfg INTO DATA(lv_cfg).
         APPEND CONV bukrs( lv_cfg ) TO mt_bukrs.
       ENDLOOP.
-      SORT mt_bukrs.
-      DELETE ADJACENT DUPLICATES FROM mt_bukrs.
+      SORT mt_bukrs BY table_line.
+      DELETE ADJACENT DUPLICATES FROM mt_bukrs COMPARING table_line.
     ENDIF.
 
     " 손익센터는 모든 대상 회사의 관리회계영역 합집합으로 한 번에 보낸다
