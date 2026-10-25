@@ -287,7 +287,7 @@ CLASS lcl_post IMPLEMENTATION.
 
     lo_log->add( |claim: { lines( ls_claim-items ) }건(최대 { p_max })| ).
     DATA(lt_sk) = zcl_alm_cfg=>get_list( 'POST_SKIP' ).
-    lo_log->add( |버전 v4 · POST_SKIP: { COND string( WHEN lt_sk IS INITIAL THEN '(없음)' ELSE concat_lines_of( table = lt_sk sep = ',' ) ) } · SEND_INVNO: { COND string( WHEN zcl_alm_cfg=>get( iv_param = 'SEND_INVNO' ) IS NOT INITIAL THEN 'X' ELSE '(꺼짐)' ) }| ).
+    lo_log->add( |버전 v5 · POST_SKIP: { COND string( WHEN lt_sk IS INITIAL THEN '(없음)' ELSE concat_lines_of( table = lt_sk sep = ',' ) ) } · SEND_INVNO: { COND string( WHEN zcl_alm_cfg=>get( iv_param = 'SEND_INVNO' ) IS NOT INITIAL THEN 'X' ELSE '(꺼짐)' ) }| ).
     lo_log->set_result( iv_status = zcl_alm_log=>c_success iv_rec_cnt = lines( ls_claim-items ) ).
     IF p_test = abap_false.
       lo_log->save( iv_commit = abap_true ).
@@ -318,7 +318,7 @@ CLASS lcl_post IMPLEMENTATION.
     IF p_test = abap_false AND ls_prev-status = zcl_alm_log=>c_posted.
       ls_res-status = 'POSTED'.
       ls_res-asset = VALUE #( asset_no = ls_prev-anln1 sub_no = ls_prev-anln2 ).
-      DATA(lv_h) = reply( is_res = ls_res iv_key = |{ is_item-posting_id }-{ is_item-attempt }| iv_log_id = ls_prev-log_id ).
+      DATA(lv_h) = reply( is_res = ls_res iv_key = |{ is_item-posting_id }-{ is_item-attempt }-{ mv_stamp(12) }| iv_log_id = ls_prev-log_id ).
       WRITE: / is_item-posting_id, 'POSTED 로그가 있어 저장된 결과를 회신', lv_h.
       RETURN.
     ENDIF.
@@ -377,7 +377,7 @@ CLASS lcl_post IMPLEMENTATION.
     ENDIF.
 
     " 6. 결과 회신
-    DATA(lv_http) = reply( is_res = ls_res iv_key = |{ is_item-posting_id }-{ is_item-attempt }| io_log = lo_log ).
+    DATA(lv_http) = reply( is_res = ls_res iv_key = |{ is_item-posting_id }-{ is_item-attempt }-{ mv_stamp(12) }| io_log = lo_log ).
     WRITE: / is_item-posting_id, ls_res-status, ls_res-asset-asset_no, lv_http.
   ENDMETHOD.
 
