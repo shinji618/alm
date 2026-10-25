@@ -518,6 +518,7 @@
   "listReconDiffs": "sap.monitor",
   "listFieldMappings": "sap.monitor",
   "retryPosting": "sap.operate",
+  "releasePosting": "sap.operate",
   "createRunRequest": "sap.operate",
   "listRunRequests": "sap.monitor",
   "cancelPosting": "sap.finance",

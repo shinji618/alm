@@ -1338,6 +1338,9 @@ assetId | uuid | N | 대상 자산
 schema('PostingRetry', '재전기', '''
 confirmSapChecked | bool | N | 시도 초과(ALM-E306) 건: SAP에 전기되지 않았음을 확인함
 ''')
+schema('PostingRelease', '선점 취소(잠금 해제)', '''
+confirmed | bool | Y | SAP 잡이 지금 이 건을 처리 중이 아님을 확인함(true 필수, 아니면 409 needsConfirm)
+''')
 schema('RunRequestInput', 'SAP 수동 실행 요청(F-310-04)', '''
 interfaceId | enum(IF-MD-01,IF-AA-01,IF-AA-02,IF-MM-01,IF-RC-01) | Y | 실행할 수신 IF
 runType | enum(WEEKLY,CAMPAIGN) | N | IF-RC-01만. 기본 WEEKLY
@@ -1436,6 +1439,10 @@ W('SAP 연계','GET','/integration/sap/postings','listPostings','전기 큐',AC,
 W('SAP 연계','GET','/integration/sap/postings/{id}','getPosting','전기 상세',AC,None,'PostingDetail','200, 404','sap_posting','ALM-310',[ '-'],params=CI)
 W('SAP 연계','POST','/integration/sap/postings/{id}:retry','retryPosting','재전기',AC,'PostingRetry','PostingRow','200, 409','sap_posting, asset_request','ALM-310',
   ['FAILED만. 연결 요청의 현재 값으로 payload를 다시 만들고 READY, attempt는 0부터(F-310-03).', '같은 postingId를 쓰므로 SAP BKTXT·로그 확인으로 중복 전기가 막힌다.', '재시도 초과(ALM-E306) 건은 SAP에 이미 전기됐을 수 있으므로, 화면이 SAP 전표·자산 확인 체크를 받은 뒤에만 재전기한다.'],params=CI,idem='Idempotency-Key')
+W('SAP 연계','POST','/integration/sap/postings/{id}:release','releasePosting','선점 취소(잠금 해제)',AC,'PostingRelease','PostingRow','200, 409','sap_posting','ALM-310',
+  [ 'CLAIMED만(그 외 409 ALM-E322). 잠금이 남아 있어도 풀 수 있으며 confirmed=true(SAP 잡이 처리 중이 아님을 확인)가 있어야 한다.',
+    'READY로 되돌리고 lease·claimBatchId를 비우며 attempt를 1 줄인다(가져갈 때 올라간 만큼). 시험 실행(P_TEST)·중단된 잡 뒤처리용이다.',
+    'SAP에 이미 전기된 건이어도 다음 실행의 POSTED 로그·SAP 전표(BKTXT) 확인이 중복 전기를 막는다.'],params=CI)
 W('SAP 연계','POST','/integration/sap/postings/{id}:cancel','cancelPosting','전기 취소',AC,'PostingRetry','PostingRow','200, 409','sap_posting, asset_request','ALM-310',
   [ 'READY·FAILED, 그리고 잠금이 끝난 CLAIMED(SAP 회신 없음). 잠금이 끝난 CLAIMED는 confirmSapChecked=true(SAP에 전기되지 않았음을 확인)가 있어야 한다.',
     '잠금 중인 CLAIMED는 409(SAP 잡이 처리 중). 연결 요청은 CANCELLED(대기 단계 SKIPPED).'],params=CI)

@@ -35,6 +35,11 @@ export class SapWebController {
   @Operation('retryPosting')
   retry(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) { return this.db.withTx(txOf(ctx), (c) => m.retryPosting(c, ctx.principal!, id, body)); }
 
+  @Post('postings/:id\\:release')
+  @HttpCode(200)
+  @Operation('releasePosting')
+  release(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) { return this.db.withTx(txOf(ctx), (c) => m.releasePosting(c, ctx.principal!, id, body)); }
+
   @Post('postings/:id\\:cancel')
   @HttpCode(200)
   @Operation('cancelPosting')

@@ -141,7 +141,7 @@ OPS = {
     # sap (web)
     'getSapStatus': 'sap.status', 'listSapRuns': 'sap.monitor', 'listSapRunMessages': 'sap.monitor', 'listPostings': 'sap.monitor',
     'getPosting': 'sap.monitor', 'listReconRuns': 'sap.monitor', 'listReconDiffs': 'sap.monitor', 'listFieldMappings': 'sap.monitor',
-    'retryPosting': 'sap.operate', 'createRunRequest': 'sap.operate', 'listRunRequests': 'sap.monitor',
+    'retryPosting': 'sap.operate', 'releasePosting': 'sap.operate', 'createRunRequest': 'sap.operate', 'listRunRequests': 'sap.monitor',
     'cancelPosting': 'sap.finance', 'resolveReconDiffs': 'sap.finance',
     'patchFieldMapping': 'sap.config', 'listSapConnections': 'sap.config', 'createSapConnection': 'sap.config', 'rotateSapSecret': 'sap.config',
     # admin

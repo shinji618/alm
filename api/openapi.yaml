@@ -6777,6 +6777,55 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/PostingRetry'
+  /integration/sap/postings/{id}:release:
+    post:
+      operationId: releasePosting
+      summary: 선점 취소(잠금 해제)
+      tags:
+      - WEB
+      description: 'ALM-310 · 테이블: sap_posting
+
+
+        - CLAIMED만(그 외 409 ALM-E322). 잠금이 남아 있어도 풀 수 있으며 confirmed=true(SAP 잡이 처리 중이 아님을 확인)가 있어야 한다.
+
+        - READY로 되돌리고 lease·claimBatchId를 비우며 attempt를 1 줄인다(가져갈 때 올라간 만큼). 시험 실행(P_TEST)·중단된 잡 뒤처리용이다.
+
+        - SAP에 이미 전기된 건이어도 다음 실행의 POSTED 로그·SAP 전표(BKTXT) 확인이 중복 전기를 막는다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostingRow'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: sap.operate
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_ACCOUNTANT: ALL
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostingRelease'
   /integration/sap/postings/{id}:cancel:
     post:
       operationId: cancelPosting
@@ -17364,6 +17413,15 @@ components:
         confirmSapChecked:
           type: boolean
           description: '시도 초과(ALM-E306) 건: SAP에 전기되지 않았음을 확인함'
+    PostingRelease:
+      type: object
+      description: 선점 취소(잠금 해제)
+      properties:
+        confirmed:
+          type: boolean
+          description: SAP 잡이 지금 이 건을 처리 중이 아님을 확인함(true 필수, 아니면 409 needsConfirm)
+      required:
+      - confirmed
     RunRequestInput:
       type: object
       description: SAP 수동 실행 요청(F-310-04)

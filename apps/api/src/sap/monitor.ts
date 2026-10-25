@@ -1,5 +1,5 @@
 // SAP 연계 화면(ALM-310, WBS 4.6): 연결·IF 상태, 실행 로그, 전기 큐(재전기·취소), 수동 실행 요청, 대사 차이 처리, 필드 매핑, 연결 목록
-//   openapi getSapStatus·listSapRuns·listSapRunMessages·listPostings·getPosting·retryPosting·cancelPosting·createRunRequest
+//   openapi getSapStatus·listSapRuns·listSapRunMessages·listPostings·getPosting·retryPosting·releasePosting·cancelPosting·createRunRequest
 //           listReconRuns·listReconDiffs·resolveReconDiffs·listFieldMappings·patchFieldMapping·listSapConnections
 //   SAP 연계를 끈 회사의 데이터도 그대로 조회한다(기록). 처리(재전기·대사 처리)는 SAP 연계 회사만
 import { randomUUID } from 'node:crypto';
@@ -171,6 +171,21 @@ export async function retryPosting(c: PoolClient, p: Principal, id: string, body
     await c.query(`UPDATE asset_request SET status = 'ACCT_APPROVED', updated_at = now(), updated_by = $2, version = version + 1 WHERE id = $1 AND status = 'POST_ERROR'`,
       [r.asset_request_id, p.userId]);
   }
+  return postingRow(await loadPosting(c, id));
+}
+
+// 선점 취소(잠금 해제): CLAIMED만. READY로 되돌려 SAP 잡이 바로 다시 가져가게 한다(시험 실행·중단된 잡 뒤처리).
+// 잠금이 남아 있어도 풀 수 있으므로 confirmed=true(SAP 잡이 지금 처리 중이 아님을 확인)가 있어야 한다.
+// 시도 횟수는 1 줄인다(가져갈 때 올라간 만큼). SAP에 이미 전기됐어도 다음 실행의 POSTED 로그·BKTXT 확인이 중복 전기를 막는다.
+export async function releasePosting(c: PoolClient, p: Principal, id: string, body?: unknown) {
+  const r = await loadPosting(c, id, true);
+  if (r.status !== 'CLAIMED') throw new AlmError(409, 'ALM-E322', `${r.status} 상태는 선점을 취소할 수 없습니다(CLAIMED만)`);
+  const b = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
+  if (b.confirmed !== true) {
+    throw new AlmError(409, 'ALM-E322', 'SAP 잡이 지금 이 건을 처리 중이 아닌지 확인한 뒤 확인(confirmed)과 함께 다시 요청하세요', { needsConfirm: true });
+  }
+  await c.query(`UPDATE sap_posting SET status = 'READY', lease_until = NULL, claim_batch_id = NULL, claimed_at = NULL,
+      attempt_count = greatest(attempt_count - 1, 0), updated_at = now(), updated_by = $2, version = version + 1 WHERE id = $1`, [id, p.userId]);
   return postingRow(await loadPosting(c, id));
 }
 

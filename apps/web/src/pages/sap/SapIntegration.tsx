@@ -234,13 +234,15 @@ function PostingDrawer({ id, onClose, onChanged }: { id: string; onClose: () => 
   const d = useAsync((sig) => api.get<PostingDetail>(`/integration/sap/postings/${id}`, sig), [id]);
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
-  const act = async (kind: 'retry' | 'cancel') => {
+  const act = async (kind: 'retry' | 'cancel' | 'release') => {
     const p = d.data!.summary;
     if (kind === 'cancel' && !(await confirm({ title: t('sap.cancelTitle', { no: p.postingId }), message: t('sap.cancelMessage'), danger: true, confirmLabel: t('sap.cancelPosting') }))) return;
+    if (kind === 'release' && !(await confirm({ title: t('sap.releaseTitle', { no: p.postingId }), message: t('sap.releaseMessage'), confirmLabel: t('sap.release') }))) return;
     setBusy(true);
     try {
-      await api.post(`/integration/sap/postings/${id}:${kind}`, (kind === 'retry' && p.exhausted) || (kind === 'cancel' && stale) ? { confirmSapChecked: checked } : {});
-      toast.show(t(kind === 'retry' ? 'sap.retried' : 'sap.cancelled', { no: p.postingId }), 'success');
+      const body = kind === 'release' ? { confirmed: true } : (kind === 'retry' && p.exhausted) || (kind === 'cancel' && stale) ? { confirmSapChecked: checked } : {};
+      await api.post(`/integration/sap/postings/${id}:${kind}`, body);
+      toast.show(t(kind === 'retry' ? 'sap.retried' : kind === 'release' ? 'sap.released' : 'sap.cancelled', { no: p.postingId }), 'success');
       d.reload(); onChanged();
     } catch (e) { toast.show(e instanceof Error ? e.message : String(e), 'error'); } finally { setBusy(false); }
   };
@@ -273,6 +275,8 @@ function PostingDrawer({ id, onClose, onChanged }: { id: string; onClose: () => 
           <div className={s.formActions}>
             {(['READY', 'FAILED'].includes(x.summary.status) || stale) && can('sap.finance') && (
               <Button disabled={busy || (stale && !checked)} onClick={() => void act('cancel')}>{t('sap.cancelPosting')}</Button>)}
+            {x.summary.status === 'CLAIMED' && can('sap.operate') && (
+              <Button variant="primary" disabled={busy} onClick={() => void act('release')}>{t('sap.release')}</Button>)}
             {x.summary.status === 'FAILED' && can('sap.operate') && (
               <Button variant="primary" disabled={busy || (!!x.summary.exhausted && !checked)} onClick={() => void act('retry')}>{t('sap.retry')}</Button>)}
           </div>

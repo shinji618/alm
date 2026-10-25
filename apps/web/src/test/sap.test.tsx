@@ -67,6 +67,27 @@ describe('SAP integration (ALM-310)', () => {
     await waitFor(() => expect(retried).toEqual([{ confirmSapChecked: true }]));
   });
 
+  it('posting queue: release a claimed posting', async () => {
+    window.history.pushState({}, '', '/sap?tab=postings');
+    const released: unknown[] = [];
+    const row = { id: 'p2', postingId: 'AR-00019', postingType: 'ASSET_RETIRE', status: 'CLAIMED', companyCode: '1000', assetTag: 'S9', attemptCount: 1,
+      leaseUntil: '2099-01-01T00:00:00Z', updatedAt: '2026-10-25T12:00:00Z' };
+    mockFetch((url, init) => {
+      if (url.includes('/integration/sap/postings/p2:release')) { released.push(JSON.parse(String(init.body))); return { body: { ...row, status: 'READY', attemptCount: 0 } }; }
+      if (url.endsWith('/integration/sap/postings/p2')) return { body: { summary: { ...row, messages: [] }, payload: { retireType: 'SCRAP' }, requestNo: 'AR-00019', requestId: 'r19', requestStatus: 'ACCT_APPROVED', assetId: 'a9' } };
+      if (url.includes('/integration/sap/postings')) return { body: { items: [row], page: 1, pageSize: 50, total: 1 } };
+      return undefined;
+    });
+    render(<App initialMe={acct} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('AR-00019'));
+    const drawer = await screen.findByRole('dialog');
+    await user.click(await within(drawer).findByRole('button', { name: 'Release claim' }));
+    const ask = await screen.findByRole('alertdialog');
+    await user.click(within(ask).getByRole('button', { name: 'Release claim' }));
+    await waitFor(() => expect(released).toEqual([{ confirmed: true }]));
+  });
+
   it('reconciliation: choose actions per difference and apply', async () => {
     window.history.pushState({}, '', '/sap?tab=recon');
     const resolved: unknown[] = [];
