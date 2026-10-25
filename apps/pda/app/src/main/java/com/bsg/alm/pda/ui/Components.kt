@@ -1,5 +1,8 @@
 package com.bsg.alm.pda.ui
 
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -50,7 +53,15 @@ val Muted = Color(0xFF64748B)
 val AlmColors: ColorScheme = lightColorScheme(primary = Blue, secondary = Navy, error = Bad)
 
 @Composable
-fun AlmTheme(content: @Composable () -> Unit) = MaterialTheme(colorScheme = AlmColors, content = content)
+fun AlmTheme(content: @Composable () -> Unit) {
+    // 한 화면에 1.5배 더 많이 보이도록 화면 배율을 1/1.5로 줄인다(글자·간격·버튼 모두). 바꾸려면 UI_SCALE만 고친다
+    val d = LocalDensity.current
+    CompositionLocalProvider(LocalDensity provides Density(d.density * UI_SCALE, d.fontScale)) {
+        MaterialTheme(colorScheme = AlmColors, content = content)
+    }
+}
+
+const val UI_SCALE = 1f / 1.5f
 
 /** 화면 머리: 화면 ID·캠페인 + 제목 + 오프라인·대기 건수 */
 @Composable
