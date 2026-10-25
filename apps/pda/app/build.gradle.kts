@@ -14,8 +14,8 @@ android {
         applicationId = "com.bsg.alm"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.0.7"
+        versionCode = 9
+        versionName = "1.0.8"
         // AppAuth 리디렉트(Cognito alm-pda 콜백 com.bsg.alm://auth)
         manifestPlaceholders["appAuthRedirectScheme"] = "com.bsg.alm"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
