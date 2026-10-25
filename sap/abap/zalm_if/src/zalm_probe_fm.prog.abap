@@ -42,11 +42,21 @@ START-OF-SELECTION.
   ENDLOOP.
 
   " 이관 거래유형(300번대)과 회사코드 1000의 문서 분할 사용 여부
+  " 거래유형 이름(TABWT): 필드명을 가정하지 않고 모든 열을 그대로 보여 준다(영어 행만, 3으로 시작하는 코드 위주로 보기)
   SKIP.
-  WRITE: / '=== 거래유형 300번대(이관) ==='.
-  SELECT bwasl, txt50 FROM tabwt
-    WHERE spras = 'E' AND bwasl LIKE '3%'
-    INTO TABLE @DATA(lt_tt).
-  LOOP AT lt_tt INTO DATA(ls_tt).
-    WRITE: / ls_tt-bwasl, ls_tt-txt50.
+  WRITE: / '=== 거래유형 이름(TABWT, 영어 행) ==='.
+  DATA lt_tt TYPE STANDARD TABLE OF tabwt WITH DEFAULT KEY.
+  SELECT * FROM tabwt INTO TABLE @lt_tt.
+  LOOP AT lt_tt ASSIGNING FIELD-SYMBOL(<ls_tt>).
+    DATA(lv_line) = ||.
+    DO.
+      ASSIGN COMPONENT sy-index OF STRUCTURE <ls_tt> TO FIELD-SYMBOL(<lv_c>).
+      IF sy-subrc <> 0.
+        EXIT.
+      ENDIF.
+      lv_line = |{ lv_line }{ <lv_c> } |.
+    ENDDO.
+    IF lv_line CS ' E ' OR lv_line(2) = 'E '.
+      WRITE: / lv_line.
+    ENDIF.
   ENDLOOP.
