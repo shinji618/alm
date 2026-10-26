@@ -2,8 +2,8 @@
 *& ZALM_IF_MONITOR - ALM 인터페이스 운영 모니터(WBS 7.9, 08 8장)
 *&   읽기 전용. SM37·SLG1을 열기 전에 먼저 보는 한 장짜리 현황
 *&   1. IF별 현황: 마지막 성공 시각, 최근 P_DAYS일 성공·부분·실패 건수, 지연 경고
-*&      지연 기준: IF-MD-01·AA-01·AA-02 25시간, IF-RC-01 8일, IF-OP-01(15분 잡 심장박동) P_STALE분. 전기 IF(AA-03~07)는 건이 있을 때만 로그가 생겨 지연을 보지 않는다
-*&   2. 최근 실패·부분 실패 목록(ZALM_IF_LOG, 최대 100건)
+*&      지연 기준: IF-MD-01·AA-01·AA-02 25시간, IF-RC-01 8일, IF-OP-01(15분 잡 심장박동) P_STALE분. IF-AA-03 행은 15분 전기 잡의 실행 기록(심장박동, P_STALE분). 건별 전기 IF(AA-04~07)는 건이 있을 때만 로그가 생겨 지연을 보지 않는다
+*&   2. 미해결 실패·부분 실패 목록(ZALM_IF_LOG, 최대 100건). 같은 전기 ID·같은 IF 회사코드로 그 뒤에 성공이 있으면 해결로 보고 뺀다
 *&   3. ZALM 잡 상태(TBTCO): 최근 P_DAYS일 실행 이력(취소 A는 빨강), 필수 잡 5개(ZALM_POSTING_15M, ZALM_MD01_DAILY, ZALM_AA01_DAILY, ZALM_AA02_DAILY, ZALM_RECON_WEEKLY)가 예약돼 있는지
 *&   시각은 로그온 사용자의 시간대(SY-ZONLO)로 보여 준다
 *&---------------------------------------------------------------------*
@@ -44,16 +44,47 @@ START-OF-SELECTION.
   gv_from = cl_abap_tstmp=>subtractsecs( tstmp = gv_now secs = p_days * 86400 ).
 
   gt_if = VALUE #( ( if_id = 'IF-OP-01' max_min = p_stale )
+                   ( if_id = 'IF-AA-03' max_min = p_stale )
                    ( if_id = 'IF-MD-01' max_min = 1500 )
                    ( if_id = 'IF-AA-01' max_min = 1500 )
                    ( if_id = 'IF-AA-02' max_min = 1500 )
                    ( if_id = 'IF-RC-01' max_min = 11520 ) ).
 
+  "---------------- 실패 건 중 미해결만 가려 낸다 ----------------
+  " 해결됨 = 같은 전기 ID(전기 건) 또는 같은 IF·회사코드(배치)로 그 뒤에 성공(SUCCESS·POSTED)이 있음
+  SELECT log_id, if_id, batch_id, posting_id, bukrs, status, http_status, rec_cnt, err_cnt, start_ts
+    FROM zalm_if_log
+    WHERE start_ts >= @gv_from AND status IN ( @zcl_alm_log=>c_failed, @zcl_alm_log=>c_partial )
+    ORDER BY start_ts DESCENDING
+    INTO TABLE @DATA(lt_all_fail) UP TO 500 ROWS.
+  DATA lt_fail LIKE lt_all_fail.
+  DATA lv_resolved TYPE i.
+  LOOP AT lt_all_fail INTO DATA(ls_f).
+    DATA lv_hit TYPE zalm_if_log-log_id.
+    CLEAR lv_hit.
+    IF ls_f-posting_id IS NOT INITIAL.
+      SELECT SINGLE log_id FROM zalm_if_log
+        WHERE posting_id = @ls_f-posting_id AND status = @zcl_alm_log=>c_posted AND start_ts > @ls_f-start_ts INTO @lv_hit.
+    ELSE.
+      SELECT SINGLE log_id FROM zalm_if_log
+        WHERE if_id = @ls_f-if_id AND bukrs = @ls_f-bukrs AND posting_id = @space
+          AND status = @zcl_alm_log=>c_success AND start_ts > @ls_f-start_ts INTO @lv_hit.
+    ENDIF.
+    IF sy-subrc = 0.
+      lv_resolved = lv_resolved + 1.
+    ELSE.
+      APPEND ls_f TO lt_fail.
+    ENDIF.
+  ENDLOOP.
+
   "---------------- 1. IF별 현황 ----------------
+  " 마지막 성공: 전기 IF는 POSTED, 나머지는 SUCCESS. IF-AA-03은 전기 잡이 도는지 보는 심장박동이라 건별이 아닌 실행 행(전기 ID 없음)으로 본다
   SELECT if_id, MAX( start_ts ) AS last_ts FROM zalm_if_log
-    WHERE status = @zcl_alm_log=>c_success GROUP BY if_id INTO TABLE @DATA(lt_last).
+    WHERE status IN ( @zcl_alm_log=>c_success, @zcl_alm_log=>c_posted ) GROUP BY if_id INTO TABLE @DATA(lt_last).
+  SELECT MAX( start_ts ) FROM zalm_if_log
+    WHERE if_id = 'IF-AA-03' AND status = @zcl_alm_log=>c_success AND posting_id = @space INTO @DATA(lv_hb).
   SELECT if_id, status, COUNT(*) AS cnt FROM zalm_if_log
-    WHERE start_ts >= @gv_from GROUP BY if_id, status INTO TABLE @DATA(lt_cnt).
+    WHERE start_ts >= @gv_from AND status IN ( @zcl_alm_log=>c_success, @zcl_alm_log=>c_posted ) GROUP BY if_id, status INTO TABLE @DATA(lt_cnt).
 
   LOOP AT lt_last INTO DATA(ls_last).
     READ TABLE gt_if ASSIGNING FIELD-SYMBOL(<if>) WITH TABLE KEY if_id = ls_last-if_id.
@@ -62,21 +93,33 @@ START-OF-SELECTION.
     ENDIF.
     <if>-last_ok = ls_last-last_ts.
   ENDLOOP.
+  READ TABLE gt_if ASSIGNING <if> WITH TABLE KEY if_id = 'IF-AA-03'.
+  IF sy-subrc = 0.
+    <if>-last_ok = lv_hb.
+  ENDIF.
   LOOP AT lt_cnt INTO DATA(ls_cnt).
     READ TABLE gt_if ASSIGNING <if> WITH TABLE KEY if_id = ls_cnt-if_id.
     IF sy-subrc <> 0.
       INSERT VALUE #( if_id = ls_cnt-if_id ) INTO TABLE gt_if ASSIGNING <if>.
     ENDIF.
-    CASE ls_cnt-status.
-      WHEN zcl_alm_log=>c_success. <if>-n_ok = ls_cnt-cnt.
-      WHEN zcl_alm_log=>c_partial. <if>-n_part = ls_cnt-cnt.
-      WHEN zcl_alm_log=>c_failed.  <if>-n_fail = ls_cnt-cnt.
-    ENDCASE.
+    <if>-n_ok = <if>-n_ok + ls_cnt-cnt.
+  ENDLOOP.
+  LOOP AT lt_fail INTO DATA(ls_open).
+    READ TABLE gt_if ASSIGNING <if> WITH TABLE KEY if_id = ls_open-if_id.
+    IF sy-subrc <> 0.
+      INSERT VALUE #( if_id = ls_open-if_id ) INTO TABLE gt_if ASSIGNING <if>.
+    ENDIF.
+    IF ls_open-status = zcl_alm_log=>c_partial.
+      <if>-n_part = <if>-n_part + 1.
+    ELSE.
+      <if>-n_fail = <if>-n_fail + 1.
+    ENDIF.
   ENDLOOP.
 
-  WRITE: / '■ 1. 인터페이스 현황', 40 |(최근 { p_days }일, 기준 시각 { sy-datum DATE = ISO } { sy-uzeit TIME = ISO })|.
+  WRITE: / '■ 1. 인터페이스 현황'.
+  WRITE: / |최근 { p_days }일, 기준 시각 { sy-datum DATE = ISO } { sy-uzeit TIME = ISO }. 성공은 성공·전기 완료 건수, 부분·실패는 이후 성공이 없는 미해결 건수|.
   ULINE.
-  WRITE: / 'IF', 14 '마지막 성공', 36 '성공', 46 '부분', 56 '실패', 66 '판정'.
+  WRITE: / 'IF', 14 '마지막 성공', 40 '성공', 48 '부분', 56 '실패', 64 '판정'.
   ULINE.
   LOOP AT gt_if INTO DATA(ls_if).
     DATA lv_txt TYPE string.
@@ -92,35 +135,31 @@ START-OF-SELECTION.
         lv_bad = abap_true.
       ENDIF.
     ENDIF.
-    IF ls_if-n_fail > 0.
-      lv_verdict = |{ lv_verdict } 실패 { ls_if-n_fail }건|.
+    IF ls_if-n_fail > 0 OR ls_if-n_part > 0.
+      lv_verdict = |{ lv_verdict } 미해결 { ls_if-n_fail + ls_if-n_part }건|.
       lv_bad = abap_true.
     ENDIF.
     IF lv_verdict IS INITIAL.
       lv_verdict = '정상'.
     ENDIF.
-    WRITE: / ls_if-if_id, 14 lv_txt, 36 ls_if-n_ok, 46 ls_if-n_part, 56 ls_if-n_fail.
+    WRITE: / ls_if-if_id, 14 lv_txt, 38(6) ls_if-n_ok, 46(6) ls_if-n_part, 54(6) ls_if-n_fail.
     IF lv_bad = abap_true.
-      WRITE: 66 lv_verdict COLOR COL_NEGATIVE.
+      WRITE: 64 lv_verdict COLOR COL_NEGATIVE.
     ELSE.
-      WRITE: 66 lv_verdict COLOR COL_POSITIVE.
+      WRITE: 64 lv_verdict COLOR COL_POSITIVE.
     ENDIF.
   ENDLOOP.
 
-  "---------------- 2. 최근 실패·부분 실패 ----------------
-  SELECT if_id, batch_id, posting_id, bukrs, status, http_status, rec_cnt, err_cnt, start_ts
-    FROM zalm_if_log
-    WHERE start_ts >= @gv_from AND status IN ( @zcl_alm_log=>c_failed, @zcl_alm_log=>c_partial )
-    ORDER BY start_ts DESCENDING
-    INTO TABLE @DATA(lt_fail) UP TO 100 ROWS.
+  "---------------- 2. 미해결 실패·부분 실패 ----------------
   SKIP.
-  WRITE: / '■ 2. 최근 실패·부분 실패', 40 |({ lines( lt_fail ) }건, 최대 100건)|.
+  WRITE: / '■ 2. 미해결 실패·부분 실패'.
+  WRITE: / |{ lines( lt_fail ) }건 (이후 성공해 해결된 { lv_resolved }건은 제외, 최근 { p_days }일)|.
   ULINE.
   IF lt_fail IS INITIAL.
     WRITE: / '없음' COLOR COL_POSITIVE.
   ELSE.
     WRITE: / '시각', 22 'IF', 32 '상태', 42 'HTTP', 49 '건수/오류', 62 '회사', 68 '배치 / 전기 ID'.
-    LOOP AT lt_fail INTO DATA(ls_fail).
+    LOOP AT lt_fail INTO DATA(ls_fail) FROM 1 TO 100.
       PERFORM ts_text USING ls_fail-start_ts CHANGING lv_txt.
       WRITE: / lv_txt, 22 ls_fail-if_id, 32 ls_fail-status, 42 ls_fail-http_status,
                49 |{ ls_fail-rec_cnt }/{ ls_fail-err_cnt }|, 62 ls_fail-bukrs,
@@ -137,7 +176,8 @@ START-OF-SELECTION.
     ORDER BY strtdate DESCENDING, strttime DESCENDING
     INTO TABLE @DATA(lt_job) UP TO 200 ROWS.
   SKIP.
-  WRITE: / '■ 3. ZALM 잡 상태', 40 |({ lines( lt_job ) }건, 최대 200건)|.
+  WRITE: / '■ 3. ZALM 잡 상태'.
+  WRITE: / |{ lines( lt_job ) }건 (최대 200건)|.
   ULINE.
   WRITE: / '잡 이름', 36 '시작', 58 '종료', 80 '상태'.
   LOOP AT lt_job INTO DATA(ls_job).
