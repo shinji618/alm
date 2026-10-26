@@ -16,7 +16,7 @@ TYPES:
   BEGIN OF gty_if,
     if_id   TYPE zalm_if_log-if_id,
     max_min TYPE i,
-    last_ok TYPE timestamp,
+    last_ok TYPE timestampl,
     n_ok    TYPE i,
     n_part  TYPE i,
     n_fail  TYPE i,
@@ -24,11 +24,11 @@ TYPES:
   gtt_if TYPE SORTED TABLE OF gty_if WITH UNIQUE KEY if_id.
 
 DATA gt_if TYPE gtt_if.
-DATA gv_from TYPE timestamp.
-DATA gv_now TYPE timestamp.
+DATA gv_from TYPE timestampl.
+DATA gv_now TYPE timestampl.
 
 
-FORM ts_text USING iv_ts TYPE timestamp CHANGING cv_text TYPE string.
+FORM ts_text USING iv_ts TYPE timestampl CHANGING cv_text TYPE string.
   DATA lv_d TYPE d.
   DATA lv_t TYPE t.
   IF iv_ts IS INITIAL.
