@@ -139,7 +139,7 @@ test('대사: 분할 순서 E303, 마지막 분할에서 차이 7유형 계산(2
   await mk('BSG-B', '000000300002');
   await mk('BSG-C', '000000300003');
   await mk('BSG-D', '000000300004');
-  await mk('BSG-E', '000000300005');
+  await mk('BSG-E', '000000300005', { serial: 'sn5' }); // SAP은 시리얼을 대문자로 저장 → 대소문자만 다르면 차이 아님
   const rec = (no: string, o: Record<string, unknown> = {}) => ({ companyCode: '1000', assetNo: no, subNo: '0000', costCenter: 'CC1', description2: 'Location: ATL | Room: R1', ...o });
   const snap = { batchId: 'RC-1', runType: 'WEEKLY', snapshotAt: '2026-10-12T12:00:00Z' };
 
@@ -151,7 +151,7 @@ test('대사: 분할 순서 E303, 마지막 분할에서 차이 7유형 계산(2
   ] });
   assert.equal(c1.status, 200); assert.equal(c1.body.status, 'RECEIVING');
   const c2 = await post('/sap/reconciliation', { ...snap, chunkNo: 2, isLast: true, records: [
-    rec('000000300004', { inventoryNo: 'OLD' }), rec('000000300005'), rec('000000399999', { inventoryNo: 'X' }), rec('000000400000', { deactDate: '2026-01-01' }),
+    rec('000000300004', { inventoryNo: 'OLD' }), rec('000000300005', { serialNo: 'SN5' }), rec('000000399999', { inventoryNo: 'X' }), rec('000000400000', { deactDate: '2026-01-01' }),
   ] });
   assert.equal(c2.status, 202);
   assert.deepEqual({ ...c2.body, runId: undefined }, { batchId: 'RC-1', runId: undefined, received: 4, status: 'PROCESSING' });

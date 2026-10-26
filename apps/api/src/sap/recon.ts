@@ -9,7 +9,7 @@
 //   ALM_ONLY     SAP 번호가 있는 ALM 자산이 스냅샷에 없음             REVIEW
 //   COST_CENTER  KOSTL ≠ ALM 코스트센터                              SAP_TO_ALM
 //   LOCATION     설명 2행(TXA50) ≠ ALM 사이트·룸(desc2, D-09 변경)   ALM_TO_SAP(IF-AA-04 description2)
-//   SERIAL       SERNR ≠ ALM 시리얼                                  ALM_TO_SAP
+//   SERIAL       SERNR ≠ ALM 시리얼(대소문자 무시: SAP은 대문자로 저장)                              ALM_TO_SAP
 //   TAG          INVNR이 있고 ≠ ALM 자산태그(INVNR 빈 값은 비교 안 함: 기본 SEND_INVNO 꺼짐)  ALM_TO_SAP
 //   RETIRED      DEAKT 있음, ALM 활성                                SAP_TO_ALM(ALM RETIRED)
 import { randomUUID } from 'node:crypto';
@@ -134,10 +134,10 @@ export async function computeDiffs(c: PoolClient, conn: SapConn, runId: string):
          FROM m WHERE deact_date IS NULL AND coalesce(description2, '') <> coalesce(desc2, '')
        UNION ALL
        SELECT 'SERIAL', asset_id, sap_asset_no, sap_sub_no, alm_serial, serial_no, 'ALM_TO_SAP'
-         FROM m WHERE deact_date IS NULL AND coalesce(serial_no, '') <> coalesce(alm_serial, '')
+         FROM m WHERE deact_date IS NULL AND upper(coalesce(serial_no, '')) <> upper(coalesce(alm_serial, ''))
        UNION ALL
        SELECT 'TAG', asset_id, sap_asset_no, sap_sub_no, asset_tag, inventory_no, 'ALM_TO_SAP'
-         FROM m WHERE deact_date IS NULL AND coalesce(inventory_no, '') <> '' AND inventory_no <> asset_tag
+         FROM m WHERE deact_date IS NULL AND coalesce(inventory_no, '') <> '' AND upper(inventory_no) <> upper(asset_tag)
      ) d`, [runId, conn.companyId, conn.tenantId]);
   return { alm, diffs: r.rowCount ?? 0 };
 }
