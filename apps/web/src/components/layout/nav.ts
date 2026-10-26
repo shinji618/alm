@@ -30,7 +30,7 @@ export const NAV: NavGroup[] = [
   {
     labelKey: 'nav.lifecycle',
     items: [
-      { path: '/procurement', labelKey: 'nav.procurement', screenId: 'ALM-210', wbs: '5.5' },
+      // 구매(ALM-210)는 숨김(2026-10-25 결정): 구매·PO 정보는 SAP에서 자산 가액이 생길 때 IF-AA-02 origins로 들어와 자산 상세에 표시된다
       { path: '/contracts', labelKey: 'nav.contracts', screenId: 'ALM-220', wbs: '5.4' },
       { path: '/requests', labelKey: 'nav.requests', screenId: 'ALM-230', wbs: '4.3' },
       { path: '/counts', labelKey: 'nav.inventoryCount', screenId: 'ALM-240', wbs: '4.4', perm: 'count.read' },
