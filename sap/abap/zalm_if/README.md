@@ -16,6 +16,8 @@
 | ZALM_IF_PING | 프로그램 | 연결 시험(토큰 → GET /sap/ping), 로그 남김 |
 | ZALM_IF_CONFIG | 프로그램 | ZALM_CFG·ZALM_MAP 조회·저장·삭제, 기본값 넣기 |
 | ZALM_IF_POSTING | 프로그램 | 7.6 전기 잡 1단계: claim(ASSET_CREATE·ASSET_CHANGE) → BAPI_FIXEDASSET_CREATE1/CHANGE(동적 호출) → 로그 후 커밋 → 결과 회신 → 회신 실패 재회신. 이관·폐기·실사 결과(IF-AA-05~07)는 이어서 추가 |
+| ZALM_IF_RUNREQ | 프로그램 | 7.9 IF-OP-01 실행 요청 확인 → 요청마다 즉시 잡(ZALM_RUN_<변형>) 기동. 15분 잡 1스텝 |
+| ZALM_IF_MONITOR | 프로그램 | 7.9 운영 모니터(IF별 현황·지연, 최근 실패, ZALM 잡 상태·예약 확인). 읽기 전용 |
 | ZALM_IF_MASTER_SEND | 프로그램 | 7.4 IF-MD-01 조직·코드 마스터 전체 송신(변형 MD01). 수동 실행과 잡 겸용. 변형 AA01(IF-AA-01 자산 마스터 델타, 7.5). 변형 AA02(IF-AA-02 자산 금액, 7.5). AA02는 PO·AuC 출처(origins)도 함께 송신. 변형 RC01(IF-RC-01 대사 스냅샷, 7.8). MM01(PO 송신)은 보류 |
 
 명세서와 다른 점: 잡 겹침 방지는 잠금 객체 EZALM_RUN 대신 표준 `ENQUEUE_E_TABLE`(테이블 ZALM_IF_LOG, 키 = 잡 이름)을 쓴다(7.6에서 사용).
@@ -153,3 +155,13 @@ DDIC XML은 `../tools/gen_ddic.py`에서 만든다(테이블·메시지 클래�
 - 차이 계산은 ALM이 비동기로 한다. 결과는 ALM 대사 화면에서 확인
 - 시험 실행(P_DRY)은 건수만 로그에 남기고 보내지 않는다
 - **필요한 ALM 서버 버전**: 설명2 필드(migration 0014)가 DEV에 배포돼 있어야 한다
+
+
+## 7.9 잡 스케줄·운영 모니터
+
+잡 구성·SM36 등록 절차·변형·장애 대응은 프로젝트 문서 `15_SAP_잡_스케줄_런북.md`. 요약:
+
+- ZALM_POSTING_15M(15분): `ZALM_IF_RUNREQ` → `ZALM_IF_POSTING`
+- ZALM_MD01_DAILY 05:30 · ZALM_AA01_DAILY 05:40 · ZALM_AA02_DAILY 05:50: `ZALM_IF_MASTER_SEND` 변형 Z_MD01·Z_AA01·Z_AA02
+- ZALM_RECON_WEEKLY 월 07:00: 변형 Z_RC01
+- 아침 점검: `ZALM_IF_MONITOR`
