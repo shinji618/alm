@@ -37,9 +37,9 @@ describe('도메인 이전(bsgapps.com → pasapps.com, DEV)', () => {
   const OLD = 'alm-dev.bsgapps.com';
   const logicalId = (t: Template, type: string, props: object) => Object.keys(t.findResources(type, { Properties: props }));
 
-  it('설정: DEV만 1단계(옛 영역 이름 있음)', async () => {
+  it('설정: 2단계(최종) — 어느 환경도 옛 영역 이름 없음', async () => {
     const { ENVS } = await import('../lib/config');
-    expect(ENVS.dev.legacyZoneName).toBe(OLD);
+    expect(ENVS.dev.legacyZoneName).toBeUndefined();
     expect(ENVS.qa.legacyZoneName).toBeUndefined();
     expect(ENVS.prd.legacyZoneName).toBeUndefined();
   });

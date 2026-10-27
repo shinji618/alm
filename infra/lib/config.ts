@@ -42,7 +42,7 @@ export interface EnvConfig {
   sapEgressCidrs: string[];  // WAF SAP 허용 목록(S-09)
   customerEgressCidrs: string[]; // IP 호출 제한 제외(고객사 출구)
   imageTag: string;          // 배포할 이미지 태그(파이프라인이 -c imageTag=… 로 넘김)
-  // 도메인 이전(2026-10-26 bsgapps.com → pasapps.com) 1단계에만 둔다. 이미 배포된 환경(DEV)만 해당. 순서는 README '도메인 이전'
+  // 도메인 이전(2026-10-26 bsgapps.com → pasapps.com) 1단계에만 둔다(DEV 1단계 배포 2026-10-26 완료 → 2단계로 지움). 이미 배포된 환경(DEV)만 해당. 순서는 README '도메인 이전'
   //   1단계(이 값 있음): 새 영역·새 인증서로 전환하고 옛 영역·옛 인증서는 그대로 둔다(ALB·CloudFront가 바뀌기 전에 지워지지 않게).
   //                     Cognito 사용자 지정 도메인은 풀당 1개라 바로 바꿀 수 없어 잠시 뺀다(이 동안 로그인 불가)
   //   2단계(이 값 삭제): 새 auth.<영역> 도메인 생성, 옛 인증서 삭제, 옛 영역은 템플릿에서 빠짐(RETAIN → scripts/cleanup-old-domain.sh)
@@ -82,7 +82,6 @@ const common = {
 export const ENVS: Record<EnvName, EnvConfig> = {
   dev: {
     ...common, name: 'dev', account: ORG.accounts.dev, zoneName: 'alm-dev.pasapps.com',
-    legacyZoneName: 'alm-dev.bsgapps.com',   // 도메인 이전 1단계. DEV 배포가 끝나면 이 줄을 지우고 다시 배포(2단계)
     sapEgressCidrs: ['108.79.59.91/32'],     // BSG SAP 개발기(bsgs4hana) 출구 IP — SM59 checkip 확인 2026-10-12
     vpcCidr: '10.42.0.0/16', natGateways: 1, interfaceEndpoints: false, flowLogs: false,
     db: { instanceClass: 't4g.medium', multiAz: false, allocatedGb: 20, maxAllocatedGb: 100, backupDays: 1,
