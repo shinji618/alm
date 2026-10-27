@@ -22,11 +22,11 @@ export function buildEnv(app: App, name: EnvName, overrides: Partial<EnvConfig> 
   const dns = new DnsStack(app, `${p}-Dns`, cfg, { env });
   const network = new NetworkStack(app, `${p}-Network`, cfg, { env });
   const data = new DataStack(app, `${p}-Data`, cfg, { env, vpc: network.vpc });
-  const auth = new AuthStack(app, `${p}-Auth`, cfg, { env, secretsKey: data.secretsKey, zone: dns.zone });
+  const auth = new AuthStack(app, `${p}-Auth`, cfg, { env, secretsKey: data.secretsKey, zone: dns.zone, legacyZone: dns.legacyZone });
   const appStack = new AppStack(app, `${p}-App`, cfg, {
     env, vpc: network.vpc, dataKey: data.dataKey, db: data.db, dbSecurityGroup: data.dbSecurityGroup,
     userPool: auth.userPool, webClient: auth.webClient,
-    pdaClient: auth.pdaClient, webClientSecret: auth.webClientSecret, cookieKeySecret: auth.cookieKeySecret, secretsKey: data.secretsKey, zone: dns.zone,
+    pdaClient: auth.pdaClient, webClientSecret: auth.webClientSecret, cookieKeySecret: auth.cookieKeySecret, secretsKey: data.secretsKey, zone: dns.zone, legacyZone: dns.legacyZone,
   });
   const edge = new EdgeStack(app, `${p}-Edge`, cfg, { env, alb: appStack.alb, albSecurityGroup: appStack.albSecurityGroup,
     certificate: appStack.appCertificate, vpc: network.vpc,

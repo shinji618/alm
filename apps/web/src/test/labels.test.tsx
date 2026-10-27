@@ -42,7 +42,7 @@ describe('label preview encoders', () => {
     expect(m.length).toBe(21);
     expect(m[0].slice(0, 7).every(Boolean)).toBe(true);
     expect(m[1].slice(1, 6).some(Boolean)).toBe(false);
-    expect(qrMatrix('https://alm-dev.bsgapps.com/assets/0f62d8c6').length).toBeGreaterThan(21);
+    expect(qrMatrix('https://alm-dev.pasapps.com/assets/0f62d8c6').length).toBeGreaterThan(21);
     const w = code128Widths('AT-000001');
     expect(w.reduce((a, b) => a + b, 0)).toBe(11 * (1 + 9 + 1) + 13);
     expect(w.slice(0, 6).join('')).toBe('211214');

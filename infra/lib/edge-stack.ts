@@ -103,12 +103,15 @@ export class EdgeStack extends Stack {
     const alias = new route53.ARecord(this, 'Alias', { zone, recordName: appDomain, target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(this.distribution)) });
     new route53.AaaaRecord(this, 'AliasV6', { zone, recordName: appDomain, target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(this.distribution)) });
 
-    // Cognito 사용자 지정 도메인(auth.<영역>): 상위 이름(영역 최상위)에 A 레코드가 있어야 하므로 위 별칭 다음에 만든다
-    const userPoolDomain = new cognito.UserPoolDomain(this, 'AuthDomain', {
-      userPool: props.userPool, customDomain: { domainName: authDomain, certificate: props.authCertificate },
-    });
-    userPoolDomain.node.addDependency(alias);
-    new route53.ARecord(this, 'AuthAlias', { zone, recordName: authDomain, target: route53.RecordTarget.fromAlias(new targets.UserPoolDomainTarget(userPoolDomain)) });
+    // Cognito 사용자 지정 도메인(auth.<영역>): 상위 이름(영역 최상위)에 A 레코드가 있어야 하므로 위 별칭 다음에 만든다.
+    // 도메인 이전 1단계(cfg.legacyZoneName)에는 뺀다: 사용자 풀에 사용자 지정 도메인은 1개뿐이라 옛 도메인을 먼저 지워야 새 도메인을 만들 수 있다
+    if (!cfg.legacyZoneName) {
+      const userPoolDomain = new cognito.UserPoolDomain(this, 'AuthDomain', {
+        userPool: props.userPool, customDomain: { domainName: authDomain, certificate: props.authCertificate },
+      });
+      userPoolDomain.node.addDependency(alias);
+      new route53.ARecord(this, 'AuthAlias', { zone, recordName: authDomain, target: route53.RecordTarget.fromAlias(new targets.UserPoolDomainTarget(userPoolDomain)) });
+    }
 
     new CfnOutput(this, 'DistributionId', { value: this.distribution.distributionId });
     new CfnOutput(this, 'WebBucketName', { value: this.webBucket.bucketName });

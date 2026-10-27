@@ -7,7 +7,10 @@ import * as kms from 'aws-cdk-lib/aws-kms';
 import { Construct } from 'constructs';
 import { EnvConfig, appDomain, authDomain } from './config';
 
-export interface AuthProps extends StackProps { secretsKey: kms.IKey; zone: route53.IHostedZone }
+export interface AuthProps extends StackProps {
+  secretsKey: kms.IKey; zone: route53.IHostedZone;
+  legacyZone?: route53.IHostedZone;   // 도메인 이전 1단계에만(config.ts legacyZoneName)
+}
 
 // 09 설계서 6장, 10 정의서 8.1: 환경별 사용자 풀 1개(Lite), 웹·PDA 앱 클라이언트, 리소스 서버.
 // 고객사 IdP(T-<테넌트>)와 SAP 클라이언트는 테넌트 추가 때 alm-cognito-admin Lambda가 만든다(CDK 밖).
@@ -37,7 +40,13 @@ export class AuthStack extends Stack {
     });
 
     // 사용자 지정 도메인(auth.<영역>)은 상위 이름(영역 최상위)에 A 레코드가 있어야 만들어진다 → Edge 스택이 CloudFront 별칭 다음에 만든다
-    this.authCertificate = new acm.Certificate(this, 'AuthCert', { domainName: authDomain(cfg), validation: acm.CertificateValidation.fromDns(props.zone) });
+    // 논리 ID 'AuthCertificate': 2026-10 도메인 이전 때 옛 인증서(논리 ID 'AuthCert')와 함께 있어야 해서 새 ID를 쓴다
+    this.authCertificate = new acm.Certificate(this, 'AuthCertificate', { domainName: authDomain(cfg), validation: acm.CertificateValidation.fromDns(props.zone) });
+    if (cfg.legacyZoneName && props.legacyZone) {
+      // 옛 인증서(auth.alm-dev.bsgapps.com): 이전과 같은 속성으로 남긴다. 이 스택이 Edge보다 먼저 배포되므로
+      // 여기서 바로 지우면 아직 옛 Cognito 도메인이 쓰는 중이라 삭제가 실패한다(2단계에서 삭제)
+      new acm.Certificate(this, 'AuthCert', { domainName: `auth.${cfg.legacyZoneName}`, validation: acm.CertificateValidation.fromDns(props.legacyZone) });
+    }
 
     const sapScope = new cognito.ResourceServerScope({ scopeName: 'sap.api', scopeDescription: 'SAP 배치 연계' });
     this.userPool.addResourceServer('Api', { identifier: this.resourceServerId, scopes: [sapScope] });

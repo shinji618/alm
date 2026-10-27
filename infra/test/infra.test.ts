@@ -15,19 +15,61 @@ const envs: Record<string, Built> = {};
 const tpl = (e: string, s: keyof Omit<Built, 'cfg' | 'stacks'>) => Template.fromStack(envs[e][s] as any);
 
 beforeAll(() => {
-  for (const e of ['dev', 'prd'] as const) envs[e] = buildEnv(newApp(), e);
+  // 이전이 끝난 최종 상태로 검사한다(도메인 이전 단계는 아래 '도메인 이전'에서 따로)
+  for (const e of ['dev', 'prd'] as const) envs[e] = buildEnv(newApp(), e, { legacyZoneName: undefined });
 });
 
 describe('DNS (환경 영역)', () => {
   it('환경 계정에 자기 영역, 앱·로그인·메일 레코드는 그 영역에', () => {
-    tpl('dev', 'dns').hasResourceProperties('AWS::Route53::HostedZone', { Name: 'alm-dev.bsgapps.com.' });
-    tpl('prd', 'dns').hasResourceProperties('AWS::Route53::HostedZone', { Name: 'alm.bsgapps.com.' });
+    tpl('dev', 'dns').hasResourceProperties('AWS::Route53::HostedZone', { Name: 'alm-dev.pasapps.com.' });
+    tpl('prd', 'dns').hasResourceProperties('AWS::Route53::HostedZone', { Name: 'alm.pasapps.com.' });
+    tpl('dev', 'dns').resourceCountIs('AWS::Route53::HostedZone', 1);
     const edge = tpl('dev', 'edge');
-    edge.hasResourceProperties('AWS::Cognito::UserPoolDomain', { Domain: 'auth.alm-dev.bsgapps.com' });
-    edge.hasResourceProperties('AWS::Route53::RecordSet', Match.objectLike({ Name: 'alm-dev.bsgapps.com.', Type: 'A' }));
-    tpl('dev', 'app').hasResourceProperties('AWS::SES::EmailIdentity', Match.objectLike({ EmailIdentity: 'alm-dev.bsgapps.com',
-      MailFromAttributes: { MailFromDomain: 'bounce.alm-dev.bsgapps.com' } }));
+    edge.hasResourceProperties('AWS::Cognito::UserPoolDomain', { Domain: 'auth.alm-dev.pasapps.com' });
+    edge.hasResourceProperties('AWS::Route53::RecordSet', Match.objectLike({ Name: 'alm-dev.pasapps.com.', Type: 'A' }));
+    tpl('dev', 'app').hasResourceProperties('AWS::SES::EmailIdentity', Match.objectLike({ EmailIdentity: 'alm-dev.pasapps.com',
+      MailFromAttributes: { MailFromDomain: 'bounce.alm-dev.pasapps.com' } }));
     tpl('dev', 'auth').resourceCountIs('AWS::Cognito::UserPoolDomain', 0);
+  });
+});
+
+describe('도메인 이전(bsgapps.com → pasapps.com, DEV)', () => {
+  const OLD = 'alm-dev.bsgapps.com';
+  const logicalId = (t: Template, type: string, props: object) => Object.keys(t.findResources(type, { Properties: props }));
+
+  it('설정: DEV만 1단계(옛 영역 이름 있음)', async () => {
+    const { ENVS } = await import('../lib/config');
+    expect(ENVS.dev.legacyZoneName).toBe(OLD);
+    expect(ENVS.qa.legacyZoneName).toBeUndefined();
+    expect(ENVS.prd.legacyZoneName).toBeUndefined();
+  });
+
+  it('1단계: 옛 영역·옛 인증서는 이전과 같은 논리 ID로 유지, Cognito 사용자 지정 도메인은 잠시 없음', () => {
+    const b = buildEnv(newApp(), 'dev', { legacyZoneName: OLD });
+    const dns = Template.fromStack(b.dns);
+    dns.resourceCountIs('AWS::Route53::HostedZone', 2);
+    const oldZone = logicalId(dns, 'AWS::Route53::HostedZone', { Name: `${OLD}.`, HostedZoneConfig: { Comment: 'ALM dev (delegated from bsgapps.com)' } });
+    expect(oldZone).toHaveLength(1);
+    expect(oldZone[0]).toMatch(/^Zone[0-9A-F]{8}$/);                 // 이전과 같은 논리 ID → 그대로 유지
+    expect(dns.toJSON().Resources[oldZone[0]].DeletionPolicy).toBe('Retain');
+    expect(logicalId(dns, 'AWS::Route53::HostedZone', { Name: 'alm-dev.pasapps.com.' })[0]).toMatch(/^AppZone/);
+
+    const app = Template.fromStack(b.app); const auth = Template.fromStack(b.auth);
+    expect(logicalId(app, 'AWS::CertificateManager::Certificate', { DomainName: OLD })[0]).toMatch(/^AppCert[0-9A-F]{8}$/);
+    expect(logicalId(app, 'AWS::CertificateManager::Certificate', { DomainName: 'alm-dev.pasapps.com' })[0]).toMatch(/^AppCertificate/);
+    expect(logicalId(auth, 'AWS::CertificateManager::Certificate', { DomainName: `auth.${OLD}` })[0]).toMatch(/^AuthCert[0-9A-F]{8}$/);
+    expect(logicalId(auth, 'AWS::CertificateManager::Certificate', { DomainName: 'auth.alm-dev.pasapps.com' })[0]).toMatch(/^AuthCertificate/);
+
+    const edge = Template.fromStack(b.edge);
+    edge.resourceCountIs('AWS::Cognito::UserPoolDomain', 0);
+    edge.hasResourceProperties('AWS::CloudFront::Distribution', { DistributionConfig: Match.objectLike({ Aliases: ['alm-dev.pasapps.com'] }) });
+    for (const s of [b.edge, b.obs, b.data]) expect(JSON.stringify(Template.fromStack(s).toJSON())).not.toContain('bsgapps');
+  });
+
+  it('2단계(최종): 옛 도메인 흔적 없음, 새 auth 도메인', () => {
+    for (const s of envs.dev.stacks) expect(JSON.stringify(Template.fromStack(s).toJSON())).not.toContain('bsgapps');
+    tpl('dev', 'dns').resourceCountIs('AWS::Route53::HostedZone', 1);
+    tpl('dev', 'edge').hasResourceProperties('AWS::Cognito::UserPoolDomain', { Domain: 'auth.alm-dev.pasapps.com' });
   });
 });
 
@@ -67,7 +109,7 @@ describe('Data', () => {
 describe('Auth (09 6장)', () => {
   it('웹 클라이언트 15분/8시간, 비밀 있음', () => {
     tpl('dev', 'auth').hasResourceProperties('AWS::Cognito::UserPoolClient', Match.objectLike({ ClientName: 'alm-web', GenerateSecret: true,
-      AccessTokenValidity: 15, RefreshTokenValidity: 480, CallbackURLs: ['https://alm-dev.bsgapps.com/api/v1/auth/callback'] }));
+      AccessTokenValidity: 15, RefreshTokenValidity: 480, CallbackURLs: ['https://alm-dev.pasapps.com/api/v1/auth/callback'] }));
   });
   it('PDA 클라이언트 60분/24시간, 비밀 없음', () => {
     tpl('dev', 'auth').hasResourceProperties('AWS::Cognito::UserPoolClient', Match.objectLike({ ClientName: 'alm-pda', GenerateSecret: false,
@@ -160,7 +202,7 @@ describe('Edge (10 5장)', () => {
     t.resourceCountIs('AWS::CloudFront::VpcOrigin', 1);
     const json = JSON.stringify(t.toJSON());
     expect(json).toContain('http://localhost:9100');
-    t.hasResourceProperties('AWS::CloudFront::Distribution', { DistributionConfig: Match.objectLike({ Aliases: ['alm.bsgapps.com'],
+    t.hasResourceProperties('AWS::CloudFront::Distribution', { DistributionConfig: Match.objectLike({ Aliases: ['alm.pasapps.com'],
       CacheBehaviors: Match.arrayWith([Match.objectLike({ PathPattern: '/api/*' })]) }) });
   });
 });

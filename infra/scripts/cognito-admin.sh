@@ -9,9 +9,9 @@
 set -euo pipefail
 ENV=${1:?dev|qa|prd}; ARG=${2:?info 또는 JSON}
 case "$ENV" in
-  dev) acct=236501162716; zone=alm-dev.bsgapps.com ;;
-  qa)  acct=428477779499; zone=alm-qa.bsgapps.com ;;
-  prd) acct=482545366457; zone=alm.bsgapps.com ;;
+  dev) acct=236501162716; zone=alm-dev.pasapps.com ;;
+  qa)  acct=428477779499; zone=alm-qa.pasapps.com ;;
+  prd) acct=482545366457; zone=alm.pasapps.com ;;
   *) echo "env는 dev|qa|prd" >&2; exit 2 ;;
 esac
 read -r AK SK ST <<< "$(aws sts assume-role --role-arn "arn:aws:iam::${acct}:role/AWSControlTowerExecution" \

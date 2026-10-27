@@ -6,7 +6,7 @@ export interface Config {
   db: { host: string; port: number; name: string; user: string; password?: string; ssl: boolean };
   dbMaster?: { user: string; password: string };   // migrate 부트스트랩 때만(Secrets Manager → ECS 비밀)
   cognito: { userPoolId: string; webClientId: string; webClientSecret: string; pdaClientId: string; domain: string };
-  appOrigin: string;           // https://alm-dev.bsgapps.com
+  appOrigin: string;           // https://alm-dev.pasapps.com
   cookieKeys: Buffer[];        // [현재, 이전] — 분기 교체 뒤 8시간 동안 이전 키도 받는다(09 6.4)
   jobsQueueUrl?: string;
   cognitoAdminFunction?: string;

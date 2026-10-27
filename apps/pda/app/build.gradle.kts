@@ -28,19 +28,19 @@ android {
             dimension = "env"
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-dev"
-            buildConfigField("String", "API_BASE", "\"https://alm-dev.bsgapps.com/api/v1\"")
+            buildConfigField("String", "API_BASE", "\"https://alm-dev.pasapps.com/api/v1\"")
             resValue("string", "app_name", "ALM Count DEV")
         }
         create("qa") {
             dimension = "env"
             applicationIdSuffix = ".qa"
             versionNameSuffix = "-qa"
-            buildConfigField("String", "API_BASE", "\"https://alm-qa.bsgapps.com/api/v1\"")
+            buildConfigField("String", "API_BASE", "\"https://alm-qa.pasapps.com/api/v1\"")
             resValue("string", "app_name", "ALM Count QA")
         }
         create("prd") {
             dimension = "env"
-            buildConfigField("String", "API_BASE", "\"https://alm.bsgapps.com/api/v1\"")
+            buildConfigField("String", "API_BASE", "\"https://alm.pasapps.com/api/v1\"")
             resValue("string", "app_name", "ALM Count")
         }
     }

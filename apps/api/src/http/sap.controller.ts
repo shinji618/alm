@@ -26,7 +26,7 @@ function oauthError(res: Response, req: AlmRequest, status: number, error: strin
   if (status === 401) res.setHeader('WWW-Authenticate', 'Basic realm="ALM SAP", charset="UTF-8"');
   return res.status(status).type('application/json').json({
     error, error_description: description,
-    type: `https://alm.bsgapps.com/errors/${code}`, title: error, status, code, detail: description, correlationId: req.alm.correlationId,
+    type: `https://alm.pasapps.com/errors/${code}`, title: error, status, code, detail: description, correlationId: req.alm.correlationId,
   });
 }
 

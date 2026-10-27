@@ -32,7 +32,7 @@ export class ProblemFilter implements ExceptionFilter {
       log.error('unhandled', { correlationId, err: err instanceof Error ? `${err.name}: ${err.message}` : String(err), stack: err instanceof Error ? err.stack : undefined });
     }
     res.status(status).type('application/problem+json').json({
-      type: `https://alm.bsgapps.com/errors/${code}`, title: titleOf(status), status, code, detail, correlationId,
+      type: `https://alm.pasapps.com/errors/${code}`, title: titleOf(status), status, code, detail, correlationId,
       ...(errors ? { errors } : {}), ...ext,
     });
   }

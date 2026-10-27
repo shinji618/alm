@@ -2,11 +2,11 @@
 # 환경 호스팅 영역 만들기 + 상위 도메인 위임 (환경 첫 배포 전에 1회)
 # 관리 계정(BSG ALM) CloudShell에서 저장소 infra 폴더를 풀어 놓고 실행한다.
 #   bash infra/scripts/setup-dns.sh dev        # 여러 개: dev qa prd
-# 1) 환경 계정(AWSControlTowerExecution)으로 Alm-<Env>-Dns 스택 배포 → 영역 alm[-qa|-dev].bsgapps.com
-# 2) 그 영역의 네임서버 4개를 관리 계정의 bsgapps.com 영역에 NS 레코드로 넣는다(UPSERT, 다시 실행해도 됨)
+# 1) 환경 계정(AWSControlTowerExecution)으로 Alm-<Env>-Dns 스택 배포 → 영역 alm[-qa|-dev].pasapps.com
+# 2) 그 영역의 네임서버 4개를 관리 계정의 pasapps.com 영역에 NS 레코드로 넣는다(UPSERT, 다시 실행해도 됨)
 set -euo pipefail
 cd "$(dirname "$0")/.."
-PARENT=bsgapps.com
+PARENT=pasapps.com
 [[ $# -ge 1 ]] || { echo "사용: $0 dev [qa prd]" >&2; exit 2; }
 [[ -d node_modules ]] || npm ci --no-audit --no-fund
 PZ=$(aws route53 list-hosted-zones-by-name --dns-name "$PARENT" --query "HostedZones[?Name=='${PARENT}.'].Id | [0]" --output text)

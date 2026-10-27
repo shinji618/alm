@@ -37,6 +37,7 @@ export interface AppProps extends StackProps {
   cookieKeySecret: secrets.ISecret;
   secretsKey: kms.IKey;
   zone: route53.IHostedZone;
+  legacyZone?: route53.IHostedZone;   // 도메인 이전 1단계에만(config.ts legacyZoneName)
 }
 
 const CONTAINER_PORT = 3000;
@@ -250,7 +251,13 @@ export class AppStack extends Stack {
     });
 
     // ---- 내부 ALB(VPC 오리진) ----
-    this.appCertificate = new acm.Certificate(this, 'AppCert', { domainName: appDomain, validation: acm.CertificateValidation.fromDns(zone) });
+    // 논리 ID 'AppCertificate': 2026-10 도메인 이전 때 옛 인증서(논리 ID 'AppCert')와 함께 있어야 해서 새 ID를 쓴다
+    this.appCertificate = new acm.Certificate(this, 'AppCertificate', { domainName: appDomain, validation: acm.CertificateValidation.fromDns(zone) });
+    if (cfg.legacyZoneName && props.legacyZone) {
+      // 옛 인증서(alm-dev.bsgapps.com): 이전과 같은 속성으로 남긴다. 이 스택이 Edge보다 먼저 배포되므로
+      // 여기서 바로 지우면 아직 CloudFront가 쓰는 중이라 삭제가 실패한다(2단계에서 삭제)
+      new acm.Certificate(this, 'AppCert', { domainName: cfg.legacyZoneName, validation: acm.CertificateValidation.fromDns(props.legacyZone) });
+    }
     this.alb = new elbv2.ApplicationLoadBalancer(this, 'Alb', { loadBalancerName: `alm-${env}`, vpc: props.vpc, internetFacing: false,
       vpcSubnets: appSubnets, securityGroup: this.albSecurityGroup, dropInvalidHeaderFields: true, idleTimeout: Duration.seconds(60) });
     this.alb.logAccessLogs(s3.Bucket.fromBucketName(this, 'AlbLogs', logBucketName(env)), 'alb');

@@ -42,6 +42,11 @@ export interface EnvConfig {
   sapEgressCidrs: string[];  // WAF SAP 허용 목록(S-09)
   customerEgressCidrs: string[]; // IP 호출 제한 제외(고객사 출구)
   imageTag: string;          // 배포할 이미지 태그(파이프라인이 -c imageTag=… 로 넘김)
+  // 도메인 이전(2026-10-26 bsgapps.com → pasapps.com) 1단계에만 둔다. 이미 배포된 환경(DEV)만 해당. 순서는 README '도메인 이전'
+  //   1단계(이 값 있음): 새 영역·새 인증서로 전환하고 옛 영역·옛 인증서는 그대로 둔다(ALB·CloudFront가 바뀌기 전에 지워지지 않게).
+  //                     Cognito 사용자 지정 도메인은 풀당 1개라 바로 바꿀 수 없어 잠시 뺀다(이 동안 로그인 불가)
+  //   2단계(이 값 삭제): 새 auth.<영역> 도메인 생성, 옛 인증서 삭제, 옛 영역은 템플릿에서 빠짐(RETAIN → scripts/cleanup-old-domain.sh)
+  legacyZoneName?: string;
 }
 
 export const ORG: OrgConfig = {
@@ -53,8 +58,9 @@ export const ORG: OrgConfig = {
     shared: '631237958461', backup: '262325793971',
     dev: '236501162716', qa: '428477779499', prd: '482545366457',
   },
-  // 2026-10-10 Route 53 등록(관리 계정). ALM은 alm[-qa|-dev].bsgapps.com 영역을 환경 계정에 두고 위임받는다
-  domain: 'bsgapps.com',
+  // 2026-10-26 Route 53 등록(관리 계정). ALM은 alm[-qa|-dev].pasapps.com 영역을 환경 계정에 두고 위임받는다
+  // (이전 도메인 bsgapps.com, 2026-10-10 등록 → 2026-10-26 pasapps.com으로 변경)
+  domain: 'pasapps.com',
   githubRepo: 'shinji618/alm',
   githubRepoIds: 'shinji618@335630296/alm@1409332069',
   ecrRepositoryName: 'alm',
@@ -75,7 +81,8 @@ const common = {
 
 export const ENVS: Record<EnvName, EnvConfig> = {
   dev: {
-    ...common, name: 'dev', account: ORG.accounts.dev, zoneName: 'alm-dev.bsgapps.com',
+    ...common, name: 'dev', account: ORG.accounts.dev, zoneName: 'alm-dev.pasapps.com',
+    legacyZoneName: 'alm-dev.bsgapps.com',   // 도메인 이전 1단계. DEV 배포가 끝나면 이 줄을 지우고 다시 배포(2단계)
     sapEgressCidrs: ['108.79.59.91/32'],     // BSG SAP 개발기(bsgs4hana) 출구 IP — SM59 checkip 확인 2026-10-12
     vpcCidr: '10.42.0.0/16', natGateways: 1, interfaceEndpoints: false, flowLogs: false,
     db: { instanceClass: 't4g.medium', multiAz: false, allocatedGb: 20, maxAllocatedGb: 100, backupDays: 1,
@@ -87,7 +94,7 @@ export const ENVS: Record<EnvName, EnvConfig> = {
     alarmEmail: 'shinji@bsgglobal.com', monthlyBudgetUsd: 200,
   },
   qa: {
-    ...common, name: 'qa', account: ORG.accounts.qa, zoneName: 'alm-qa.bsgapps.com',
+    ...common, name: 'qa', account: ORG.accounts.qa, zoneName: 'alm-qa.pasapps.com',
     vpcCidr: '10.41.0.0/16', natGateways: 1, interfaceEndpoints: false, flowLogs: false,
     db: { instanceClass: 't4g.medium', multiAz: false, allocatedGb: 50, maxAllocatedGb: 200, backupDays: 7,
           performanceInsights: true, monitoringSeconds: 0, deletionProtection: true },
@@ -97,7 +104,7 @@ export const ENVS: Record<EnvName, EnvConfig> = {
     alarmEmail: 'shinji@bsgglobal.com', monthlyBudgetUsd: 200,
   },
   prd: {
-    ...common, name: 'prd', account: ORG.accounts.prd, zoneName: 'alm.bsgapps.com',
+    ...common, name: 'prd', account: ORG.accounts.prd, zoneName: 'alm.pasapps.com',
     vpcCidr: '10.40.0.0/16', natGateways: 2, interfaceEndpoints: true, flowLogs: true,
     db: { instanceClass: 'm7g.large', multiAz: true, allocatedGb: 100, maxAllocatedGb: 1000, backupDays: 35,
           performanceInsights: true, monitoringSeconds: 60, deletionProtection: true,

@@ -42,8 +42,8 @@ SM59 기본 인증의 사용자 필드가 12자라 Cognito clientId(26자)를 �
 
    | 이름 | 호스트 | 포트 | 경로 접두어 | 로그온 |
    | --- | --- | --- | --- | --- |
-   | `ZALM_API` | `alm-dev.bsgapps.com` | 443 | `/api/v1` | 없음 |
-   | `ZALM_TOKEN` | `alm-dev.bsgapps.com` | 443 | `/api/v1/oauth/token` | 기본 인증: 사용자 = 별칭, 비밀번호 = 클라이언트 비밀 |
+   | `ZALM_API` | `alm-dev.pasapps.com` | 443 | `/api/v1` | 없음 |
+   | `ZALM_TOKEN` | `alm-dev.pasapps.com` | 443 | `/api/v1/oauth/token` | 기본 인증: 사용자 = 별칭, 비밀번호 = 클라이언트 비밀 |
 
    기존 시험용 `ZALM_DEV`를 복사해 `ZALM_API`로 만들어도 된다.
 5. **SE38 `ZALM_IF_CONFIG`** → 기본값 넣기(BUKRS 1000, RETRY_WAIT_SEC 60, POST_BLOCK, PO_DOC_TYPE NB, RETIRE_TT SCRAP = 200).

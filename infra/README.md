@@ -6,7 +6,7 @@
 
 | 대상 | 스택 | 계정 / 리전 | 파일 |
 | --- | --- | --- | --- |
-| 환경(`-c env=dev\|qa\|prd`) | `Alm-<Env>-Dns` | 환경 계정 / us-east-1 | `lib/dns-stack.ts` (영역 `alm[-qa\|-dev].bsgapps.com`) |
+| 환경(`-c env=dev\|qa\|prd`) | `Alm-<Env>-Dns` | 환경 계정 / us-east-1 | `lib/dns-stack.ts` (영역 `alm[-qa\|-dev].pasapps.com`) |
 | | `Alm-<Env>-Network` | 〃 | `lib/network-stack.ts` |
 | | `Alm-<Env>-Data` | 〃 | `lib/data-stack.ts` |
 | | `Alm-<Env>-Auth` | 〃 | `lib/auth-stack.ts` |
@@ -48,7 +48,7 @@ npx cdk deploy -c env=prd -c imageTag=<태그> --all
 | `ORG.accounts.*` | 111…~666… | Control Tower로 만든 계정 ID 6개 |
 | `ORG.workloadsOuId`, `securityOuId` | `ou-xxxx-…` | Control Tower OU ID |
 | `ORG.ssoInstanceArn` | `ssoins-000…` | IAM Identity Center 인스턴스 ARN |
-| `ORG.domain`, `ENVS.*.zoneName` | `bsgapps.com`, `alm[-qa\|-dev].bsgapps.com` | 앱 = 영역 최상위, 로그인 = `auth.<영역>`, 메일 = `no-reply@<영역>`(MAIL FROM `bounce.<영역>`) |
+| `ORG.domain`, `ENVS.*.zoneName` | `pasapps.com`, `alm[-qa\|-dev].pasapps.com` (2026-10-26 `bsgapps.com`에서 변경) | 앱 = 영역 최상위, 로그인 = `auth.<영역>`, 메일 = `no-reply@<영역>`(MAIL FROM `bounce.<영역>`) |
 | `ENVS.*.sapEgressCidrs` | 203.0.113.10/32(예시) | 고객 SAP 출구 IP(BASIS 회신) |
 | `ENVS.*.customerEgressCidrs` | 203.0.113.0/24(예시) | 고객사 사무실 출구 IP |
 | `ENVS.*.alarmEmail` | shinji@bsgglobal.com | 운영 메일(필요 시 그룹 주소) |
@@ -62,8 +62,25 @@ npx cdk deploy -c env=prd -c imageTag=<태그> --all
 2. `lib/config.ts` 자리 값 교체
 3. `cdk bootstrap` (계정·리전별)
 4. 계정 공통 스택: `cdk deploy -c env=global …`
-5. 환경 DNS: 관리 계정 CloudShell에서 `bash infra/scripts/setup-dns.sh dev` — 환경 계정에 영역(`alm-dev.bsgapps.com`)을 만들고 상위 `bsgapps.com`(관리 계정)에 NS 위임. 위임 전에는 인증서 DNS 검증이 끝나지 않는다
+5. 환경 DNS: 관리 계정 CloudShell에서 `bash infra/scripts/setup-dns.sh dev` — 환경 계정에 영역(`alm-dev.pasapps.com`)을 만들고 상위 `pasapps.com`(관리 계정)에 NS 위임. 위임 전에는 인증서 DNS 검증이 끝나지 않는다
 6. GitHub 환경·변수 설정 후 `DEPLOY_ENABLED=true` → main 푸시로 DEV 자동 배포
+
+## 도메인 이전 (2026-10-26, `bsgapps.com` → `pasapps.com`)
+
+이미 배포된 DEV만 해당한다(QA·PRD는 처음부터 새 도메인). 스택 간 참조는 `Fn::GetStackOutput`(내보내기 잠금 없음)이지만
+① Cognito 사용자 풀에는 사용자 지정 도메인이 1개뿐이라 옛 `auth.` 도메인을 먼저 지워야 새 도메인을 만들 수 있고,
+② App·Auth 스택이 Edge보다 먼저 배포되므로 옛 인증서를 바로 지우면 아직 CloudFront·Cognito가 쓰는 중이라 삭제가 실패한다.
+그래서 두 번에 나눠 배포한다. 단계는 `lib/config.ts`의 `ENVS.dev.legacyZoneName` 한 줄로 정한다.
+
+| 단계 | 할 일 | 결과 |
+| --- | --- | --- |
+| 0 | 관리 계정 CloudShell: `bash infra/scripts/setup-dns.sh dev` (1단계 코드로) | 새 영역 `alm-dev.pasapps.com` 생성 + `pasapps.com`에 NS 위임. 옛 영역은 그대로 |
+| 1 | `legacyZoneName: 'alm-dev.bsgapps.com'` 상태로 main 푸시 → DEV 배포 | 앱·API·메일·S3 CORS·Cognito 콜백이 새 도메인으로. 옛 영역·옛 인증서는 남김. **Cognito 사용자 지정 도메인 없음 → 2단계까지 로그인·SAP 토큰 불가** |
+| 2 | `legacyZoneName` 줄을 지우고 main 푸시 → DEV 배포 | `auth.alm-dev.pasapps.com` 생성, 옛 인증서 삭제, 옛 영역은 템플릿에서 빠짐(RETAIN이라 남음) |
+| 3 | 관리 계정 CloudShell: `bash infra/scripts/cleanup-old-domain.sh` 로 확인 → `--apply` | 옛 영역·남은 옛 인증서·`bsgapps.com`의 NS 위임 삭제(선택, 영역 1개 월 $0.50) |
+
+배포 밖에서 바꿀 것: Okta 앱 리디렉트 URI(`https://auth.alm-dev.pasapps.com/oauth2/idpresponse`), SAP SM59 `ZALM_API`·`ZALM_TOKEN` 호스트,
+PDA APK 다시 설치(또는 PDA 설정의 API 주소), 브라우저 즐겨찾기.
 
 ## 배포 파이프라인 (WBS 3.2)
 
