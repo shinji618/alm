@@ -34,7 +34,7 @@ for env in dev qa prd; do
       else
         echo "  옛 영역 ${zid} 삭제 대상"
         aws route53 list-resource-record-sets --hosted-zone-id "$zid" --output json \
-          | jq -c --arg z "${zone}." '.ResourceRecordSets[] | select(.Type != "SOA" and !(.Type == "NS" and .Name == $z))' \
+          | jq -c --arg z "${zone}." '.ResourceRecordSets[] | select(.Type != "SOA" and ((.Type == "NS" and .Name == $z) | not))' \
           | while read -r rr; do
               echo "  레코드 $(jq -r '.Name + " " + .Type' <<< "$rr")"
               run aws route53 change-resource-record-sets --hosted-zone-id "$zid" --query ChangeInfo.Status --output text \
