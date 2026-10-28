@@ -9,7 +9,7 @@ export interface Db {
 }
 
 async function setContext(c: Tx, ctx: TxContext) {
-  await c.query(`SELECT set_config('app.tenant_id', $1, true) AS tenant, set_config('app.actor', $2, true) AS actor`, [ctx.tenantId ?? '', ctx.actor ?? '']);
+  await c.query(`SELECT set_config('app.tenant_id', $1::text, true) AS tenant, set_config('app.actor', $2::text, true) AS actor`, [ctx.tenantId ?? '', ctx.actor ?? '']);
 }
 
 // ---------- pg(시험·로컬) ----------
