@@ -165,7 +165,7 @@ describe('App (10 6장)', () => {
     expect(secretsOf('alm-dev-worker')).toEqual(C);
     for (const f of ['alm-dev-audit-archive', 'alm-dev-partman']) expect(secretsOf(f)).toEqual([]);
     const prd = Object.values(tpl('prd', 'app').findResources('AWS::ECS::TaskDefinition')).find((r: any) => r.Properties.Family === 'alm-prd-api') as any;
-    expect(prd.Properties.ContainerDefinitions[0].Secrets.map((x: any) => x.Name).sort()).toEqual(['COGNITO_WEB_CLIENT_SECRET', 'COOKIE_KEY'], 'PRD는 아직 ALM 풀');
+    expect(prd.Properties.ContainerDefinitions[0].Secrets.map((x: any) => x.Name).sort()).toEqual(['COGNITO_WEB_CLIENT_SECRET', 'COOKIE_KEY']);   // PRD는 아직 ALM 풀
   });
 
   it('중앙 ID(3.13, DEV): 사용자 풀은 중앙, SAP은 ALM 풀, 변경 이벤트 큐가 중앙 주제를 구독(원문 전달)', () => {

@@ -14,10 +14,12 @@ export async function loadRoles(c: Pick<PoolClient, 'query'>, userIds: string[],
   const rows = (await c.query(
     `SELECT r.id, r.user_id, r.role, r.scope_key, r.valid_from, r.valid_until FROM user_role r
       WHERE r.user_id = ANY($1) ${validOnly ? `AND ${VALID_NOW}` : ''}`, [userIds])).rows;
+  // 범위는 DB가 역할 행별 JSON 객체로 묶어 준다(차원 이름으로 객체 키를 직접 만들지 않음)
   const scopes = new Map<string, ScopeMap>();
   if (rows.length) for (const s of (await c.query(
-    'SELECT user_role_id, dimension, value FROM user_role_scope WHERE user_role_id = ANY($1)', [rows.map((r) => r.id)])).rows)
-    (scopes.get(s.user_role_id) ?? scopes.set(s.user_role_id, {}).get(s.user_role_id)!)[s.dimension as string] = s.value;
+    `SELECT user_role_id, json_object_agg(dimension, value) AS scope FROM user_role_scope WHERE user_role_id = ANY($1) GROUP BY user_role_id`,
+    [rows.map((r) => r.id)])).rows)
+    scopes.set(s.user_role_id, s.scope as ScopeMap);
   const rank = new Map(catalog().roles.map((r, i) => [r.code, i]));
   rows.sort((a, b) => (rank.get(a.role) ?? 99) - (rank.get(b.role) ?? 99) || (a.scope_key < b.scope_key ? -1 : a.scope_key > b.scope_key ? 1 : 0));
   for (const r of rows) m.get(r.user_id)!.push(strip({ role: r.role as string, scope: scopes.get(r.id) ?? {},

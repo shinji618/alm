@@ -55,11 +55,11 @@ export async function exportUsers(c: Pick<PoolClient, 'query'>, tenantId: string
 // 소유자 연결(RLS 우회)로 모든 테넌트를 읽어 중앙에 올린다. 다시 실행해도 된다(중앙이 ID로 갱신)
 export async function migrateToCentral(c: Pick<PoolClient, 'query'>, central: Central, only?: string) {
   const tenants = (await c.query(`SELECT id, code FROM tenant WHERE is_active ${only ? 'AND code = $1' : ''} ORDER BY code`, only ? [only] : [])).rows;
-  const out: Record<string, unknown> = {};
+  const out: { tenant: string; users: number; created?: number; updated?: number; skipped?: { id: string; reason: string }[]; error?: string }[] = [];
   for (const t of tenants) {
     const users = await exportUsers(c, t.id);
-    try { out[t.code] = { users: users.length, ...(await central.importUsers(t.code, users)) }; }
-    catch (e) { out[t.code] = { users: users.length, error: String((e as Error).message ?? e) }; }
+    try { out.push({ tenant: t.code, users: users.length, ...(await central.importUsers(t.code, users)) }); }
+    catch (e) { out.push({ tenant: t.code, users: users.length, error: String((e as Error).message ?? e) }); }
   }
   return out;
 }
