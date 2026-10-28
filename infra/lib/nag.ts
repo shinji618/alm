@@ -53,6 +53,16 @@ const RULES: Rule[] = [
     'migrate 작업 정의 등록·실행(ECS 작업 정의 ARN은 리비전마다 바뀜), migrate 로그 그룹, 웹 버킷 객체 동기화, CloudFront 무효화(배포 ID는 Edge가 정함)',
   ].join(' ')],
 
+  // ---- 중앙 ID 서비스(Id-*, WBS 3.11) ----
+  ['Id:Data', 'AwsSolutions-RDS10', 'DEV는 삭제 보호를 끈다(환경 재생성). QA·PRD는 켬', ['id-dev']],
+  ['Id:Data', 'AwsSolutions-SMG4', 'Aurora 마스터 비밀은 Data API 전용 관리 계정. 자동 교체 Lambda는 VPC 안에서 Secrets Manager·RDS에 닿아야 해 NAT·엔드포인트 비용이 든다. 3.12에서 앱 전용 DB 사용자를 만들고 교체 방식을 정한다'],
+  ['Id:Data', 'AwsSolutions-IAM5', 'CDK 로그 보존 Lambda의 logs:* 권한(대상 로그 그룹 이름이 배포 때 정해짐)'],
+  ['Id:Auth', 'AwsSolutions-COG2', '사용자는 고객사 IdP(SAML/OIDC) 페더레이션으로만 로그인하고 MFA는 고객 IdP 정책을 따른다(ALM과 같음, 17 문서 6.6)'],
+  ['Id:Auth', 'AwsSolutions-COG8', 'Cognito Lite 요금제(ALM S-11과 같음). 멀티 뱅크 보안 요건이 정해지면 E-10에서 풀 분리·플랜 결정'],
+  ['Id:Api', 'AwsSolutions-APIG4', '토큰 검증은 함수 안에서 한다(제품 클라이언트 등록마다 바뀌는 audience를 게이트웨이에 두지 않음, 3.12). /health는 인증 없음'],
+  ['Id:Api', 'AwsSolutions-IAM5', 'X-Ray 추적(xray:PutTraceSegments·PutTelemetryRecords)은 리소스 수준 권한이 없다'],
+  ['Id:Ci', 'AwsSolutions-IAM5', 'cdk 부트스트랩 역할(cdk-hnb659fds-*) 위임과 Id-<Env>-* 스택 출력 조회'],
+
   // ---- 계정 공통 ----
   ['LogArchive', 'AwsSolutions-IAM5', 'S3 복제 역할의 원본·대상 객체 와일드카드(CDK 복제 규칙 표준)'],
   ['LogArchiveReplica', 'AwsSolutions-S1', '복제 대상 버킷(쓰기는 S3 복제만). 접근 기록은 원본 버킷과 CloudTrail 데이터 이벤트로 남긴다'],
@@ -60,9 +70,13 @@ const RULES: Rule[] = [
   ['OrgBaseline', 'AwsSolutions-IAM4', 'Identity Center 권한 세트에 AWS 관리형 정책(AdministratorAccess·ReadOnlyAccess 등)을 붙인다(10 정의서 3.1)'],
 ];
 
-const matches = (stack: Stack, env: string | undefined, ruleId: string) => RULES.find(([target, id, , envs]) =>
-  (target === '*' || stack.stackName.endsWith(`-${target}`)) && (!envs || (env !== undefined && envs.includes(env)))
-  && (ruleId === id || ruleId.startsWith(`${id}[`)));
+// 'Id:<접미사>' 규칙은 중앙 ID 서비스 스택(Id-*)에만, 그 밖의 접미사 규칙은 ALM 스택에만. '*'는 둘 다
+const matches = (stack: Stack, env: string | undefined, ruleId: string) => RULES.find(([target, id, , envs]) => {
+  const idRule = target.startsWith('Id:'), suffix = idRule ? target.slice(3) : target;
+  if (target !== '*' && idRule !== stack.stackName.startsWith('Id-')) return false;
+  return (suffix === '*' || stack.stackName.endsWith(`-${suffix}`)) && (!envs || (env !== undefined && envs.includes(env)))
+    && (ruleId === id || ruleId.startsWith(`${id}[`));
+});
 
 // cdk-nag 3은 인정(acknowledge) ID를 정확히 비교한다. IAM4·IAM5처럼 세부 ID([Action::…])가 붙는 규칙은
 // 먼저 한 번 검사해 나온 세부 ID 중 위 목록의 규칙에 해당하는 것만 같은 사유로 인정한다

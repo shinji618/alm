@@ -13,6 +13,7 @@ TARGETS=(
   "236501162716 us-east-1"            # alm-dev
   "428477779499 us-east-1"            # alm-qa
   "482545366457 us-east-1 us-east-2"  # alm-prd (+ Dr 키)
+  "718468742633 us-east-1"            # identity-dev (중앙 ID 서비스, 3.11)
 )
 for t in "${TARGETS[@]}"; do
   read -r acct regions <<< "$t"

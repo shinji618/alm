@@ -158,9 +158,28 @@ describe('App (10 6장)', () => {
       const td = Object.values(tds).find((r: any) => r.Properties.Family === fam) as any;
       return (td.Properties.ContainerDefinitions[0].Secrets ?? []).map((x: any) => x.Name).sort();
     };
-    expect(secretsOf('alm-dev-migrate')).toEqual(['DB_MASTER_PASSWORD', 'DB_MASTER_USER']);
-    expect(secretsOf('alm-dev-api')).toEqual(['COGNITO_WEB_CLIENT_SECRET', 'COOKIE_KEY']);
-    for (const f of ['alm-dev-worker', 'alm-dev-audit-archive', 'alm-dev-partman']) expect(secretsOf(f)).toEqual([]);
+    // DEV는 중앙 ID 사용(3.13): 중앙 클라이언트 비밀이 api·worker·migrate(이관)에 추가된다
+    const C = ['CENTRAL_ID_CLIENT_ID', 'CENTRAL_ID_CLIENT_SECRET'];
+    expect(secretsOf('alm-dev-migrate')).toEqual([...C, 'DB_MASTER_PASSWORD', 'DB_MASTER_USER']);
+    expect(secretsOf('alm-dev-api')).toEqual([...C, 'COGNITO_PDA_CLIENT_ID', 'COGNITO_WEB_CLIENT_ID', 'COGNITO_WEB_CLIENT_SECRET', 'COOKIE_KEY']);
+    expect(secretsOf('alm-dev-worker')).toEqual(C);
+    for (const f of ['alm-dev-audit-archive', 'alm-dev-partman']) expect(secretsOf(f)).toEqual([]);
+    const prd = Object.values(tpl('prd', 'app').findResources('AWS::ECS::TaskDefinition')).find((r: any) => r.Properties.Family === 'alm-prd-api') as any;
+    expect(prd.Properties.ContainerDefinitions[0].Secrets.map((x: any) => x.Name).sort()).toEqual(['COGNITO_WEB_CLIENT_SECRET', 'COOKIE_KEY'], 'PRD는 아직 ALM 풀');
+  });
+
+  it('중앙 ID(3.13, DEV): 사용자 풀은 중앙, SAP은 ALM 풀, 변경 이벤트 큐가 중앙 주제를 구독(원문 전달)', () => {
+    const app = tpl('dev', 'app');
+    const api = Object.values(app.findResources('AWS::ECS::TaskDefinition')).find((r: any) => r.Properties.Family === 'alm-dev-api') as any;
+    const env = Object.fromEntries(api.Properties.ContainerDefinitions[0].Environment.map((e: any) => [e.Name, e.Value]));
+    expect(env.COGNITO_USER_POOL_ID).toBe('us-east-1_fNEfzWpwd');
+    expect(env.COGNITO_DOMAIN).toBe('auth.id-dev.pasapps.com');
+    expect(env.COGNITO_SAP_DOMAIN).toBe('auth.alm-dev.pasapps.com');
+    expect(env.CENTRAL_ID_URL).toBe('https://id-dev.pasapps.com');
+    expect(env.COGNITO_WEB_CLIENT_ID).toBeUndefined();
+    app.hasResourceProperties('AWS::SNS::Subscription', Match.objectLike({ Protocol: 'sqs', RawMessageDelivery: true,
+      TopicArn: 'arn:aws:sns:us-east-1:718468742633:id-dev-events' }));
+    app.hasResourceProperties('AWS::SecretsManager::Secret', Match.objectLike({ Name: 'alm/dev/central-id' }));
   });
   it('감사 보관·파티션 관리·공유 카운터·메일 설정', () => {
     const sched = (env: 'dev' | 'prd') => Object.fromEntries(Object.values(tpl(env, 'app').findResources('AWS::Scheduler::Schedule'))

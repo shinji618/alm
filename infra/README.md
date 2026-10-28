@@ -82,6 +82,28 @@ npx cdk deploy -c env=prd -c imageTag=<태그> --all
 배포 밖에서 바꿀 것: Okta 앱 리디렉트 URI(`https://auth.alm-dev.pasapps.com/oauth2/idpresponse`), SAP SM59 `ZALM_API`·`ZALM_TOKEN` 호스트,
 PDA APK 다시 설치(또는 PDA 설정의 API 주소), 브라우저 즐겨찾기.
 
+## 중앙 ID 서비스 (WBS 3.11)
+
+ALM·ITSM·멀티 뱅크가 함께 쓰는 사용자 관리 서비스의 인프라다(17 문서 6장, E-09). ALM 스택과 별도 CDK 앱(`bin/identity.ts`), 별도 계정(identity-dev·qa·prd)에 배포한다.
+
+| 스택 | 내용 |
+| --- | --- |
+| `Id-<Env>-Dns` | 영역 `id[-dev|-qa].pasapps.com`(PRD `id.pasapps.com`), 관리 계정 `pasapps.com`에서 NS 위임 |
+| `Id-<Env>-Data` | Aurora PostgreSQL 16 Serverless v2(Data API, 격리 서브넷, NAT 없음), KMS 키, DB 이름 `idsvc`, 마스터 비밀 `id/<env>/db-master`. DEV·QA 0 ACU(5분 유휴 시 일시정지), PRD 0.5 ACU + 리더 1 |
+| `Id-<Env>-Auth` | 새 사용자 풀 `id-<env>`(Lite, 자체 가입 없음), 리소스 서버 `id-api`(read·write·admin), 로그인 도메인 인증서 |
+| `Id-<Env>-Api` | Lambda `id-<env>-api`(`services/identity` 번들, Node 24, VPC 밖, Data API로 DB 접근) + HTTP API(기본 엔드포인트 끔, 접근 로그, 호출 제한), 변경 이벤트 SNS `id-<env>-events`(제품 계정 SQS 구독), API = 영역 최상위, 로그인 = `auth.<영역>` |
+| `Id-<Env>-Observability` | 알람(함수 오류·제한, API 5xx·p95 지연, ACU 사용률), 대시보드, 월 예산, PRD 외부 상태 확인(`/health`) |
+| `Id-<Env>-Ci` | GitHub 배포 역할 `id-deploy-<env>`(DEV: main·`id-dev` 환경) |
+
+함수(3.12)는 관리 API·로그인 완료·제품 등록·SSO 연결·변경 이벤트를 처리한다(`services/identity`). 토큰 검증은 함수 안에서 한다(게이트웨이 권한 부여자 없음, cdk-nag 예외에 사유). 배포 스크립트가 배포 뒤 스키마를 적용한다(함수 `migrate` 동작). 플랫폼 관리(제품 등록·테넌트·SSO)는 `scripts/identity-admin.sh`(함수 직접 호출, IAM 허가)로 한다 — 제품 등록 파일은 `identity/products/`.
+
+처음 배포(환경마다 1회)
+1. 관리 계정에서 Control Tower Account Factory로 `identity-<env>` 계정 생성(OU Workloads) → `lib/identity/config.ts`의 `account`에 12자리 ID
+2. 관리 계정 CloudShell: `bash infra/scripts/identity-setup.sh dev` — 부트스트랩, `Id-Dev-Dns` 배포, `pasapps.com` NS 위임
+3. identity 계정 자격 증명(SSO DevAdmin): `bash infra/scripts/identity-deploy.sh dev` — 전체 배포 후 `/health`·`/health/db` 확인
+
+합성·시험: `npm run synth:id`, `npx vitest run test/identity.test.ts test/identity-lambda.test.mjs`
+
 ## 배포 파이프라인 (WBS 3.2)
 
 | 파일 | 역할 |

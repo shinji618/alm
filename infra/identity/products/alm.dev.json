@@ -1,0 +1,131 @@
+{
+ "code": "alm",
+ "name": "Asset Lifecycle Manager",
+ "catalog": {
+  "roles": [
+   {
+    "code": "SYS_ADMIN",
+    "name": "시스템 관리자"
+   },
+   {
+    "code": "ASSET_MANAGER",
+    "name": "자산 관리자"
+   },
+   {
+    "code": "DEPT_MANAGER",
+    "name": "부서 관리자",
+    "requiredScope": [
+     "costCenter"
+    ]
+   },
+   {
+    "code": "ASSET_ACCOUNTANT",
+    "name": "자산회계"
+   },
+   {
+    "code": "COUNTER",
+    "name": "실사 담당"
+   },
+   {
+    "code": "EMPLOYEE",
+    "name": "일반 사용자"
+   },
+   {
+    "code": "AUDITOR",
+    "name": "감사인",
+    "requireValidUntil": true,
+    "maxValidYears": 1
+   }
+  ],
+  "adminRole": "SYS_ADMIN",
+  "exclusiveRoles": [
+   "AUDITOR"
+  ],
+  "implicit": {
+   "role": "EMPLOYEE",
+   "excludedIf": [
+    "AUDITOR"
+   ]
+  },
+  "scopeDimensions": [
+   {
+    "dimension": "company",
+    "label": "회사코드",
+    "max": 4
+   },
+   {
+    "dimension": "site",
+    "label": "사이트",
+    "max": 10
+   },
+   {
+    "dimension": "costCenter",
+    "label": "코스트센터",
+    "max": 10
+   }
+  ],
+  "sodRules": [
+   {
+    "rule": "SOD-01",
+    "roles": [
+     "ASSET_MANAGER",
+     "ASSET_ACCOUNTANT"
+    ],
+    "description": "자산 등록·할당부터 최종 승인·SAP 전기까지 한 사람이 처리"
+   },
+   {
+    "rule": "SOD-02",
+    "roles": [
+     "SYS_ADMIN",
+     "ASSET_ACCOUNTANT"
+    ],
+    "description": "권한 부여와 전기를 한 사람이 처리"
+   },
+   {
+    "rule": "SOD-03",
+    "roles": [
+     "SYS_ADMIN",
+     "ASSET_MANAGER"
+    ],
+    "description": "사용자 권한 관리와 자산 변경을 한 사람이 처리"
+   },
+   {
+    "rule": "SOD-04",
+    "roles": [
+     "DEPT_MANAGER",
+     "ASSET_ACCOUNTANT"
+    ],
+    "sameScope": "costCenter",
+    "scopeLabel": "코스트센터",
+    "description": "부서 승인과 최종 승인을 한 사람이 처리({scope})"
+   }
+  ]
+ },
+ "userClients": [
+  {
+   "name": "alm-web",
+   "callbackUrls": [
+    "https://alm-dev.pasapps.com/api/v1/auth/callback"
+   ],
+   "logoutUrls": [
+    "https://alm-dev.pasapps.com/signed-out"
+   ],
+   "generateSecret": true,
+   "accessMinutes": 15,
+   "refreshHours": 8
+  },
+  {
+   "name": "alm-pda",
+   "callbackUrls": [
+    "com.bsg.alm://auth"
+   ],
+   "logoutUrls": [
+    "com.bsg.alm://signed-out"
+   ],
+   "generateSecret": false,
+   "accessMinutes": 60,
+   "refreshHours": 24
+  }
+ ],
+ "machineClient": true
+}

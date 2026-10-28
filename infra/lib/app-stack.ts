@@ -1,4 +1,4 @@
-import { Stack, StackProps, Duration, RemovalPolicy, TimeZone, CfnOutput } from 'aws-cdk-lib';
+import { Stack, StackProps, Duration, RemovalPolicy, TimeZone, CfnOutput, SecretValue } from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
@@ -75,6 +75,12 @@ export class AppStack extends Stack {
       encryption: sqs.QueueEncryption.SQS_MANAGED, enforceSSL: true });
     this.jobsQueue = new sqs.Queue(this, 'Jobs', { queueName: `alm-${env}-jobs`, visibilityTimeout: Duration.minutes(5),
       encryption: sqs.QueueEncryption.SQS_MANAGED, enforceSSL: true, deadLetterQueue: { queue: this.jobsDlq, maxReceiveCount: 5 } });
+    // 중앙 ID 변경 이벤트(3.13, E-08): identity 계정 SNS → 이 큐(원문 전달) → worker가 사용자·역할 미러 갱신
+    const central = cfg.centralId;
+    const identityEvents = central ? new sqs.Queue(this, 'IdentityEvents', { queueName: `alm-${env}-identity-events`, encryption: sqs.QueueEncryption.SQS_MANAGED,
+      enforceSSL: true, deadLetterQueue: { queue: this.jobsDlq, maxReceiveCount: 5 } }) : undefined;
+    if (central && identityEvents) sns.Topic.fromTopicArn(this, 'IdentityTopic', central.eventsTopicArn)
+      .addSubscription(new subs.SqsSubscription(identityEvents, { rawMessageDelivery: true }));
     const sesEvents = new sqs.Queue(this, 'SesEvents', { queueName: `alm-${env}-ses-events`, encryption: sqs.QueueEncryption.SQS_MANAGED,
       enforceSSL: true, deadLetterQueue: { queue: this.jobsDlq, maxReceiveCount: 5 } });
 
@@ -163,8 +169,12 @@ export class AppStack extends Stack {
     const commonEnv: Record<string, string> = {
       NODE_ENV: 'production', ALM_ENV: env, AWS_REGION: this.region,
       DB_HOST: props.db.dbInstanceEndpointAddress, DB_PORT: props.db.dbInstanceEndpointPort, DB_NAME: 'alm',
-      COGNITO_USER_POOL_ID: props.userPool.userPoolId, COGNITO_WEB_CLIENT_ID: props.webClient.userPoolClientId,
-      COGNITO_PDA_CLIENT_ID: props.pdaClient.userPoolClientId, COGNITO_DOMAIN: authDomain(cfg),
+      // 중앙 ID 사용 시: 사용자 풀·도메인은 중앙, SAP은 ALM 풀(COGNITO_SAP_*). 웹·PDA 클라이언트 ID는 비밀에서
+      ...(central ? { COGNITO_USER_POOL_ID: central.userPoolId, COGNITO_DOMAIN: central.domain,
+        COGNITO_SAP_USER_POOL_ID: props.userPool.userPoolId, COGNITO_SAP_DOMAIN: authDomain(cfg),
+        CENTRAL_ID_URL: central.url, CENTRAL_ID_TOKEN_URL: central.tokenUrl }
+        : { COGNITO_USER_POOL_ID: props.userPool.userPoolId, COGNITO_WEB_CLIENT_ID: props.webClient.userPoolClientId,
+          COGNITO_PDA_CLIENT_ID: props.pdaClient.userPoolClientId, COGNITO_DOMAIN: authDomain(cfg) }),
       APP_ORIGIN: `https://${appDomain}`, JOBS_QUEUE_URL: this.jobsQueue.queueUrl,
       FILES_BUCKET: filesBucket.bucketName, EXPORTS_BUCKET: exportsBucket.bucketName,
       CACHE_ENDPOINT: cache.attrEndpointAddress, CACHE_USER: appUserId, CACHE_NAME: cacheName, SES_CONFIG_SET: configSet.configurationSetName,
@@ -196,7 +206,23 @@ export class AppStack extends Stack {
     // api
     const api = makeTask('api', cfg.api.cpu, cfg.api.memoryMiB, ['node', 'dist/main', 'api'], 'alm_app_login', lg('api'));
     api.c.addSecret('COOKIE_KEY', ecs.Secret.fromSecretsManager(props.cookieKeySecret));
-    api.c.addSecret('COGNITO_WEB_CLIENT_SECRET', ecs.Secret.fromSecretsManager(props.webClientSecret, 'clientSecret'));
+    // 중앙 ID 클라이언트(3.13): 값은 scripts/central-link.sh가 중앙 계정에서 읽어 넣는다(템플릿에는 자리 값)
+    const secretsKey = kms.Key.fromKeyArn(this, 'CentralSecretsKey', props.secretsKey.keyArn);
+    const centralSecret = central ? new secrets.Secret(this, 'CentralId', { secretName: `alm/${env}/central-id`, encryptionKey: secretsKey,
+      secretObjectValue: Object.fromEntries(['webClientId', 'webClientSecret', 'pdaClientId', 'backendClientId', 'backendClientSecret']
+        .map((k) => [k, SecretValue.unsafePlainText('PENDING')])) }) : undefined;
+    const centralSecrets = (c: ecs.ContainerDefinition, user: boolean) => {
+      if (!centralSecret) return;
+      if (user) {
+        c.addSecret('COGNITO_WEB_CLIENT_ID', ecs.Secret.fromSecretsManager(centralSecret, 'webClientId'));
+        c.addSecret('COGNITO_PDA_CLIENT_ID', ecs.Secret.fromSecretsManager(centralSecret, 'pdaClientId'));
+      }
+      c.addSecret('CENTRAL_ID_CLIENT_ID', ecs.Secret.fromSecretsManager(centralSecret, 'backendClientId'));
+      c.addSecret('CENTRAL_ID_CLIENT_SECRET', ecs.Secret.fromSecretsManager(centralSecret, 'backendClientSecret'));
+    };
+    api.c.addSecret('COGNITO_WEB_CLIENT_SECRET', centralSecret ? ecs.Secret.fromSecretsManager(centralSecret, 'webClientSecret')
+      : ecs.Secret.fromSecretsManager(props.webClientSecret, 'clientSecret'));
+    centralSecrets(api.c, true);
     api.td.obtainExecutionRole().addToPrincipalPolicy(new iam.PolicyStatement({ actions: ['kms:Decrypt'], resources: [props.secretsKey.keyArn],
       conditions: { StringEquals: { 'kms:ViaService': `secretsmanager.${this.region}.amazonaws.com` } } }));
     filesBucket.grantReadWrite(api.td.taskRole);
@@ -210,6 +236,13 @@ export class AppStack extends Stack {
     this.jobsQueue.grantConsumeMessages(worker.td.taskRole);
     sesEvents.grantConsumeMessages(worker.td.taskRole);
     worker.c.addEnvironment('SES_EVENTS_QUEUE_URL', sesEvents.queueUrl);
+    if (identityEvents) {
+      identityEvents.grantConsumeMessages(worker.td.taskRole);
+      worker.c.addEnvironment('IDENTITY_EVENTS_QUEUE_URL', identityEvents.queueUrl);
+      centralSecrets(worker.c, false);
+      worker.td.obtainExecutionRole().addToPrincipalPolicy(new iam.PolicyStatement({ actions: ['kms:Decrypt'], resources: [props.secretsKey.keyArn],
+        conditions: { StringEquals: { 'kms:ViaService': `secretsmanager.${this.region}.amazonaws.com` } } }));
+    }
     filesBucket.grantRead(worker.td.taskRole);
     exportsBucket.grantReadWrite(worker.td.taskRole);
     worker.td.addToTaskRolePolicy(new iam.PolicyStatement({ actions: ['ses:SendEmail', 'ses:SendRawEmail'],
@@ -224,6 +257,7 @@ export class AppStack extends Stack {
     const master = secrets.Secret.fromSecretAttributes(this, 'DbMasterSecret', { secretCompleteArn: props.db.secret.secretArn });
     migrate.c.addSecret('DB_MASTER_USER', ecs.Secret.fromSecretsManager(master, 'username'));
     migrate.c.addSecret('DB_MASTER_PASSWORD', ecs.Secret.fromSecretsManager(master, 'password'));
+    centralSecrets(migrate.c, false);   // 같은 작업 정의로 사용자 이관(node dist/main identity-migrate, 3.13)
     migrate.td.obtainExecutionRole().addToPrincipalPolicy(new iam.PolicyStatement({ actions: ['kms:Decrypt'], resources: [props.secretsKey.keyArn],
       conditions: { StringEquals: { 'kms:ViaService': `secretsmanager.${this.region}.amazonaws.com` } } }));
 

@@ -1,0 +1,25 @@
+{
+  "name": "@pas/identity",
+  "private": true,
+  "version": "0.1.0",
+  "description": "중앙 ID 서비스(WBS 3.12): 테넌트·사용자·제품별 역할·SSO 연결·로그인 완료·변경 이벤트",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test --test-concurrency=1 dist-test/test/*.test.js"
+  },
+  "dependencies": {
+    "aws-jwt-verify": "5.1.1"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "3.913.0",
+    "@aws-sdk/client-rds-data": "3.913.0",
+    "@aws-sdk/client-secrets-manager": "3.913.0",
+    "@aws-sdk/client-sns": "3.913.0",
+    "@types/aws-lambda": "8.10.155",
+    "@types/node": "22.20.5",
+    "@types/pg": "8.15.5",
+    "esbuild": "^0.25.11",
+    "pg": "8.16.3",
+    "typescript": "5.9.3"
+  }
+}

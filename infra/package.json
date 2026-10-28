@@ -12,7 +12,9 @@
     "synth": "cdk synth -c env=dev -q && cdk synth -c env=qa -q && cdk synth -c env=prd -q && cdk synth -c env=global -q",
     "synth:dev": "cdk synth -c env=dev",
     "diff:dev": "cdk diff -c env=dev",
-    "check": "npm run build && npm test && npm run synth"
+    "check": "npm run build && npm test && npm run synth && npm run synth:id",
+    "synth:id": "cdk -a \"npx tsx bin/identity.ts\" synth -c env=dev -q && cdk -a \"npx tsx bin/identity.ts\" synth -c env=qa -q && cdk -a \"npx tsx bin/identity.ts\" synth -c env=prd -q",
+    "precheck": "npm ci --prefix ../services/identity --no-audit --no-fund"
   },
   "dependencies": {
     "aws-cdk-lib": "2.273.0",

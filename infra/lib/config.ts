@@ -47,6 +47,9 @@ export interface EnvConfig {
   //                     Cognito 사용자 지정 도메인은 풀당 1개라 바로 바꿀 수 없어 잠시 뺀다(이 동안 로그인 불가)
   //   2단계(이 값 삭제): 새 auth.<영역> 도메인 생성, 옛 인증서 삭제, 옛 영역은 템플릿에서 빠짐(RETAIN → scripts/cleanup-old-domain.sh)
   legacyZoneName?: string;
+  // 중앙 ID 서비스 사용(WBS 3.13). 있으면 사용자 로그인은 중앙 풀(alm-web·alm-pda 클라이언트), 사용자·역할 원본은 중앙, ALM DB는 미러.
+  // SAP 연결 클라이언트는 ALM 풀에 남긴다. 클라이언트 ID·비밀은 비밀 alm/<env>/central-id(scripts/central-link.sh가 채움)
+  centralId?: { url: string; tokenUrl: string; userPoolId: string; domain: string; eventsTopicArn: string };
 }
 
 export const ORG: OrgConfig = {
@@ -91,6 +94,9 @@ export const ENVS: Record<EnvName, EnvConfig> = {
     logRetentionDays: 30, execCommand: true, nightlyStop: true,
     runHours: { start: 7, stop: 24, days: 'daily' },  // 개발 작업 시간 매일 07:00~24:00 ET (2026-10-14 요청, 2026-10-17 주말 포함)
     alarmEmail: 'shinji@bsgglobal.com', monthlyBudgetUsd: 200,
+    // 2026-10-28 중앙 ID 전환(3.13): identity-dev(718468742633) 풀·API
+    centralId: { url: 'https://id-dev.pasapps.com', tokenUrl: 'https://auth.id-dev.pasapps.com/oauth2/token', userPoolId: 'us-east-1_fNEfzWpwd',
+      domain: 'auth.id-dev.pasapps.com', eventsTopicArn: 'arn:aws:sns:us-east-1:718468742633:id-dev-events' },
   },
   qa: {
     ...common, name: 'qa', account: ORG.accounts.qa, zoneName: 'alm-qa.pasapps.com',

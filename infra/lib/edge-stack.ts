@@ -61,7 +61,7 @@ export class EdgeStack extends Stack {
         referrerPolicy: { referrerPolicy: cloudfront.HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN, override: true },
         contentSecurityPolicy: { override: true, contentSecurityPolicy: [
           "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob: https://*.amazonaws.com",
-          "font-src 'self'", `connect-src 'self' https://${authDomain} https://*.s3.${this.region}.amazonaws.com http://localhost:9100 https://localhost:9101`,
+          "font-src 'self'", `connect-src 'self' https://${authDomain}${cfg.centralId ? ` https://${cfg.centralId.domain}` : ''} https://*.s3.${this.region}.amazonaws.com http://localhost:9100 https://localhost:9101`,
           "frame-ancestors 'none'", "base-uri 'self'", "form-action 'self'"].join('; ') },
       },
     });
