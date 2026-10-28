@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { AlmError, E } from '../common/errors';
 import { Check, UUID } from '../common/validate';
-import type { Principal } from '../auth/principal';
+import type { Principal } from '../platform/identity/principal';
 import { allowsPlace, assetScope, Params } from '../auth/scope';
 import { detail } from './assets';
 import { nextNumbers } from './tags';
@@ -49,7 +49,7 @@ export async function checkOut(c: PoolClient, p: Principal, id: string, body: un
   k.done();
   const a = await target(c, p, id);
   if (!['IN_STOCK', 'IN_USE'].includes(a.status)) throw state(`${a.status} 상태의 자산은 할당할 수 없습니다(재고·사용 중만)`);
-  const user = (await c.query('SELECT id, display_name, cost_center_id FROM app_user WHERE id = $1 AND is_active', [v.userId])).rows[0];
+  const user = (await c.query('SELECT u.id, u.display_name, p.cost_center_id FROM app_user u LEFT JOIN alm_user_profile p ON p.user_id = u.id WHERE u.id = $1 AND u.is_active', [v.userId])).rows[0];
   if (!user) throw E.badRequest('입력 값을 확인하세요: userId 활성 사용자가 아닙니다', { errors: [{ field: 'userId', code: 'ALM-E100', message: '없음' }] });
   const r = await room(c, p, a, v.roomId!);
   const ccId: string | null = v.costCenterId ?? user.cost_center_id ?? a.cost_center_id ?? null;

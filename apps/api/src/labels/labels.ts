@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { AlmError, E } from '../common/errors';
 import { Check, UUID } from '../common/validate';
-import type { Principal } from '../auth/principal';
+import type { Principal } from '../platform/identity/principal';
 import { assetScope, Params } from '../auth/scope';
 
 export const LAYOUTS = ['QR_CODE128', 'QR_ONLY', 'CODE128_ONLY'] as const;

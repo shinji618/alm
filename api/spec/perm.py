@@ -87,6 +87,23 @@ GRANTS = {
 IMPLICIT_ROLE = 'EMPLOYEE'
 IMPLICIT_EXCLUDED_IF = ['AUDITOR']
 EXCLUSIVE_ROLES = ['AUDITOR']   # cannot be combined with any other role (H-05)
+ADMIN_ROLE = 'SYS_ADMIN'        # last-admin protection (H-04)
+
+# 역할 부여 규칙(WBS 3.10 데이터화, 중앙 ID 제품 등록에도 쓴다): 필수 범위, 유효 종료일 필수, 최대 유효기간(년)
+ROLE_RULES = {
+    'DEPT_MANAGER': {'requiredScope': ['costCenter']},
+    'AUDITOR': {'requireValidUntil': True, 'maxValidYears': 1},
+}
+SCOPE_DIMENSIONS = ['company', 'site', 'costCenter']   # 역할 범위 차원(user_role_scope.dimension)
+
+# 직무 분리(09 5.2, S-08): 막지 않고 경고. sameScope가 있으면 그 범위 차원이 같을 때만
+SOD_RULES = [
+    {'rule': 'SOD-01', 'roles': ['ASSET_MANAGER', 'ASSET_ACCOUNTANT'], 'description': '자산 등록·할당부터 최종 승인·SAP 전기까지 한 사람이 처리'},
+    {'rule': 'SOD-02', 'roles': ['SYS_ADMIN', 'ASSET_ACCOUNTANT'], 'description': '권한 부여와 전기를 한 사람이 처리'},
+    {'rule': 'SOD-03', 'roles': ['SYS_ADMIN', 'ASSET_MANAGER'], 'description': '사용자 권한 관리와 자산 변경을 한 사람이 처리'},
+    {'rule': 'SOD-04', 'roles': ['DEPT_MANAGER', 'ASSET_ACCOUNTANT'], 'sameScope': 'costCenter', 'scopeLabel': '코스트센터',
+     'description': '부서 승인과 최종 승인을 한 사람이 처리({scope})'},
+]
 
 # operationId -> permission (str) or any-of list. Data-level rules (요청자 본인, 승인 단계 역할) are in each endpoint's rules. Data-level rules (요청자 본인, 승인 단계 역할) are in each endpoint's rules.
 OPS = {
@@ -226,8 +243,9 @@ def catalog(E=()):
     """Machine-readable catalog for backend/frontend (packages/shared). PDA·SAP 작업도 operations에 넣는다(백엔드 가드가 같은 표로 판정)."""
     ops = dict(OPS)
     ops.update({e['op']: e['perm'] for e in E if e['group'] in ('pda', 'sap')})
-    return {'roles': [{'code': r, 'name': n, 'summary': d} for r, n, d in ROLES],
+    return {'roles': [{'code': r, 'name': n, 'summary': d, **ROLE_RULES.get(r, {})} for r, n, d in ROLES],
             'permissions': [{'key': k, 'area': a, 'description': d} for k, (a, d) in PERMS.items()],
             'grants': GRANTS, 'operations': ops,
             'implicit': {'role': IMPLICIT_ROLE, 'excludedIf': IMPLICIT_EXCLUDED_IF}, 'exclusiveRoles': EXCLUSIVE_ROLES,
-            'paramPermissions': [{'operation': o, 'when': c, 'permission': p} for (o, c), p in PARAM_PERMS.items()]}
+            'paramPermissions': [{'operation': o, 'when': c, 'permission': p} for (o, c), p in PARAM_PERMS.items()],
+            'adminRole': ADMIN_ROLE, 'scopeDimensions': SCOPE_DIMENSIONS, 'sodRules': SOD_RULES}

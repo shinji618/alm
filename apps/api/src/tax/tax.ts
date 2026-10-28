@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { AlmError, E } from '../common/errors';
 import { Check, UUID } from '../common/validate';
-import type { Principal } from '../auth/principal';
+import type { Principal } from '../platform/identity/principal';
 import { buildXlsx, type Cell } from '../common/xlsx';
 import { upgradeWarning, warn, type TaxWarning } from './warnings';
 import { AGE_START, FACTOR_SETS, genericFactor, lifeClassOf, NEVER_TAXED, PROPERTY_TYPES, REFERENCE_TABLES, STATE_PRESETS, suggestPropertyType, type FactorSet,

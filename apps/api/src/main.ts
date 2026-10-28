@@ -1,4 +1,4 @@
-// 이미지 1개, 역할별 진입점(10 정의서 6장): node dist/main <api|worker|migrate|seed|audit-archive|partman>
+// 이미지 1개, 역할별 진입점(10 정의서 6장): node dist/main <api|worker|migrate|seed|audit-archive|partman|identity-migrate>
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -17,6 +17,8 @@ import { maintainPartitions, archiveAll, s3Store } from './ops/archive';
 import { connectCounterStore, MemoryCounterStore, SharedLimiter } from './common/shared';
 import { s3FileStore } from './files/files';
 import { Mailer, MailSender, parseSesEvent } from './notify/mail';
+import { CentralClient } from './auth/central';
+import { identityEventHandlers, migrateToCentral } from './admin/identitySync';
 
 export async function createApi(deps: Parameters<typeof AppModule.create>[0]) {
   const app = await NestFactory.create<NestExpressApplication>(AppModule.create(deps), { logger: ['error', 'warn'], bodyParser: true });
@@ -41,7 +43,9 @@ async function main(role: string) {
       const files = cfg.filesBucket ? await s3FileStore(cfg.filesBucket, cfg.region) : undefined;
       // 업무 메일은 트랜잭션 안에서 notification 행을 만들고, 커밋 뒤 작업 큐로 보낸다(worker가 SES 발송)
       const mailer = cfg.jobsQueueUrl ? new Mailer(new SQSClient({ region: cfg.region }), cfg.jobsQueueUrl) : undefined;
-      const app = await createApi({ cfg, db, cognito: new Cognito(cfg), limiter, files, mailer });
+      const central = cfg.central ? new CentralClient(cfg.central) : undefined;
+      if (central) log.info('central identity enabled', { url: cfg.central!.url });
+      const app = await createApi({ cfg, db, cognito: new Cognito(cfg), limiter, files, mailer, central });
       await app.listen(cfg.port, '0.0.0.0');
       log.info('api listening', { port: cfg.port, env: cfg.env });
       return;
@@ -55,6 +59,8 @@ async function main(role: string) {
       const workers = [new Worker(sqs, cfg.jobsQueueUrl, { ...mail?.handlers() })];
       // SES 반송·수신 거부 이벤트 큐(같은 작업이 함께 읽는다)
       if (mail && cfg.mail?.eventsQueueUrl) workers.push(new Worker(sqs, cfg.mail.eventsQueueUrl, { 'ses-event': (j) => mail.onEvent(j) }, parseSesEvent));
+      // 중앙 ID 변경 이벤트(3.13): 사용자·역할 미러 갱신
+      if (cfg.central && cfg.identityEventsQueueUrl) workers.push(new Worker(sqs, cfg.identityEventsQueueUrl, identityEventHandlers(db, new CentralClient(cfg.central))));
       for (const s of ['SIGTERM', 'SIGINT'] as const) process.once(s, () => workers.forEach((w) => w.stop()));
       await Promise.all(workers.map((w) => w.run()));
       await db.close();
@@ -63,6 +69,13 @@ async function main(role: string) {
     case 'migrate':
       await runMigrate(cfg);
       return;
+    // ALM 사용자·역할을 중앙 ID 서비스로 이관(3.13, 1회·재실행 가능). 인자: 테넌트 코드(생략하면 전체)
+    case 'identity-migrate': {
+      if (!cfg.central) throw new Error('CENTRAL_ID_* 설정이 없다');
+      const c = await ownerClient(cfg);
+      try { log.info('identity migrate', { result: await migrateToCentral(c, new CentralClient(cfg.central), process.argv[3]) }); } finally { await c.end(); }
+      return;
+    }
     case 'seed': {
       const input = parseSeed(process.argv[3] ?? process.env.SEED_JSON);
       const c = await ownerClient(cfg);

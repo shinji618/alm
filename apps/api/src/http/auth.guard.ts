@@ -4,16 +4,18 @@ import { Reflector } from '@nestjs/core';
 import { Config } from '../config';
 import { Db } from '../db/pool';
 import { AccessClaims, Cognito, SAP_SCOPE } from '../auth/cognito';
-import { permissionFor } from '../auth/permissions';
-import { loadPrincipal, Principal, PrincipalCache, tenantOf } from '../auth/principal';
-import { completeLogin, securityEvent } from '../auth/login';
+import { permissionFor } from '../platform/identity/permissions';
+import { loadPrincipal, Principal, PrincipalCache, tenantOf } from '../platform/identity/principal';
+import { completeLogin, securityEvent } from '../platform/identity/login';
 import { ipAllowed, sapConnection, SapConn } from '../auth/sap';
 import { AlmError, E } from '../common/errors';
 import { TtlCache } from '../common/cache';
 import { LIMITS, SharedLimiter } from '../common/shared';
 import { log } from '../common/log';
 import { AlmRequest, OPERATION, PUBLIC } from './context';
-import { CONFIG, COGNITO, DB, LIMITER, PRINCIPALS, SAP_CONNS } from './tokens';
+import { CONFIG, COGNITO, DB, LIMITER, PRINCIPALS, SAP_CONNS, CENTRAL } from './tokens';
+import type { Central } from '../auth/central';
+import { centralLogin } from '../auth/centralLogin';
 import type { Response } from 'express';
 
 export type Channel = 'WEB' | 'PDA' | 'SAP';
@@ -26,7 +28,8 @@ const DEVICE = /^[A-Za-z0-9._:-]{1,40}$/;
 export class AuthGuard implements CanActivate {
   constructor(private reflector: Reflector, @Inject(CONFIG) private cfg: Config, @Inject(DB) private db: Db,
               @Inject(COGNITO) private cognito: Cognito, @Inject(PRINCIPALS) private cache: PrincipalCache,
-              @Inject(SAP_CONNS) private sapConns: TtlCache<SapConn>, @Inject(LIMITER) private limiter: SharedLimiter) {}
+              @Inject(SAP_CONNS) private sapConns: TtlCache<SapConn>, @Inject(LIMITER) private limiter: SharedLimiter,
+              @Inject(CENTRAL) private central: Central | null) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const op = this.reflector.get<string>(OPERATION, ctx.getHandler());
@@ -83,9 +86,10 @@ export class AuthGuard implements CanActivate {
     const info = await this.cognito.userInfo(token);
     let idpType = 'OIDC';
     try { idpType = (JSON.parse(String(info.identities ?? '[]'))[0]?.providerType as string) ?? 'OIDC'; } catch { /* 기본 OIDC */ }
-    const r = await completeLogin(this.db, t, { username: claims.username, email: info.email, name: info.name, idpType,
-      emailVerified: info.email_verified === true || info.email_verified === 'true' },
-      { clientId: claims.client_id, ip: req.alm.ip, userAgent: req.alm.userAgent, correlationId: req.alm.correlationId, channel: 'PDA' });
+    const who = { username: claims.username, email: info.email, name: info.name, idpType,
+      emailVerified: info.email_verified === true || info.email_verified === 'true' };
+    const meta = { clientId: claims.client_id, ip: req.alm.ip, userAgent: req.alm.userAgent, correlationId: req.alm.correlationId, channel: 'PDA' as const };
+    const r = this.central ? await centralLogin(this.db, this.central, t, who, meta) : await completeLogin(this.db, t, who, meta);
     this.cache.clear(claims.username);
     if (!r.ok) { log.warn('pda login denied', { reason: r.reason, correlationId: req.alm.correlationId }); return undefined; }
     req.alm.loginRecorded = true;

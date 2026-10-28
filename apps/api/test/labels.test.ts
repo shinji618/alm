@@ -7,11 +7,12 @@ import { Client, Pool } from 'pg';
 import { migrate, loadMigrations } from '../src/ops/migrate';
 import { seed } from '../src/ops/seed';
 import { Db } from '../src/db/pool';
-import { PrincipalCache } from '../src/auth/principal';
-import { catalog } from '../src/auth/permissions';
+import { PrincipalCache } from '../src/platform/identity/principal';
+import { catalog } from '../src/platform/identity/permissions';
 import { createApi } from '../src/main';
 import { MemoryCounterStore, SharedLimiter } from '../src/common/shared';
 import type { FileStore } from '../src/files/files';
+import { setRoleScopeByEmail } from './roleHelper';
 import type { Config } from '../src/config';
 
 const host = process.env.TEST_PG_HOST;
@@ -64,7 +65,7 @@ before(async () => {
   ids.co = await q(`INSERT INTO company (id, tenant_id, company_code, name) VALUES (gen_random_uuid(), $1, '1000', 'BSG America') RETURNING id`, [tenantId]);
   ids.s1 = await q(`INSERT INTO site (id, tenant_id, site_code, name) VALUES (gen_random_uuid(), $1, 'ATL', 'Atlanta') RETURNING id`, [tenantId]);
   ids.s2 = await q(`INSERT INTO site (id, tenant_id, site_code, name) VALUES (gen_random_uuid(), $1, 'NYC', 'New York') RETURNING id`, [tenantId]);
-  await owner.query(`UPDATE user_role SET site_id = $1 WHERE user_id = (SELECT id FROM app_user WHERE email = 'atl@lbl.test')`, [ids.s1]);
+  await setRoleScopeByEmail((s, a) => owner.query(s, a), 'atl@lbl.test', { site: ids.s1 });
   ids.room = await q(`INSERT INTO room (id, tenant_id, site_id, room_code, name, barcode) VALUES (gen_random_uuid(), $1, $2, 'R101', 'Room 101', 'RM-R101') RETURNING id`, [tenantId, ids.s1]);
   ids.cat = await q(`INSERT INTO category (id, tenant_id, category_code, name) VALUES (gen_random_uuid(), $1, 'NB', 'Notebook') RETURNING id`, [tenantId]);
   ids.model = await q(`INSERT INTO model (id, tenant_id, category_id, manufacturer, model_name) VALUES (gen_random_uuid(), $1, $2, 'Dell', 'Latitude 7440') RETURNING id`, [tenantId, ids.cat]);

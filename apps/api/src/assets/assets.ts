@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { AlmError, E } from '../common/errors';
 import { Check, UUID } from '../common/validate';
-import type { Principal } from '../auth/principal';
+import type { Principal } from '../platform/identity/principal';
 import { allowsPlace, assetScope, can, Params } from '../auth/scope';
 import { nextAssetTags, nextNumbers } from './tags';
 import { desc2 } from '../common/sap-text';

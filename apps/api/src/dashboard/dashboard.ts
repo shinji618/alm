@@ -3,7 +3,7 @@
 //   모듈 권한이 없는 KPI·조치(라이선스·실사·SAP·라벨·Discovery)는 빼고 보낸다. 결과는 사용자·사이트별 5분 캐시(refresh=true면 다시 계산)
 import type { PoolClient } from 'pg';
 import { Check } from '../common/validate';
-import type { Principal } from '../auth/principal';
+import type { Principal } from '../platform/identity/principal';
 import { assetScope, can, Params } from '../auth/scope';
 import { inboxCount } from '../requests/requests';
 

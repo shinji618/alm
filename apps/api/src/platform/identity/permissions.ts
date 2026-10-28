@@ -4,16 +4,20 @@ import { join } from 'node:path';
 
 export type Scope = 'ALL' | 'CC' | 'OWN' | 'TASK' | '-';
 export interface Catalog {
-  roles: { code: string; name: string }[];
+  roles: { code: string; name: string; summary?: string; requiredScope?: string[]; requireValidUntil?: boolean; maxValidYears?: number }[];
   permissions: { key: string }[];
   grants: Record<string, Record<string, Scope>>;
   operations: Record<string, string | string[] | null>;   // 배열 = 그중 하나만 있으면 된다(예: 요청 취소 = 요청자 또는 자산 관리자)
   implicit: { role: string; excludedIf: string[] };
   exclusiveRoles: string[];
+  adminRole: string;                                                   // 마지막 관리자 보호 대상 역할
+  scopeDimensions: string[];                                           // 이 제품이 쓰는 범위 차원
+  sodRules: { rule: string; roles: [string, string]; description: string; sameScope?: string; scopeLabel?: string }[];
 }
 
 let cached: Catalog | undefined;
-export function catalog(path = join(__dirname, '..', 'permissions.json')): Catalog {
+// 제품이 부팅 때 다른 위치의 카탈로그를 쓰려면 먼저 부른다(없으면 첫 catalog() 호출 때 기본 위치)
+export function catalog(path = join(__dirname, '..', '..', 'permissions.json')): Catalog {
   return (cached ??= JSON.parse(readFileSync(path, 'utf8')) as Catalog);
 }
 

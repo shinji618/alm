@@ -1,8 +1,9 @@
 // 로그인 콜백의 사용자 판정(openapi authCallback, 09 6.3). 컨트롤러와 분리해 DB만으로 시험한다.
 import { randomUUID } from 'node:crypto';
 import { PoolClient } from 'pg';
-import { Db } from '../db/pool';
+import { Db } from '../../db/pool';
 import { loadPrincipal, Principal, TenantMatch } from './principal';
+import { IdentityAdapter, toApiRole } from './adapter';
 
 export interface IdentityIn {
   username: string;               // Cognito username = '<T-테넌트>_<IdP 사용자 ID>'
@@ -69,11 +70,11 @@ async function deny(c: PoolClient, t: TenantMatch, meta: RequestMeta, reason: Ex
 }
 
 // 웹 앱 셸이 쓰는 사용자 정보(openapi Me)
-export function toMe(p: Principal, navCounts: Record<string, number> = {}) {
+export function toMe(p: Principal, a: IdentityAdapter, navCounts: Record<string, number> = {}) {
   return {
     userId: p.userId, displayName: p.displayName, email: p.email, locale: p.locale, tenantCode: p.tenantCode,
     // 유효 역할만(감사인이면 감사인만) + 암묵 EMPLOYEE
-    roles: [...p.roles.filter((r) => p.effectiveRoles.includes(r.role)),
+    roles: [...p.roles.filter((r) => p.effectiveRoles.includes(r.role)).map((r) => toApiRole(a, r)),
       ...p.effectiveRoles.filter((e) => !p.roles.some((r) => r.role === e)).map((role) => ({ role }))],
     permissions: [...p.permissions.keys()].sort(), navCounts,
   };

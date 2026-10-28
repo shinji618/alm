@@ -4,7 +4,7 @@ import type { Response } from 'express';
 import { Db } from '../db/pool';
 import { Cognito } from '../auth/cognito';
 import { ipAllowed, sapClientByAlias, sapConnection, SapConn } from '../auth/sap';
-import { securityEvent } from '../auth/login';
+import { securityEvent } from '../platform/identity/login';
 import { TtlCache } from '../common/cache';
 import { LIMITS, SharedLimiter } from '../common/shared';
 import { log } from '../common/log';

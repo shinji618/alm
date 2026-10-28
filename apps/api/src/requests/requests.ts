@@ -21,10 +21,11 @@ import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { AlmError, E } from '../common/errors';
 import { Check } from '../common/validate';
-import type { Principal } from '../auth/principal';
+import type { Principal } from '../platform/identity/principal';
 import { assetScope, can, Params, scopeRows } from '../auth/scope';
 import type { MailRequest } from '../notify/mail';
 import { nextNumbers } from '../assets/tags';
+import { almScope } from '../admin/identityAdapter';
 import { desc2 } from '../common/sap-text';
 
 export const TYPES = ['NEW_ASSET', 'CHANGE', 'TRANSFER', 'RETIRE', 'SALE'] as const;
@@ -70,7 +71,7 @@ const responsibleCc = (r: Record<string, any>) => r.target_cost_center_id ?? r.a
 const proxyRole = (r: Record<string, any>) => (Number(r.approval_steps ?? 2) >= 2 ? 'ASSET_ACCOUNTANT' : 'ASSET_MANAGER');
 
 // 유효한(요청자 말고) 부서 관리자가 있는가. cc·요청자는 SQL 식
-const deptExistsSql = (cc: string, requester: string) => `EXISTS (SELECT 1 FROM user_role ur JOIN app_user du ON du.id = ur.user_id
+const deptExistsSql = (cc: string, requester: string) => `EXISTS (SELECT 1 FROM v_alm_user_role ur JOIN app_user du ON du.id = ur.user_id
              WHERE ur.role = 'DEPT_MANAGER' AND ur.cost_center_id = ${cc}
                AND du.is_active AND du.id <> ${requester}
                AND (ur.valid_from IS NULL OR ur.valid_from <= current_date) AND (ur.valid_until IS NULL OR ur.valid_until >= current_date))`;
@@ -86,7 +87,7 @@ function eligible(p: Principal, s: Record<string, any>, r: Record<string, any>):
   if (role === 'DEPT_MANAGER' && !cc.exists) role = proxyRole(r);   // 부서 관리자 없음 → 대리
   if (!p.effectiveRoles.includes(role)) return false;
   if (role !== 'ASSET_MANAGER' && !can(p, 'approval.decide')) return false;
-  const rows = p.roles.filter((x) => x.role === role);
+  const rows = p.roles.filter((x) => x.role === role).map(almScope);
   if (role === 'DEPT_MANAGER') return rows.some((x) => !!x.costCenterCode && x.costCenterCode === cc.code);
   return rows.some((x) => (!x.companyCode || x.companyCode === r.company_code) && (!x.siteCode || x.siteCode === r.site_code)
     && (!x.costCenterCode || x.costCenterCode === cc.code));
@@ -126,7 +127,7 @@ async function steps(c: PoolClient, id: string) {
 
 // 승인 단계 계획(제출·재승인): 부서 관리자 단계(코스트센터별) + 자산회계(2단계 회사)
 async function deptManagerIds(c: PoolClient, ccId: string, requesterId: string): Promise<string> {
-  return (await c.query(`SELECT string_agg(DISTINCT ur.user_id::text, ',' ORDER BY ur.user_id::text) AS ids FROM user_role ur JOIN app_user du ON du.id = ur.user_id
+  return (await c.query(`SELECT string_agg(DISTINCT ur.user_id::text, ',' ORDER BY ur.user_id::text) AS ids FROM v_alm_user_role ur JOIN app_user du ON du.id = ur.user_id
      WHERE ur.role = 'DEPT_MANAGER' AND ur.cost_center_id = $1 AND du.is_active AND du.id <> $2
        AND (ur.valid_from IS NULL OR ur.valid_from <= current_date) AND (ur.valid_until IS NULL OR ur.valid_until >= current_date)`,
   [ccId, requesterId])).rows[0]?.ids ?? '';
@@ -842,12 +843,11 @@ async function stepMails(c: PoolClient, r: Record<string, any>, stepNo: number):
 }
 
 async function approverMails(c: PoolClient, r: Record<string, any>, role: string, stepNo: number): Promise<MailRequest[]> {
-  const users = (await c.query(`SELECT DISTINCT u.id FROM user_role ur JOIN app_user u ON u.id = ur.user_id
-      LEFT JOIN company co ON co.id = ur.company_id LEFT JOIN site s ON s.id = ur.site_id LEFT JOIN cost_center cc ON cc.id = ur.cost_center_id
+  const users = (await c.query(`SELECT DISTINCT u.id FROM v_alm_user_role ur JOIN app_user u ON u.id = ur.user_id
      WHERE ur.role = $1 AND u.is_active AND u.id <> $2
        AND (ur.valid_from IS NULL OR ur.valid_from <= current_date) AND (ur.valid_until IS NULL OR ur.valid_until >= current_date)
-       AND (CASE WHEN $1 = 'DEPT_MANAGER' THEN cc.cost_center_code = $3
-            ELSE (ur.company_id IS NULL OR co.company_code = $4) AND (ur.site_id IS NULL OR s.site_code = $5) AND (ur.cost_center_id IS NULL OR cc.cost_center_code = $3) END)`,
+       AND (CASE WHEN $1 = 'DEPT_MANAGER' THEN ur.cost_center_code = $3
+            ELSE (ur.company_code IS NULL OR ur.company_code = $4) AND (ur.site_code IS NULL OR ur.site_code = $5) AND (ur.cost_center_code IS NULL OR ur.cost_center_code = $3) END)`,
   [role, r.requester_id, r.responsible_cc_code, r.company_code, r.site_code])).rows;
   return users.map((u) => ({ recipientId: u.id as string, template: 'APPROVAL_REQUESTED', subjectType: 'ASSET_REQUEST', subjectId: r.id,
     params: { requester: r.requester_name, requestType: r.request_type, requestNo: r.request_no, target: r.asset_tag ?? '', path: path(r.id) },

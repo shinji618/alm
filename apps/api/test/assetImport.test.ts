@@ -7,8 +7,8 @@ import { Client, Pool } from 'pg';
 import { migrate, loadMigrations } from '../src/ops/migrate';
 import { seed } from '../src/ops/seed';
 import { Db } from '../src/db/pool';
-import { PrincipalCache } from '../src/auth/principal';
-import { catalog } from '../src/auth/permissions';
+import { PrincipalCache } from '../src/platform/identity/principal';
+import { catalog } from '../src/platform/identity/permissions';
 import { createApi } from '../src/main';
 import { MemoryCounterStore, SharedLimiter } from '../src/common/shared';
 import type { FileStore } from '../src/files/files';
@@ -46,6 +46,7 @@ async function call(who: string, method: string, path: string, body?: unknown) {
 }
 
 import { buildXlsx } from '../src/common/xlsx';
+import { setRoleScopeByEmail } from './roleHelper';
 import { readXlsx, readCsv } from '../src/common/xlsxRead';
 
 before(async () => {
@@ -67,7 +68,7 @@ before(async () => {
   ids.co = await q(`INSERT INTO company (id, tenant_id, company_code, name, sap_enabled) VALUES (gen_random_uuid(), $1, '1000', 'BSG', true) RETURNING id`, [tenantId]);
   ids.s1 = await q(`INSERT INTO site (id, tenant_id, site_code, name) VALUES (gen_random_uuid(), $1, 'ATL', 'Atlanta') RETURNING id`, [tenantId]);
   ids.s2 = await q(`INSERT INTO site (id, tenant_id, site_code, name) VALUES (gen_random_uuid(), $1, 'NYC', 'New York') RETURNING id`, [tenantId]);
-  await owner.query(`UPDATE user_role SET site_id = $1 WHERE user_id = (SELECT id FROM app_user WHERE email = 'atl@imp.test')`, [ids.s1]);
+  await setRoleScopeByEmail((s, a) => owner.query(s, a), 'atl@imp.test', { site: ids.s1 });
   ids.r1 = await q(`INSERT INTO room (id, tenant_id, site_id, room_code, name, barcode) VALUES (gen_random_uuid(), $1, $2, 'ATL-101', 'Office 101', 'RM-1') RETURNING id`, [tenantId, ids.s1]);
   ids.r2 = await q(`INSERT INTO room (id, tenant_id, site_id, room_code, name, barcode) VALUES (gen_random_uuid(), $1, $2, 'ATL-102', 'Office 102', 'RM-2') RETURNING id`, [tenantId, ids.s1]);
   ids.r3 = await q(`INSERT INTO room (id, tenant_id, site_id, room_code, name, barcode) VALUES (gen_random_uuid(), $1, $2, 'NYC-201', 'NY', 'RM-3') RETURNING id`, [tenantId, ids.s2]);

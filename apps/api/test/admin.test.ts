@@ -8,11 +8,12 @@ import { Client, Pool } from 'pg';
 import { migrate, loadMigrations } from '../src/ops/migrate';
 import { seed } from '../src/ops/seed';
 import { Db } from '../src/db/pool';
-import { PrincipalCache } from '../src/auth/principal';
-import { catalog } from '../src/auth/permissions';
+import { PrincipalCache } from '../src/platform/identity/principal';
+import { catalog } from '../src/platform/identity/permissions';
 import { createApi } from '../src/main';
-import { putUserRoles, parseRoles } from '../src/admin/users';
-import { sodConflicts } from '../src/admin/sod';
+import { putUserRoles, parseRoles } from '../src/platform/identity/users';
+import { sodConflicts } from '../src/platform/identity/sod';
+import { almIdentity } from '../src/admin/identityAdapter';
 import type { Config } from '../src/config';
 
 const host = process.env.TEST_PG_HOST;
@@ -75,12 +76,12 @@ after(async () => {
 });
 
 test('직무 충돌 규칙(단위)', () => {
-  assert.deepEqual(sodConflicts([{ role: 'ASSET_MANAGER' }, { role: 'ASSET_ACCOUNTANT' }]).map((h) => h.rule), ['SOD-01']);
-  assert.deepEqual(sodConflicts([{ role: 'SYS_ADMIN' }, { role: 'ASSET_MANAGER' }, { role: 'ASSET_ACCOUNTANT' }]).map((h) => h.rule), ['SOD-01', 'SOD-02', 'SOD-03']);
-  assert.deepEqual(sodConflicts([{ role: 'DEPT_MANAGER', costCenterCode: 'C1' }, { role: 'ASSET_ACCOUNTANT', costCenterCode: 'C2' }]), []);
-  assert.deepEqual(sodConflicts([{ role: 'DEPT_MANAGER', costCenterCode: 'C1' }, { role: 'ASSET_ACCOUNTANT' }]).map((h) => h.rule), ['SOD-04']);
-  assert.throws(() => parseRoles({ roles: [{ role: 'AUDITOR', validUntil: '2027-10-12' }] }, '2026-10-11'), /최대 1년/);
-  assert.doesNotThrow(() => parseRoles({ roles: [{ role: 'AUDITOR', validUntil: '2027-10-11' }] }, '2026-10-11'));
+  assert.deepEqual(sodConflicts([{ role: 'ASSET_MANAGER', scope: {} }, { role: 'ASSET_ACCOUNTANT', scope: {} }]).map((h) => h.rule), ['SOD-01']);
+  assert.deepEqual(sodConflicts([{ role: 'SYS_ADMIN', scope: {} }, { role: 'ASSET_MANAGER', scope: {} }, { role: 'ASSET_ACCOUNTANT', scope: {} }]).map((h) => h.rule), ['SOD-01', 'SOD-02', 'SOD-03']);
+  assert.deepEqual(sodConflicts([{ role: 'DEPT_MANAGER', scope: { costCenter: 'C1' } }, { role: 'ASSET_ACCOUNTANT', scope: { costCenter: 'C2' } }]), []);
+  assert.deepEqual(sodConflicts([{ role: 'DEPT_MANAGER', scope: { costCenter: 'C1' } }, { role: 'ASSET_ACCOUNTANT', scope: {} }]).map((h) => h.rule), ['SOD-04']);
+  assert.throws(() => parseRoles({ roles: [{ role: 'AUDITOR', validUntil: '2027-10-12' }] }, almIdentity, '2026-10-11'), /최대 1년/);
+  assert.doesNotThrow(() => parseRoles({ roles: [{ role: 'AUDITOR', validUntil: '2027-10-11' }] }, almIdentity, '2026-10-11'));
 });
 
 test('권한: 일반 사용자는 관리 API 403 ALM-E401, 관리자는 200', { skip }, async () => {
@@ -141,8 +142,9 @@ test('역할 지정: 저장 + X-SoD-Warning, 직무 충돌 목록, 감사 로그
 
 test('H-04 마지막 시스템 관리자(함수 단위, API로는 호출자가 항상 관리자라 방어용)', { skip }, async () => {
   await assert.rejects(app.withTx({ tenantId, userId: ids.emp, actorType: 'USER' }, async (c) => {
+    await c.query(`DELETE FROM user_role_scope WHERE user_role_id IN (SELECT id FROM user_role WHERE user_id = $1)`, [ids.a2]);
     await c.query(`DELETE FROM user_role WHERE user_id = $1`, [ids.a2]);    // a2를 먼저 빼서 a1만 남김
-    return putUserRoles(c, tenantId, ids.a1, ids.emp, { roles: [] });
+    return putUserRoles(c, almIdentity, tenantId, ids.a1, ids.emp, { roles: [] });
   }), (e: { code: string }) => e.code === 'ALM-E319');
 });
 

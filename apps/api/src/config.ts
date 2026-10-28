@@ -6,6 +6,11 @@ export interface Config {
   db: { host: string; port: number; name: string; user: string; password?: string; ssl: boolean };
   dbMaster?: { user: string; password: string };   // migrate 부트스트랩 때만(Secrets Manager → ECS 비밀)
   cognito: { userPoolId: string; webClientId: string; webClientSecret: string; pdaClientId: string; domain: string };
+  // SAP 연결 클라이언트(alm-sap-*)가 있는 풀. 사용자 로그인을 중앙 ID 풀로 옮긴 뒤에도 SAP은 ALM 풀에 둔다(3.13). 없으면 cognito와 같음
+  sapCognito?: { userPoolId: string; domain: string };
+  // 중앙 ID 서비스(3.13). 있으면 로그인 판정·사용자·역할 변경을 위임하고 ALM DB는 미러가 된다
+  central?: { url: string; tokenUrl: string; clientId: string; clientSecret: string };
+  identityEventsQueueUrl?: string;   // 중앙 변경 이벤트(SNS → SQS)
   appOrigin: string;           // https://alm-dev.pasapps.com
   cookieKeys: Buffer[];        // [현재, 이전] — 분기 교체 뒤 8시간 동안 이전 키도 받는다(09 6.4)
   jobsQueueUrl?: string;
@@ -49,6 +54,10 @@ export function loadConfig(role: string): Config {
       pdaClientId: process.env.COGNITO_PDA_CLIENT_ID || '',
       domain: needsHttp ? req('COGNITO_DOMAIN') : process.env.COGNITO_DOMAIN || '',
     },
+    sapCognito: opt('COGNITO_SAP_USER_POOL_ID') ? { userPoolId: req('COGNITO_SAP_USER_POOL_ID'), domain: req('COGNITO_SAP_DOMAIN') } : undefined,
+    central: opt('CENTRAL_ID_URL') && opt('CENTRAL_ID_CLIENT_SECRET')
+      ? { url: req('CENTRAL_ID_URL'), tokenUrl: req('CENTRAL_ID_TOKEN_URL'), clientId: req('CENTRAL_ID_CLIENT_ID'), clientSecret: req('CENTRAL_ID_CLIENT_SECRET') } : undefined,
+    identityEventsQueueUrl: opt('IDENTITY_EVENTS_QUEUE_URL'),
     appOrigin: needsHttp ? req('APP_ORIGIN') : process.env.APP_ORIGIN || '',
     cookieKeys: needsHttp ? [req('COOKIE_KEY'), opt('COOKIE_KEY_PREVIOUS')].filter((x): x is string => !!x).map(keyOf) : [],
     jobsQueueUrl: opt('JOBS_QUEUE_URL'),

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { seal, open, s256 } from '../src/auth/crypto';
-import { catalog, effectiveRoles, permissionsOf, permissionFor } from '../src/auth/permissions';
+import { catalog, effectiveRoles, permissionsOf, permissionFor } from '../src/platform/identity/permissions';
 import { safeReturnTo, domainOf } from '../src/http/auth.controller';
 import { stripTx } from '../src/ops/migrate';
 import { parseSeed } from '../src/ops/seed';

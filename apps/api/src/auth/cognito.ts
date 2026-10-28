@@ -16,15 +16,19 @@ export const SAP_SCOPE = `${RESOURCE_SERVER}/sap.api`;
 
 export class Cognito {
   readonly base: string;
+  readonly sapBase: string;
   readonly redirectUri: string;
   private accessVerifier;
   private idVerifier;
 
   constructor(private cfg: Config, private http: Fetch = fetch) {
     this.base = `https://${cfg.cognito.domain}`;
+    this.sapBase = `https://${cfg.sapCognito?.domain ?? cfg.cognito.domain}`;
     this.redirectUri = `${cfg.appOrigin}/api/v1/auth/callback`;
     // 웹·PDA·SAP(연결마다 클라이언트가 생김) 토큰을 모두 받는다. 어느 클라이언트가 어느 API를 부를 수 있는지는 가드의 채널 확인(E407)이 정한다
-    this.accessVerifier = CognitoJwtVerifier.create({ userPoolId: cfg.cognito.userPoolId, tokenUse: 'access', clientId: null });
+    // 사용자 풀과 SAP 풀이 다르면(중앙 ID 전환 뒤) 두 풀의 토큰을 모두 받는다. 채널(클라이언트 ID·범위) 확인은 가드가 한다
+    const pools = [...new Set([cfg.cognito.userPoolId, cfg.sapCognito?.userPoolId].filter((x): x is string => !!x))];
+    this.accessVerifier = CognitoJwtVerifier.create(pools.map((userPoolId) => ({ userPoolId, tokenUse: 'access' as const, clientId: null })));
     this.idVerifier = CognitoJwtVerifier.create({ userPoolId: cfg.cognito.userPoolId, tokenUse: 'id', clientId: cfg.cognito.webClientId });
   }
 
@@ -82,7 +86,7 @@ export class Cognito {
 
   // SAP client_credentials: SAP이 보낸 비밀로 Cognito에 그대로 요청(ALM은 비밀을 저장하지 않음). 범위 sap.api → alm-api/sap.api
   async clientCredentials(clientId: string, clientSecret: string): Promise<{ ok: true; token: TokenSet } | { ok: false; status: number; error: string }> {
-    const r = await this.http(`${this.base}/oauth2/token`, {
+    const r = await this.http(`${this.sapBase}/oauth2/token`, {
       method: 'POST', body: new URLSearchParams({ grant_type: 'client_credentials', scope: `${RESOURCE_SERVER}/sap.api` }),
       headers: { 'content-type': 'application/x-www-form-urlencoded', authorization: 'Basic ' + Buffer.from(`${encodeURIComponent(clientId)}:${encodeURIComponent(clientSecret)}`).toString('base64') },
       signal: AbortSignal.timeout(10_000),

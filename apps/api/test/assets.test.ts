@@ -7,9 +7,10 @@ import { Client, Pool } from 'pg';
 import { migrate, loadMigrations } from '../src/ops/migrate';
 import { seed } from '../src/ops/seed';
 import { Db } from '../src/db/pool';
-import { PrincipalCache } from '../src/auth/principal';
-import { catalog } from '../src/auth/permissions';
+import { PrincipalCache } from '../src/platform/identity/principal';
+import { catalog } from '../src/platform/identity/permissions';
 import { createApi } from '../src/main';
+import { addRole } from './roleHelper';
 import type { Config } from '../src/config';
 
 const host = process.env.TEST_PG_HOST;
@@ -71,8 +72,8 @@ before(async () => {
   await q(`INSERT INTO label_template (id, tenant_id, template_code, name, layout, zpl, is_default) VALUES (gen_random_uuid(), $1, 'STD', 'Std', 'QR_CODE128', '^XA^XZ', true)`, [tenantId]);
   await q(`INSERT INTO setting (id, tenant_id, key, value) VALUES (gen_random_uuid(), $1, 'asset.capitalization_threshold', '1000')`, [tenantId]);
   // 범위가 있는 역할 행: West 사이트 자산 관리자, CC100 부서 관리자
-  await q(`INSERT INTO user_role (id, tenant_id, user_id, role, site_id) VALUES (gen_random_uuid(), $1, $2, 'ASSET_MANAGER', $3)`, [tenantId, ids.mgrw, ids.siteWest]);
-  await q(`INSERT INTO user_role (id, tenant_id, user_id, role, cost_center_id) VALUES (gen_random_uuid(), $1, $2, 'DEPT_MANAGER', $3)`, [tenantId, ids.dept, ids.cc100]);
+  await addRole(q, tenantId, ids.mgrw, 'ASSET_MANAGER', { site: ids.siteWest });
+  await addRole(q, tenantId, ids.dept, 'DEPT_MANAGER', { costCenter: ids.cc100 });
   const api = await createApi({ cfg, db: app, cognito: fakeCognito as never, principals: new PrincipalCache() });
   await api.listen(0, '127.0.0.1');
   base = `http://127.0.0.1:${(api.getHttpServer().address() as AddressInfo).port}/api/v1`;

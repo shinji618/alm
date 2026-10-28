@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Request, Response, NextFunction } from 'express';
 import { createParamDecorator, ExecutionContext, SetMetadata } from '@nestjs/common';
-import type { Principal } from '../auth/principal';
+import type { Principal } from '../platform/identity/principal';
 import type { AccessClaims } from '../auth/cognito';
 import type { TxContext } from '../db/pool';
 import type { SapConn } from '../auth/sap';

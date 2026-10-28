@@ -9,11 +9,12 @@ import { Client, Pool, PoolClient } from 'pg';
 import { migrate, loadMigrations } from '../src/ops/migrate';
 import { seed } from '../src/ops/seed';
 import { Db } from '../src/db/pool';
-import { PrincipalCache } from '../src/auth/principal';
-import { catalog } from '../src/auth/permissions';
+import { PrincipalCache } from '../src/platform/identity/principal';
+import { catalog } from '../src/platform/identity/permissions';
 import { createApi } from '../src/main';
 import { postResult } from '../src/sap/postings';
 import type { SapConn } from '../src/auth/sap';
+import { addRole } from './roleHelper';
 import type { Config } from '../src/config';
 
 const host = process.env.TEST_PG_HOST;
@@ -88,7 +89,7 @@ before(async () => {
   ids.localB = await asset('AT-000002');
   await q(`INSERT INTO asset_assignment (id, tenant_id, asset_id, user_id, checked_out_at) VALUES (gen_random_uuid(), $1, $2, $3, now())`, [tenantId, ids.sapA, ids.emp]);
   // 범위가 있는 역할 행: CC100·CC300 부서 관리자, both = CC300 부서 관리자 + 자산회계(직무 분리 시험)
-  const role = (u: string, r: string, ccId: string) => q(`INSERT INTO user_role (id, tenant_id, user_id, role, cost_center_id) VALUES (gen_random_uuid(), $1, $2, $3, $4)`, [tenantId, ids[u], r, ccId]);
+  const role = (u: string, r: string, ccId: string) => addRole(q, tenantId, ids[u], r, { costCenter: ccId });
   await role('dept1', 'DEPT_MANAGER', ids.cc100); await role('dept3', 'DEPT_MANAGER', ids.cc300); await role('both', 'DEPT_MANAGER', ids.cc300);
   conn = { tenantId, tenantCode: 'REQ', connectionId: '00000000-0000-0000-0000-000000000001', companyId: ids.co, companyCode: '1000', systemId: 'S4H-100', allowedCidrs: [], clientId: 'c' };
   const api = await createApi({ cfg, db: app, cognito: fakeCognito as never, principals: new PrincipalCache() });

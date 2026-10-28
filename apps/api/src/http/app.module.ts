@@ -3,7 +3,7 @@ import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { Config } from '../config';
 import { Db } from '../db/pool';
 import { Cognito } from '../auth/cognito';
-import { PrincipalCache } from '../auth/principal';
+import { PrincipalCache } from '../platform/identity/principal';
 import { AuthGuard } from './auth.guard';
 import { ProblemFilter } from './problem.filter';
 import { AuthController } from './auth.controller';
@@ -13,7 +13,7 @@ import { AdminController } from './admin.controller';
 import { PdaController } from './pda.controller';
 import { SapController } from './sap.controller';
 import { TtlCache } from '../common/cache';
-import { CONFIG, COGNITO, DB, FILES, LIMITER, MAILER, PRINCIPALS, SAP_CONNS } from './tokens';
+import { CONFIG, COGNITO, DB, FILES, LIMITER, MAILER, PRINCIPALS, SAP_CONNS, CENTRAL } from './tokens';
 import type { Mailer } from '../notify/mail';
 import { MemoryCounterStore, SharedLimiter } from '../common/shared';
 import { FilesController } from './files.controller';
@@ -25,10 +25,11 @@ import { TaxController } from './tax.controller';
 import { LabelsController } from './labels.controller';
 import { DashboardController } from './dashboard.controller';
 import type { FileStore } from '../files/files';
+import type { Central } from '../auth/central';
 
 @Module({})
 export class AppModule {
-  static create(deps: { cfg: Config; db: Db; cognito: Cognito; principals?: PrincipalCache; limiter?: SharedLimiter; files?: FileStore; mailer?: Mailer }): DynamicModule {
+  static create(deps: { cfg: Config; db: Db; cognito: Cognito; principals?: PrincipalCache; limiter?: SharedLimiter; files?: FileStore; mailer?: Mailer; central?: Central }): DynamicModule {
     return {
       module: AppModule,
       controllers: [HealthController, AuthController, MeController, AdminController, PdaController, SapController, FilesController, AssetsController, RequestsController, SapWebController, CountsController, TaxController, LabelsController, DashboardController],
@@ -41,6 +42,7 @@ export class AppModule {
         { provide: LIMITER, useValue: deps.limiter ?? new SharedLimiter(new MemoryCounterStore()) },
         { provide: FILES, useValue: deps.files ?? null },
         { provide: MAILER, useValue: deps.mailer ?? null },
+        { provide: CENTRAL, useValue: deps.central ?? null },
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_FILTER, useClass: ProblemFilter },
       ],

@@ -3,7 +3,6 @@
 
 BEGIN;
 
-CREATE TYPE role_code AS ENUM ('SYS_ADMIN', 'ASSET_MANAGER', 'DEPT_MANAGER', 'ASSET_ACCOUNTANT', 'COUNTER', 'EMPLOYEE', 'AUDITOR');  -- 사용자 역할
 CREATE TYPE asset_status AS ENUM ('ON_ORDER', 'IN_STOCK', 'IN_USE', 'IN_REPAIR', 'MISSING', 'RETIRED', 'DISPOSED');  -- 자산 상태
 CREATE TYPE asset_source AS ENUM ('MANUAL', 'DISCOVERY', 'GOODS_RECEIPT', 'SAP', 'PDA_COUNT', 'IMPORT');  -- 자산 생성 출처
 CREATE TYPE asset_event_type AS ENUM ('CREATED', 'UPDATED', 'STATUS_CHANGED', 'ASSIGNED', 'RETURNED', 'TRANSFERRED', 'REPAIR_IN', 'REPAIR_OUT', 'COUNTED', 'LABEL_PRINTED', 'SAP_POSTED', 'SAP_SYNCED', 'RETIRED', 'DISPOSED');  -- 자산 이력 유형
@@ -114,8 +113,6 @@ CREATE TABLE app_user (
   phone varchar(30),
   idp_subject varchar(200),
   employee_no varchar(20),
-  department varchar(100),
-  cost_center_id uuid,
   locale varchar(5) NOT NULL DEFAULT 'en',
   last_login_at timestamptz,
   is_active boolean NOT NULL DEFAULT true,
@@ -134,8 +131,6 @@ COMMENT ON COLUMN app_user.display_name IS '이름';
 COMMENT ON COLUMN app_user.phone IS '전화번호(부서 관리자 연락처 등, 관리 화면에서 입력)';
 COMMENT ON COLUMN app_user.idp_subject IS 'IdP 사용자 식별자. Cognito username의 `<IdP>_` 뒤 값(SAML NameID = Entra oid, OIDC sub)';
 COMMENT ON COLUMN app_user.employee_no IS '사번';
-COMMENT ON COLUMN app_user.department IS '부서명';
-COMMENT ON COLUMN app_user.cost_center_id IS '소속 코스트센터';
 COMMENT ON COLUMN app_user.locale IS '화면 언어 en/ko';
 COMMENT ON COLUMN app_user.last_login_at IS '마지막 로그인';
 COMMENT ON COLUMN app_user.is_active IS '사용 여부';
@@ -146,15 +141,13 @@ COMMENT ON COLUMN app_user.updated_by IS '변경자';
 COMMENT ON COLUMN app_user.version IS '낙관적 잠금';
 COMMENT ON TABLE app_user IS '사용자 — SSO 로그인 사용자';
 
--- 사용자 역할: 역할 부여와 범위(회사코드·사이트). 범위가 비면 전체
+-- 사용자 역할: 역할 부여. 범위는 user_role_scope(차원·값 행)에 둔다. 범위 행이 없으면 전체
 CREATE TABLE user_role (
   id uuid PRIMARY KEY,
   tenant_id uuid NOT NULL,
   user_id uuid NOT NULL,
-  role role_code NOT NULL,
-  company_id uuid,
-  site_id uuid,
-  cost_center_id uuid,
+  role varchar(40) NOT NULL,
+  scope_key varchar(200) NOT NULL DEFAULT '',
   valid_from date,
   valid_until date,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -162,15 +155,13 @@ CREATE TABLE user_role (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid,
   version integer NOT NULL DEFAULT 1,
-  UNIQUE NULLS NOT DISTINCT (user_id, role, company_id, site_id, cost_center_id)
+  UNIQUE NULLS NOT DISTINCT (user_id, role, scope_key)
 );
 COMMENT ON COLUMN user_role.id IS '기본키';
 COMMENT ON COLUMN user_role.tenant_id IS '테넌트';
 COMMENT ON COLUMN user_role.user_id IS '사용자';
-COMMENT ON COLUMN user_role.role IS '역할';
-COMMENT ON COLUMN user_role.company_id IS '회사코드 범위';
-COMMENT ON COLUMN user_role.site_id IS '사이트 범위';
-COMMENT ON COLUMN user_role.cost_center_id IS '코스트센터 범위(DEPT_MANAGER)';
+COMMENT ON COLUMN user_role.role IS '역할 코드(제품의 권한 카탈로그가 정의. ALM: SYS_ADMIN, ASSET_MANAGER, DEPT_MANAGER, ASSET_ACCOUNTANT, COUNTER, EMPLOYEE, AUDITOR)';
+COMMENT ON COLUMN user_role.scope_key IS '범위 정규화 키(범위 행을 `차원=값`으로 정렬해 세로선으로 이음, 범위 없으면 빈 문자열). 같은 사용자·역할·범위의 중복을 막는 유일 키';
 COMMENT ON COLUMN user_role.valid_from IS '유효 시작일(비면 즉시)';
 COMMENT ON COLUMN user_role.valid_until IS '유효 종료일(임시 실사 담당·감사인). 지나면 권한 없음';
 COMMENT ON COLUMN user_role.created_at IS '생성 일시';
@@ -178,8 +169,60 @@ COMMENT ON COLUMN user_role.created_by IS '생성자';
 COMMENT ON COLUMN user_role.updated_at IS '변경 일시';
 COMMENT ON COLUMN user_role.updated_by IS '변경자';
 COMMENT ON COLUMN user_role.version IS '낙관적 잠금';
-COMMENT ON TABLE user_role IS '사용자 역할 — 역할 부여와 범위(회사코드·사이트). 범위가 비면 전체';
+COMMENT ON TABLE user_role IS '사용자 역할 — 역할 부여. 범위는 user_role_scope(차원·값 행)에 둔다. 범위 행이 없으면 전체';
 CREATE INDEX ix_user_role_tenant_id_role ON user_role (tenant_id, role);
+
+-- 사용자 역할 범위: 역할 행의 범위 제한. 한 역할 행의 여러 차원은 AND, 차원 하나에 값 하나
+CREATE TABLE user_role_scope (
+  id uuid PRIMARY KEY,
+  tenant_id uuid NOT NULL,
+  user_role_id uuid NOT NULL,
+  dimension varchar(30) NOT NULL,
+  value varchar(60) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by uuid,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by uuid,
+  version integer NOT NULL DEFAULT 1,
+  UNIQUE (user_role_id, dimension)
+);
+COMMENT ON COLUMN user_role_scope.id IS '기본키';
+COMMENT ON COLUMN user_role_scope.tenant_id IS '테넌트';
+COMMENT ON COLUMN user_role_scope.user_role_id IS '역할 행';
+COMMENT ON COLUMN user_role_scope.dimension IS '범위 차원(제품의 권한 카탈로그가 정의. ALM: company, site, costCenter)';
+COMMENT ON COLUMN user_role_scope.value IS '범위 값(ALM: SAP 회사코드·사이트 코드·코스트센터 코드)';
+COMMENT ON COLUMN user_role_scope.created_at IS '생성 일시';
+COMMENT ON COLUMN user_role_scope.created_by IS '생성자';
+COMMENT ON COLUMN user_role_scope.updated_at IS '변경 일시';
+COMMENT ON COLUMN user_role_scope.updated_by IS '변경자';
+COMMENT ON COLUMN user_role_scope.version IS '낙관적 잠금';
+COMMENT ON TABLE user_role_scope IS '사용자 역할 범위 — 역할 행의 범위 제한. 한 역할 행의 여러 차원은 AND, 차원 하나에 값 하나';
+CREATE INDEX ix_user_role_scope_tenant_id_dimension_value ON user_role_scope (tenant_id, dimension, value);
+
+-- ALM 사용자 프로필: ALM이 사용자에 덧붙이는 정보(부서·소속 코스트센터). 공통 사용자 정보(app_user)와 분리
+CREATE TABLE alm_user_profile (
+  id uuid PRIMARY KEY,
+  tenant_id uuid NOT NULL,
+  user_id uuid NOT NULL UNIQUE,
+  department varchar(100),
+  cost_center_id uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by uuid,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by uuid,
+  version integer NOT NULL DEFAULT 1
+);
+COMMENT ON COLUMN alm_user_profile.id IS '기본키';
+COMMENT ON COLUMN alm_user_profile.tenant_id IS '테넌트';
+COMMENT ON COLUMN alm_user_profile.user_id IS '사용자';
+COMMENT ON COLUMN alm_user_profile.department IS '부서명';
+COMMENT ON COLUMN alm_user_profile.cost_center_id IS '소속 코스트센터';
+COMMENT ON COLUMN alm_user_profile.created_at IS '생성 일시';
+COMMENT ON COLUMN alm_user_profile.created_by IS '생성자';
+COMMENT ON COLUMN alm_user_profile.updated_at IS '변경 일시';
+COMMENT ON COLUMN alm_user_profile.updated_by IS '변경자';
+COMMENT ON COLUMN alm_user_profile.version IS '낙관적 잠금';
+COMMENT ON TABLE alm_user_profile IS 'ALM 사용자 프로필 — ALM이 사용자에 덧붙이는 정보(부서·소속 코스트센터). 공통 사용자 정보(app_user)와 분리';
 
 -- 회사코드: SAP 회사코드 (IF-MD-01 COMPANY). SAP 연계를 쓰지 않는 회사는 관리 화면에서 등록
 CREATE TABLE company (
@@ -1515,7 +1558,7 @@ CREATE TABLE approval (
   asset_request_id uuid,
   purchase_request_id uuid,
   step_no integer NOT NULL,
-  approver_role role_code NOT NULL,
+  approver_role varchar(40) NOT NULL,
   cost_center_id uuid,
   approver_id uuid,
   decision approval_decision NOT NULL DEFAULT 'PENDING',
@@ -1535,7 +1578,7 @@ COMMENT ON COLUMN approval.tenant_id IS '테넌트';
 COMMENT ON COLUMN approval.asset_request_id IS '자산 요청';
 COMMENT ON COLUMN approval.purchase_request_id IS '구매요청';
 COMMENT ON COLUMN approval.step_no IS '단계(1부터). 부서 관리자 단계(이관은 보내는·받는 부서) 다음 자산회계(최종)';
-COMMENT ON COLUMN approval.approver_role IS '승인 역할';
+COMMENT ON COLUMN approval.approver_role IS '승인 역할 코드(제품의 권한 카탈로그가 정의)';
 COMMENT ON COLUMN approval.cost_center_id IS '부서 관리자 단계의 코스트센터(이 코스트센터의 부서 관리자가 승인). 비면 요청의 책임 코스트센터';
 COMMENT ON COLUMN approval.approver_id IS '승인자(결정 시 기록)';
 COMMENT ON COLUMN approval.decision IS '결정';
@@ -2781,12 +2824,13 @@ CREATE INDEX ix_security_event_tenant_id_event_type_occurred_at ON security_even
 
 ALTER TABLE tenant_domain ADD CONSTRAINT fk_tenant_domain_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE app_user ADD CONSTRAINT fk_app_user_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
-ALTER TABLE app_user ADD CONSTRAINT fk_app_user_cost_center_id FOREIGN KEY (cost_center_id) REFERENCES cost_center(id);
 ALTER TABLE user_role ADD CONSTRAINT fk_user_role_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE user_role ADD CONSTRAINT fk_user_role_user_id FOREIGN KEY (user_id) REFERENCES app_user(id);
-ALTER TABLE user_role ADD CONSTRAINT fk_user_role_company_id FOREIGN KEY (company_id) REFERENCES company(id);
-ALTER TABLE user_role ADD CONSTRAINT fk_user_role_site_id FOREIGN KEY (site_id) REFERENCES site(id);
-ALTER TABLE user_role ADD CONSTRAINT fk_user_role_cost_center_id FOREIGN KEY (cost_center_id) REFERENCES cost_center(id);
+ALTER TABLE user_role_scope ADD CONSTRAINT fk_user_role_scope_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
+ALTER TABLE user_role_scope ADD CONSTRAINT fk_user_role_scope_user_role_id FOREIGN KEY (user_role_id) REFERENCES user_role(id);
+ALTER TABLE alm_user_profile ADD CONSTRAINT fk_alm_user_profile_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
+ALTER TABLE alm_user_profile ADD CONSTRAINT fk_alm_user_profile_user_id FOREIGN KEY (user_id) REFERENCES app_user(id);
+ALTER TABLE alm_user_profile ADD CONSTRAINT fk_alm_user_profile_cost_center_id FOREIGN KEY (cost_center_id) REFERENCES cost_center(id);
 ALTER TABLE company ADD CONSTRAINT fk_company_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE plant ADD CONSTRAINT fk_plant_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE plant ADD CONSTRAINT fk_plant_company_id FOREIGN KEY (company_id) REFERENCES company(id);
@@ -3000,6 +3044,10 @@ ALTER TABLE app_user ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p_app_user_tenant ON app_user USING (tenant_id = current_setting('app.tenant_id')::uuid);
 ALTER TABLE user_role ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p_user_role_tenant ON user_role USING (tenant_id = current_setting('app.tenant_id')::uuid);
+ALTER TABLE user_role_scope ENABLE ROW LEVEL SECURITY;
+CREATE POLICY p_user_role_scope_tenant ON user_role_scope USING (tenant_id = current_setting('app.tenant_id')::uuid);
+ALTER TABLE alm_user_profile ENABLE ROW LEVEL SECURITY;
+CREATE POLICY p_alm_user_profile_tenant ON alm_user_profile USING (tenant_id = current_setting('app.tenant_id')::uuid);
 ALTER TABLE company ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p_company_tenant ON company USING (tenant_id = current_setting('app.tenant_id')::uuid);
 ALTER TABLE plant ENABLE ROW LEVEL SECURITY;
@@ -3190,6 +3238,16 @@ SELECT l.tenant_id, l.id AS license_id, l.product_id, l.license_model, l.owned_q
             ELSE 'COMPLIANT' END AS compliance
   FROM license l JOIN used u ON u.license_id = l.id;
 
+-- ALM 역할 행 + 범위 풀이: 범위 값(코드)을 열로 펴고 코스트센터는 id까지 푼다(부서 관리자·승인자 판정용)
+CREATE VIEW v_alm_user_role WITH (security_invoker = true) AS
+SELECT ur.id, ur.tenant_id, ur.user_id, ur.role, ur.valid_from, ur.valid_until,
+       (SELECT s.value FROM user_role_scope s WHERE s.user_role_id = ur.id AND s.dimension = 'company') AS company_code,
+       (SELECT s.value FROM user_role_scope s WHERE s.user_role_id = ur.id AND s.dimension = 'site') AS site_code,
+       (SELECT s.value FROM user_role_scope s WHERE s.user_role_id = ur.id AND s.dimension = 'costCenter') AS cost_center_code,
+       (SELECT cc.id FROM cost_center cc JOIN user_role_scope s ON s.user_role_id = ur.id AND s.dimension = 'costCenter'
+         WHERE cc.tenant_id = ur.tenant_id AND cc.cost_center_code = s.value ORDER BY cc.id LIMIT 1) AS cost_center_id
+  FROM user_role ur;
+
 -- Security (WBS 2.8) ------------------------------------------------------
 -- DB 역할
 --   (소유자)        : 마이그레이션 계정. 업무 테이블 소유. 배포 파이프라인만 사용
@@ -3330,6 +3388,8 @@ CREATE TRIGGER tr_tenant_audit AFTER INSERT OR UPDATE OR DELETE ON tenant FOR EA
 CREATE TRIGGER tr_tenant_domain_audit AFTER INSERT OR UPDATE OR DELETE ON tenant_domain FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_app_user_audit AFTER INSERT OR UPDATE OR DELETE ON app_user FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_user_role_audit AFTER INSERT OR UPDATE OR DELETE ON user_role FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_user_role_scope_audit AFTER INSERT OR UPDATE OR DELETE ON user_role_scope FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_alm_user_profile_audit AFTER INSERT OR UPDATE OR DELETE ON alm_user_profile FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_company_audit AFTER INSERT OR UPDATE OR DELETE ON company FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_plant_audit AFTER INSERT OR UPDATE OR DELETE ON plant FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_profit_center_audit AFTER INSERT OR UPDATE OR DELETE ON profit_center FOR EACH ROW EXECUTE FUNCTION audit_row();

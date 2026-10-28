@@ -11,7 +11,7 @@
 import type { PoolClient } from 'pg';
 import { AlmError, E } from '../common/errors';
 import { Check } from '../common/validate';
-import type { Principal } from '../auth/principal';
+import type { Principal } from '../platform/identity/principal';
 import { assetScope, Params } from '../auth/scope';
 import { createAsset, patchAsset } from '../assets/assets';
 import { attachComponents } from '../assets/bundles';

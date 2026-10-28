@@ -2,7 +2,7 @@
 // 사용자 목록은 approval.decide·asset.assign·count.manage·admin.user 중 하나가 있어야 하고, 이름·이메일·부서만(최대 50).
 import type { PoolClient } from 'pg';
 import { Check } from '../common/validate';
-import type { Principal } from '../auth/principal';
+import type { Principal } from '../platform/identity/principal';
 import { assetScope, can, Params, scopeRows } from '../auth/scope';
 import { effectivePrefixes } from '../admin/categories';
 
@@ -97,11 +97,11 @@ export async function lookups(c: PoolClient, p: Principal, q: Record<string, str
       const t = q.q?.trim() ? `%${q.q.trim().slice(0, 100).replace(/[\\%_]/g, (m) => `\\${m}`)}%` : null;
       // role: 그 역할이 지금 유효한 사용자만(실사 룸 배정은 COUNTER)
       const role = q.role?.trim() && /^[A-Z_]{2,30}$/.test(q.role.trim()) ? q.role.trim() : null;
-      out.users = items((await c.query(`SELECT id, display_name, email, department FROM app_user u WHERE is_active
-        AND ($1::text IS NULL OR display_name ILIKE $1 OR email ILIKE $1 OR employee_no ILIKE $1)
+      out.users = items((await c.query(`SELECT u.id, u.display_name, u.email, p.department FROM app_user u LEFT JOIN alm_user_profile p ON p.user_id = u.id WHERE u.is_active
+        AND ($1::text IS NULL OR u.display_name ILIKE $1 OR u.email ILIKE $1 OR u.employee_no ILIKE $1)
         AND ($2::text IS NULL OR EXISTS (SELECT 1 FROM user_role ur WHERE ur.user_id = u.id AND ur.role::text = $2
           AND (ur.valid_from IS NULL OR ur.valid_from <= current_date) AND (ur.valid_until IS NULL OR ur.valid_until >= current_date)))
-        ORDER BY display_name LIMIT 50`, [t, role])).rows,
+        ORDER BY u.display_name LIMIT 50`, [t, role])).rows,
       (r) => ({ id: r.id, code: r.email, label: r.display_name, extra: { email: r.email, department: r.department } }));
     }
   }

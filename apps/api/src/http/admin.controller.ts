@@ -2,9 +2,10 @@
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Put, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { Db } from '../db/pool';
-import { PrincipalCache } from '../auth/principal';
+import { PrincipalCache } from '../platform/identity/principal';
 import { log } from '../common/log';
-import * as users from '../admin/users';
+import * as users from '../platform/identity/users';
+import { almIdentity } from '../admin/identityAdapter';
 import * as cfg from '../admin/config';
 import * as companies from '../admin/companies';
 import * as fin from '../admin/finmasters';
@@ -14,16 +15,24 @@ import * as ranges from '../admin/numberRanges';
 import * as dm from '../admin/deptmanagers';
 import * as imp from '../admin/assetImport';
 import { AlmContext, Ctx, Operation, txOf } from './context';
-import { DB, PRINCIPALS } from './tokens';
+import { DB, PRINCIPALS, CENTRAL } from './tokens';
+import type { Central } from '../auth/central';
+import { CentralCtx, createUserCentral, patchUserCentral, putUserRolesCentral } from '../admin/centralUsers';
 
 @Controller('admin')
 export class AdminController {
-  constructor(@Inject(DB) private db: Db, @Inject(PRINCIPALS) private cache: PrincipalCache) {}
+  constructor(@Inject(DB) private db: Db, @Inject(PRINCIPALS) private cache: PrincipalCache, @Inject(CENTRAL) private central: Central | null) {}
+
+  // 중앙 ID 서비스가 있으면 사용자·역할 변경을 중앙에 하고 미러에 반영한다(3.13)
+  private cx(ctx: AlmContext): CentralCtx | undefined {
+    const p = ctx.principal!;
+    return this.central ? { central: this.central, tenantId: p.tenantId, tenantCode: p.tenantCode, actorId: p.userId } : undefined;
+  }
 
   @Get('users')
   @Operation('listUsers')
   listUsers(@Ctx() ctx: AlmContext, @Query() q: Record<string, string>) {
-    return this.db.withTx(txOf(ctx), (c) => users.listUsers(c, q));
+    return this.db.withTx(txOf(ctx), (c) => users.listUsers(c, almIdentity, q));
   }
 
   @Post('users')
@@ -31,13 +40,15 @@ export class AdminController {
   @Operation('createUser')
   createUser(@Ctx() ctx: AlmContext, @Body() body: unknown) {
     const p = ctx.principal!;
-    return this.db.withTx(txOf(ctx), (c) => users.createUser(c, p.tenantId, p.userId, body));
+    const x = this.cx(ctx);
+    return this.db.withTx(txOf(ctx), (c) => (x ? createUserCentral(c, almIdentity, x, body) : users.createUser(c, almIdentity, p.tenantId, p.userId, body)));
   }
 
   @Patch('users/:id')
   @Operation('patchUser')
   async patchUser(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown) {
-    const r = await this.db.withTx(txOf(ctx), (c) => users.patchUser(c, id, ctx.principal!.userId, body));
+    const x = this.cx(ctx);
+    const r = await this.db.withTx(txOf(ctx), (c) => (x ? patchUserCentral(c, almIdentity, x, id, body) : users.patchUser(c, almIdentity, ctx.principal!.tenantId, id, ctx.principal!.userId, body)));
     this.cache.clearUser(id);
     if (r.rolesCleared) log.warn('user email changed, roles cleared (H-10)', { userId: id, by: ctx.principal!.userId, correlationId: ctx.correlationId });
     return r.user;
@@ -47,7 +58,8 @@ export class AdminController {
   @Operation('putUserRoles')
   async putUserRoles(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown, @Res({ passthrough: true }) res: Response) {
     const p = ctx.principal!;
-    const r = await this.db.withTx(txOf(ctx), (c) => users.putUserRoles(c, p.tenantId, id, p.userId, body));
+    const x = this.cx(ctx);
+    const r = await this.db.withTx(txOf(ctx), (c) => (x ? putUserRolesCentral(c, almIdentity, x, id, body) : users.putUserRoles(c, almIdentity, p.tenantId, id, p.userId, body)));
     this.cache.clearUser(id);
     if (r.sod.length) res.setHeader('X-SoD-Warning', r.sod.map((h) => h.rule).join(', '));   // 09 5.2: 막지 않고 알림
     return r.user;
@@ -233,7 +245,7 @@ export class AdminController {
   @Operation('addDeptManager')
   async addDeptManager(@Ctx() ctx: AlmContext, @Body() body: unknown, @Res({ passthrough: true }) res: Response) {
     const p = ctx.principal!;
-    const r = await this.db.withTx(txOf(ctx), (c) => dm.addDeptManager(c, p.tenantId, p.userId, body));
+    const r = await this.db.withTx(txOf(ctx), (c) => dm.addDeptManager(c, p.tenantId, p.userId, body, this.cx(ctx)));
     this.cache.clearUser(r.userId);
     if (r.sod.length) res.setHeader('X-SoD-Warning', r.sod.map((h) => h.rule).join(', '));
     return r.manager;
@@ -242,7 +254,7 @@ export class AdminController {
   @Patch('dept-managers/:id')
   @Operation('patchDeptManager')
   async patchDeptManager(@Ctx() ctx: AlmContext, @Param('id') id: string, @Body() body: unknown, @Res({ passthrough: true }) res: Response) {
-    const r = await this.db.withTx(txOf(ctx), (c) => dm.patchDeptManager(c, id, ctx.principal!.userId, body));
+    const r = await this.db.withTx(txOf(ctx), (c) => dm.patchDeptManager(c, id, ctx.principal!.userId, body, this.cx(ctx)));
     this.cache.clearUser(r.userId);
     if (r.sod.length) res.setHeader('X-SoD-Warning', r.sod.map((h) => h.rule).join(', '));
     return r.manager;
@@ -252,7 +264,7 @@ export class AdminController {
   @HttpCode(204)
   @Operation('removeDeptManager')
   async removeDeptManager(@Ctx() ctx: AlmContext, @Param('id') id: string) {
-    const userId = await this.db.withTx(txOf(ctx), (c) => dm.removeDeptManager(c, id, ctx.principal!.userId));
+    const userId = await this.db.withTx(txOf(ctx), (c) => dm.removeDeptManager(c, id, ctx.principal!.userId, this.cx(ctx)));
     this.cache.clearUser(userId);
   }
 }

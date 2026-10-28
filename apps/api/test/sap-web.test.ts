@@ -8,9 +8,10 @@ import { Client, Pool } from 'pg';
 import { migrate, loadMigrations } from '../src/ops/migrate';
 import { seed } from '../src/ops/seed';
 import { Db } from '../src/db/pool';
-import { PrincipalCache } from '../src/auth/principal';
-import { catalog } from '../src/auth/permissions';
+import { PrincipalCache } from '../src/platform/identity/principal';
+import { catalog } from '../src/platform/identity/permissions';
 import { createApi } from '../src/main';
+import { addRole } from './roleHelper';
 import type { Config } from '../src/config';
 
 const host = process.env.TEST_PG_HOST;
@@ -77,7 +78,7 @@ before(async () => {
   ids.asset = await asset('S1', '000001000001', 'SN-1');
   ids.asset2 = await asset('S2', '000001000002', 'SN-2');
   ids.asset3 = await asset('S3', '000001000003', 'SN-3');
-  await q(`INSERT INTO user_role (id, tenant_id, user_id, role, cost_center_id) VALUES (gen_random_uuid(), $1, $2, 'DEPT_MANAGER', $3)`, [tenantId, ids.dept, ids.cc2]);
+  await addRole(q, tenantId, ids.dept, 'DEPT_MANAGER', { costCenter: ids.cc2 });
   await q(`INSERT INTO sap_connection (id, tenant_id, system_id, company_id, oauth_client_id, last_call_at) VALUES (gen_random_uuid(), $1, 'S4H-100', $2, 'cid', now() - interval '5 minutes')`, [tenantId, ids.co]);
   const api = await createApi({ cfg, db: app, cognito: fakeCognito as never, principals: new PrincipalCache() });
   await api.listen(0, '127.0.0.1');

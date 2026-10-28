@@ -5,12 +5,15 @@ import { Config } from '../config';
 import { Db } from '../db/pool';
 import { Cognito } from '../auth/cognito';
 import { open, randomToken, s256, seal } from '../auth/crypto';
-import { completeLogin, securityEvent, toMe } from '../auth/login';
-import { PrincipalCache, tenantOf, loadPrincipal } from '../auth/principal';
+import { completeLogin, securityEvent, toMe } from '../platform/identity/login';
+import { almIdentity } from '../admin/identityAdapter';
+import { PrincipalCache, tenantOf, loadPrincipal } from '../platform/identity/principal';
 import { AlmError, E } from '../common/errors';
 import { log } from '../common/log';
 import { AlmRequest, Operation } from './context';
-import { CONFIG, COGNITO, DB, PRINCIPALS } from './tokens';
+import { CONFIG, COGNITO, DB, PRINCIPALS, CENTRAL } from './tokens';
+import type { Central } from '../auth/central';
+import { centralLogin } from '../auth/centralLogin';
 
 const PATH = '/api/v1/auth';
 const PKCE = 'alm_pkce', RT = 'alm_rt';
@@ -31,7 +34,7 @@ export const domainOf = (email: string) => {
 @Controller('auth')
 export class AuthController {
   constructor(@Inject(CONFIG) private cfg: Config, @Inject(DB) private db: Db, @Inject(COGNITO) private cognito: Cognito,
-              @Inject(PRINCIPALS) private cache: PrincipalCache) {}
+              @Inject(PRINCIPALS) private cache: PrincipalCache, @Inject(CENTRAL) private central: Central | null) {}
 
   private cookie(res: Response, name: string, value: string, maxAgeSec: number, sameSite: 'lax' | 'strict') {
     res.cookie(name, value, { httpOnly: true, secure: true, sameSite, path: PATH, maxAge: maxAgeSec * 1000 });
@@ -93,11 +96,13 @@ export class AuthController {
       await this.cognito.revoke(tokens.refresh_token ?? '').catch(() => undefined);
       throw E.loginDenied();
     }
-    const r = await completeLogin(this.db, t, {
+    const who = {
       username: access.username, email: id?.email, name: id?.name,
       emailVerified: id?.email_verified === true || id?.email_verified === 'true',
       idpType: id?.identities?.[0]?.providerType ?? 'OIDC',
-    }, meta);
+    };
+    // 중앙 ID 서비스가 설정되어 있으면 판정을 위임하고 결과를 미러에 반영한다(3.13)
+    const r = this.central ? await centralLogin(this.db, this.central, t, who, meta) : await completeLogin(this.db, t, who, meta);
     if (!r.ok) {
       log.warn('login denied', { reason: r.reason, correlationId: meta.correlationId });
       if (tokens.refresh_token) await this.cognito.revoke(tokens.refresh_token).catch(() => undefined);
@@ -156,6 +161,6 @@ export class AuthController {
     const p = await this.db.withTx({ tenantId: c.t, userId: c.u, actorType: 'USER', correlationId: req.alm.correlationId },
       (tx) => loadPrincipal(tx, c.u));
     if (!p) throw E.unauthenticated('사용할 수 없는 사용자입니다');
-    return { ...toMe(p), token: { username: access.username, clientId: access.client_id, expiresIn: t.expires_in } };
+    return { ...toMe(p, almIdentity), token: { username: access.username, clientId: access.client_id, expiresIn: t.expires_in } };
   }
 }

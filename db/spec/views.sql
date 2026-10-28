@@ -54,3 +54,13 @@ SELECT l.tenant_id, l.id AS license_id, l.product_id, l.license_model, l.owned_q
                      WHERE s.tenant_id = l.tenant_id AND s.key = 'license.over_threshold'), 0.8) THEN 'OVER'
             ELSE 'COMPLIANT' END AS compliance
   FROM license l JOIN used u ON u.license_id = l.id;
+
+-- ALM 역할 행 + 범위 풀이: 범위 값(코드)을 열로 펴고 코스트센터는 id까지 푼다(부서 관리자·승인자 판정용)
+CREATE VIEW v_alm_user_role WITH (security_invoker = true) AS
+SELECT ur.id, ur.tenant_id, ur.user_id, ur.role, ur.valid_from, ur.valid_until,
+       (SELECT s.value FROM user_role_scope s WHERE s.user_role_id = ur.id AND s.dimension = 'company') AS company_code,
+       (SELECT s.value FROM user_role_scope s WHERE s.user_role_id = ur.id AND s.dimension = 'site') AS site_code,
+       (SELECT s.value FROM user_role_scope s WHERE s.user_role_id = ur.id AND s.dimension = 'costCenter') AS cost_center_code,
+       (SELECT cc.id FROM cost_center cc JOIN user_role_scope s ON s.user_role_id = ur.id AND s.dimension = 'costCenter'
+         WHERE cc.tenant_id = ur.tenant_id AND cc.cost_center_code = s.value ORDER BY cc.id LIMIT 1) AS cost_center_id
+  FROM user_role ur;

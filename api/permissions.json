@@ -13,7 +13,10 @@
   {
    "code": "DEPT_MANAGER",
    "name": "부서 관리자",
-   "summary": "담당 코스트센터의 자산·요청 조회와 승인"
+   "summary": "담당 코스트센터의 자산·요청 조회와 승인",
+   "requiredScope": [
+    "costCenter"
+   ]
   },
   {
    "code": "ASSET_ACCOUNTANT",
@@ -33,7 +36,9 @@
   {
    "code": "AUDITOR",
    "name": "감사인",
-   "summary": "전체 조회(금액·감사 로그 포함), 변경 불가. 유효기간 필수, 다른 역할과 함께 가질 수 없음"
+   "summary": "전체 조회(금액·감사 로그 포함), 변경 불가. 유효기간 필수, 다른 역할과 함께 가질 수 없음",
+   "requireValidUntil": true,
+   "maxValidYears": 1
   }
  ],
  "permissions": [
@@ -605,6 +610,48 @@
    "operation": "createRunRequest",
    "when": "isClosing = true",
    "permission": "sap.finance"
+  }
+ ],
+ "adminRole": "SYS_ADMIN",
+ "scopeDimensions": [
+  "company",
+  "site",
+  "costCenter"
+ ],
+ "sodRules": [
+  {
+   "rule": "SOD-01",
+   "roles": [
+    "ASSET_MANAGER",
+    "ASSET_ACCOUNTANT"
+   ],
+   "description": "자산 등록·할당부터 최종 승인·SAP 전기까지 한 사람이 처리"
+  },
+  {
+   "rule": "SOD-02",
+   "roles": [
+    "SYS_ADMIN",
+    "ASSET_ACCOUNTANT"
+   ],
+   "description": "권한 부여와 전기를 한 사람이 처리"
+  },
+  {
+   "rule": "SOD-03",
+   "roles": [
+    "SYS_ADMIN",
+    "ASSET_MANAGER"
+   ],
+   "description": "사용자 권한 관리와 자산 변경을 한 사람이 처리"
+  },
+  {
+   "rule": "SOD-04",
+   "roles": [
+    "DEPT_MANAGER",
+    "ASSET_ACCOUNTANT"
+   ],
+   "sameScope": "costCenter",
+   "scopeLabel": "코스트센터",
+   "description": "부서 승인과 최종 승인을 한 사람이 처리({scope})"
   }
  ]
 }

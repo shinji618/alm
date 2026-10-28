@@ -5,7 +5,6 @@
 # mode: full (common cols), log (id, tenant_id, created_at), root (tenant table)
 
 ENUMS = {
- 'RoleCode': ('사용자 역할', ['SYS_ADMIN','ASSET_MANAGER','DEPT_MANAGER','ASSET_ACCOUNTANT','COUNTER','EMPLOYEE','AUDITOR']),
  'AssetStatus': ('자산 상태', ['ON_ORDER','IN_STOCK','IN_USE','IN_REPAIR','MISSING','RETIRED','DISPOSED']),
  'AssetSource': ('자산 생성 출처', ['MANUAL','DISCOVERY','GOODS_RECEIPT','SAP','PDA_COUNT','IMPORT']),
  'AssetEventType': ('자산 이력 유형', ['CREATED','UPDATED','STATUS_CHANGED','ASSIGNED','RETURNED','TRANSFERRED','REPAIR_IN','REPAIR_OUT','COUNTED','LABEL_PRINTED','SAP_POSTED','SAP_SYNCED','RETIRED','DISPOSED']),
@@ -84,21 +83,27 @@ display_name | vc(100) | NN | 이름
 phone | vc(30) | | 전화번호(부서 관리자 연락처 등, 관리 화면에서 입력)
 idp_subject | vc(200) | | IdP 사용자 식별자. Cognito username의 `<IdP>_` 뒤 값(SAML NameID = Entra oid, OIDC sub)
 employee_no | vc(20) | | 사번
-department | vc(100) | | 부서명
-cost_center_id | ->cost_center | | 소속 코스트센터
 locale | vc(5) | NN ='en' | 화면 언어 en/ko
 last_login_at | ts | | 마지막 로그인
 is_active | bool | NN =true | 사용 여부
 ''', uniques=[('tenant_id','email'),('tenant_id','idp_subject')], screens='공통')
-t('org','user_role','사용자 역할','역할 부여와 범위(회사코드·사이트). 범위가 비면 전체', '''
+t('org','user_role','사용자 역할','역할 부여. 범위는 user_role_scope(차원·값 행)에 둔다. 범위 행이 없으면 전체', '''
 user_id | ->app_user | NN | 사용자
-role | E:RoleCode | NN | 역할
-company_id | ->company | | 회사코드 범위
-site_id | ->site | | 사이트 범위
-cost_center_id | ->cost_center | | 코스트센터 범위(DEPT_MANAGER)
+role | vc(40) | NN | 역할 코드(제품의 권한 카탈로그가 정의. ALM: SYS_ADMIN, ASSET_MANAGER, DEPT_MANAGER, ASSET_ACCOUNTANT, COUNTER, EMPLOYEE, AUDITOR)
+scope_key | vc(200) | NN ='' | 범위 정규화 키(범위 행을 `차원=값`으로 정렬해 세로선으로 이음, 범위 없으면 빈 문자열). 같은 사용자·역할·범위의 중복을 막는 유일 키
 valid_from | date | | 유효 시작일(비면 즉시)
 valid_until | date | | 유효 종료일(임시 실사 담당·감사인). 지나면 권한 없음
-''', uniques=[('user_id','role','company_id','site_id','cost_center_id')], indexes=[('tenant_id','role')], screens='공통')
+''', uniques=[('user_id','role','scope_key')], indexes=[('tenant_id','role')], screens='공통')
+t('org','user_role_scope','사용자 역할 범위','역할 행의 범위 제한. 한 역할 행의 여러 차원은 AND, 차원 하나에 값 하나', '''
+user_role_id | ->user_role | NN | 역할 행
+dimension | vc(30) | NN | 범위 차원(제품의 권한 카탈로그가 정의. ALM: company, site, costCenter)
+value | vc(60) | NN | 범위 값(ALM: SAP 회사코드·사이트 코드·코스트센터 코드)
+''', uniques=[('user_role_id','dimension')], indexes=[('tenant_id','dimension','value')], screens='공통')
+t('org','alm_user_profile','ALM 사용자 프로필','ALM이 사용자에 덧붙이는 정보(부서·소속 코스트센터). 공통 사용자 정보(app_user)와 분리', '''
+user_id | ->app_user | NN UK | 사용자
+department | vc(100) | | 부서명
+cost_center_id | ->cost_center | | 소속 코스트센터
+''', screens='공통')
 t('org','company','회사코드','SAP 회사코드 (IF-MD-01 COMPANY). SAP 연계를 쓰지 않는 회사는 관리 화면에서 등록', '''
 company_code | vc(4) | NN | BUKRS
 name | vc(25) | NN | BUTXT
@@ -502,7 +507,7 @@ t('request','approval','승인','자산 요청·구매요청의 단계별 승인
 asset_request_id | ->asset_request | | 자산 요청
 purchase_request_id | ->purchase_request | | 구매요청
 step_no | int | NN | 단계(1부터). 부서 관리자 단계(이관은 보내는·받는 부서) 다음 자산회계(최종)
-approver_role | E:RoleCode | NN | 승인 역할
+approver_role | vc(40) | NN | 승인 역할 코드(제품의 권한 카탈로그가 정의)
 cost_center_id | ->cost_center | | 부서 관리자 단계의 코스트센터(이 코스트센터의 부서 관리자가 승인). 비면 요청의 책임 코스트센터
 approver_id | ->app_user | | 승인자(결정 시 기록)
 decision | E:ApprovalDecision | NN =PENDING | 결정

@@ -18,3 +18,4 @@ db/spec/test_security.actual
 
 # 원격 작업용 임시 폴더(워크플로 사본·패치)
 _pending_workflows/
+dist-test/

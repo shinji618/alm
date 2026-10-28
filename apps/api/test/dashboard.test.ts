@@ -7,8 +7,8 @@ import { Client, Pool } from 'pg';
 import { migrate, loadMigrations } from '../src/ops/migrate';
 import { seed } from '../src/ops/seed';
 import { Db } from '../src/db/pool';
-import { PrincipalCache } from '../src/auth/principal';
-import { catalog } from '../src/auth/permissions';
+import { PrincipalCache } from '../src/platform/identity/principal';
+import { catalog } from '../src/platform/identity/permissions';
 import { createApi } from '../src/main';
 import { MemoryCounterStore, SharedLimiter } from '../src/common/shared';
 import type { FileStore } from '../src/files/files';
@@ -45,6 +45,7 @@ async function call(who: string, method: string, path: string, body?: unknown) {
   return { status: r.status, body: text ? JSON.parse(text) : undefined };
 }
 
+import { setRoleScopeByEmail } from './roleHelper';
 import { clearDashboardCache } from '../src/dashboard/dashboard';
 
 before(async () => {
@@ -68,7 +69,7 @@ before(async () => {
   ids.s2 = await q(`INSERT INTO site (id, tenant_id, site_code, name) VALUES (gen_random_uuid(), $1, 'NYC', 'New York') RETURNING id`, [tenantId]);
   ids.cc1 = await q(`INSERT INTO cost_center (id, tenant_id, controlling_area, cost_center_code, name, company_id) VALUES (gen_random_uuid(), $1, 'A000', 'CC100', 'IT', $2) RETURNING id`, [tenantId, ids.co]);
   ids.cc2 = await q(`INSERT INTO cost_center (id, tenant_id, controlling_area, cost_center_code, name, company_id) VALUES (gen_random_uuid(), $1, 'A000', 'CC200', 'Sales', $2) RETURNING id`, [tenantId, ids.co]);
-  await owner.query(`UPDATE user_role SET cost_center_id = $1 WHERE user_id = (SELECT id FROM app_user WHERE email = 'dm@dsh.test')`, [ids.cc1]);
+  await setRoleScopeByEmail((s, a) => owner.query(s, a), 'dm@dsh.test', { costCenter: ids.cc1 });
   ids.nb = await q(`INSERT INTO category (id, tenant_id, category_code, name, useful_life_years) VALUES (gen_random_uuid(), $1, 'NB', 'Notebook', 3) RETURNING id`, [tenantId]);
   ids.mon = await q(`INSERT INTO category (id, tenant_id, category_code, name, useful_life_years) VALUES (gen_random_uuid(), $1, 'MON', 'Monitor', 5) RETURNING id`, [tenantId]);
   const asset = (tag: string, cat: string, site: string, cc: string, cols: Record<string, unknown> = {}) => {

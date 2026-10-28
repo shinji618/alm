@@ -42,6 +42,8 @@ model Tenant {
   tenantDomains TenantDomain[] @relation("tenant_domain_tenant_id")
   appUsers AppUser[] @relation("app_user_tenant_id")
   userRoles UserRole[] @relation("user_role_tenant_id")
+  userRoleScopes UserRoleScope[] @relation("user_role_scope_tenant_id")
+  almUserProfiles AlmUserProfile[] @relation("alm_user_profile_tenant_id")
   companies Company[] @relation("company_tenant_id")
   plants Plant[] @relation("plant_tenant_id")
   profitCenters ProfitCenter[] @relation("profit_center_tenant_id")
@@ -150,11 +152,6 @@ model AppUser {
   idpSubject String? @map("idp_subject") @db.VarChar(200)
   /// 사번
   employeeNo String? @map("employee_no") @db.VarChar(20)
-  /// 부서명
-  department String? @db.VarChar(100)
-  /// 소속 코스트센터
-  costCenterId String? @map("cost_center_id") @db.Uuid
-  costCenter CostCenter? @relation("app_user_cost_center_id", fields: [costCenterId], references: [id])
   /// 화면 언어 en/ko
   locale String @default("en") @db.VarChar(5)
   /// 마지막 로그인
@@ -172,6 +169,7 @@ model AppUser {
   /// 낙관적 잠금
   version Int @default(1)
   userRoles UserRole[] @relation("user_role_user_id")
+  almUserProfiles AlmUserProfile? @relation("alm_user_profile_user_id")
   assets Asset[] @relation("asset_assigned_user_id")
   assetAssignments AssetAssignment[] @relation("asset_assignment_user_id")
   assetEvents AssetEvent[] @relation("asset_event_actor_id")
@@ -203,7 +201,7 @@ model AppUser {
   @@map("app_user")
 }
 
-/// 사용자 역할 — 역할 부여와 범위(회사코드·사이트). 범위가 비면 전체
+/// 사용자 역할 — 역할 부여. 범위는 user_role_scope(차원·값 행)에 둔다. 범위 행이 없으면 전체
 model UserRole {
   id String @id @default(uuid(7)) @db.Uuid
   /// 테넌트
@@ -212,17 +210,10 @@ model UserRole {
   /// 사용자
   userId String @map("user_id") @db.Uuid
   user AppUser @relation("user_role_user_id", fields: [userId], references: [id])
-  /// 역할
-  role RoleCode
-  /// 회사코드 범위
-  companyId String? @map("company_id") @db.Uuid
-  company Company? @relation("user_role_company_id", fields: [companyId], references: [id])
-  /// 사이트 범위
-  siteId String? @map("site_id") @db.Uuid
-  site Site? @relation("user_role_site_id", fields: [siteId], references: [id])
-  /// 코스트센터 범위(DEPT_MANAGER)
-  costCenterId String? @map("cost_center_id") @db.Uuid
-  costCenter CostCenter? @relation("user_role_cost_center_id", fields: [costCenterId], references: [id])
+  /// 역할 코드(제품의 권한 카탈로그가 정의. ALM: SYS_ADMIN, ASSET_MANAGER, DEPT_MANAGER, ASSET_ACCOUNTANT, COUNTER, EMPLOYEE, AUDITOR)
+  role String @db.VarChar(40)
+  /// 범위 정규화 키(범위 행을 `차원=값`으로 정렬해 세로선으로 이음, 범위 없으면 빈 문자열). 같은 사용자·역할·범위의 중복을 막는 유일 키
+  scopeKey String @default("") @map("scope_key") @db.VarChar(200)
   /// 유효 시작일(비면 즉시)
   validFrom DateTime? @map("valid_from") @db.Date
   /// 유효 종료일(임시 실사 담당·감사인). 지나면 권한 없음
@@ -237,9 +228,65 @@ model UserRole {
   updatedBy String? @map("updated_by") @db.Uuid
   /// 낙관적 잠금
   version Int @default(1)
-  @@unique([userId, role, companyId, siteId, costCenterId])
+  userRoleScopes UserRoleScope[] @relation("user_role_scope_user_role_id")
+  @@unique([userId, role, scopeKey])
   @@index([tenantId, role])
   @@map("user_role")
+}
+
+/// 사용자 역할 범위 — 역할 행의 범위 제한. 한 역할 행의 여러 차원은 AND, 차원 하나에 값 하나
+model UserRoleScope {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("user_role_scope_tenant_id", fields: [tenantId], references: [id])
+  /// 역할 행
+  userRoleId String @map("user_role_id") @db.Uuid
+  userRole UserRole @relation("user_role_scope_user_role_id", fields: [userRoleId], references: [id])
+  /// 범위 차원(제품의 권한 카탈로그가 정의. ALM: company, site, costCenter)
+  dimension String @db.VarChar(30)
+  /// 범위 값(ALM: SAP 회사코드·사이트 코드·코스트센터 코드)
+  value String @db.VarChar(60)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([userRoleId, dimension])
+  @@index([tenantId, dimension, value])
+  @@map("user_role_scope")
+}
+
+/// ALM 사용자 프로필 — ALM이 사용자에 덧붙이는 정보(부서·소속 코스트센터). 공통 사용자 정보(app_user)와 분리
+model AlmUserProfile {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("alm_user_profile_tenant_id", fields: [tenantId], references: [id])
+  /// 사용자
+  userId String @unique @map("user_id") @db.Uuid
+  user AppUser @relation("alm_user_profile_user_id", fields: [userId], references: [id])
+  /// 부서명
+  department String? @db.VarChar(100)
+  /// 소속 코스트센터
+  costCenterId String? @map("cost_center_id") @db.Uuid
+  costCenter CostCenter? @relation("alm_user_profile_cost_center_id", fields: [costCenterId], references: [id])
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@map("alm_user_profile")
 }
 
 /// 회사코드 — SAP 회사코드 (IF-MD-01 COMPANY). SAP 연계를 쓰지 않는 회사는 관리 화면에서 등록
@@ -272,7 +319,6 @@ model Company {
   updatedBy String? @map("updated_by") @db.Uuid
   /// 낙관적 잠금
   version Int @default(1)
-  userRoles UserRole[] @relation("user_role_company_id")
   plants Plant[] @relation("plant_company_id")
   costCenters CostCenter[] @relation("cost_center_company_id")
   assets Asset[] @relation("asset_company_id")
@@ -385,8 +431,7 @@ model CostCenter {
   updatedBy String? @map("updated_by") @db.Uuid
   /// 낙관적 잠금
   version Int @default(1)
-  appUsers AppUser[] @relation("app_user_cost_center_id")
-  userRoles UserRole[] @relation("user_role_cost_center_id")
+  almUserProfiles AlmUserProfile[] @relation("alm_user_profile_cost_center_id")
   assets Asset[] @relation("asset_cost_center_id")
   assetAssignments AssetAssignment[] @relation("asset_assignment_cost_center_id")
   purchaseRequests PurchaseRequest[] @relation("purchase_request_cost_center_id")
@@ -471,7 +516,6 @@ model Site {
   updatedBy String? @map("updated_by") @db.Uuid
   /// 낙관적 잠금
   version Int @default(1)
-  userRoles UserRole[] @relation("user_role_site_id")
   rooms Room[] @relation("room_site_id")
   assets Asset[] @relation("asset_site_id")
   discoveryJobs DiscoveryJob[] @relation("discovery_job_site_id")
@@ -1751,8 +1795,8 @@ model Approval {
   purchaseRequest PurchaseRequest? @relation("approval_purchase_request_id", fields: [purchaseRequestId], references: [id])
   /// 단계(1부터). 부서 관리자 단계(이관은 보내는·받는 부서) 다음 자산회계(최종)
   stepNo Int @map("step_no")
-  /// 승인 역할
-  approverRole RoleCode @map("approver_role")
+  /// 승인 역할 코드(제품의 권한 카탈로그가 정의)
+  approverRole String @map("approver_role") @db.VarChar(40)
   /// 부서 관리자 단계의 코스트센터(이 코스트센터의 부서 관리자가 승인). 비면 요청의 책임 코스트센터
   costCenterId String? @map("cost_center_id") @db.Uuid
   costCenter CostCenter? @relation("approval_cost_center_id", fields: [costCenterId], references: [id])
@@ -3086,18 +3130,6 @@ model SecurityEvent {
   @@index([tenantId, occurredAt])
   @@index([tenantId, eventType, occurredAt])
   @@map("security_event")
-}
-
-/// 사용자 역할
-enum RoleCode {
-  SYS_ADMIN
-  ASSET_MANAGER
-  DEPT_MANAGER
-  ASSET_ACCOUNTANT
-  COUNTER
-  EMPLOYEE
-  AUDITOR
-  @@map("role_code")
 }
 
 /// 자산 상태

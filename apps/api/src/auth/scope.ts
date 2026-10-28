@@ -4,8 +4,9 @@
 //   OWN         : 나에게 할당된 자산
 //   TASK        : 실사 배정(자산 목록에는 해당 없음)
 // 여러 역할 행은 OR. 범위 밖 단건은 404(존재를 알리지 않음).
-import type { Principal } from './principal';
-import { catalog, Scope } from './permissions';
+import type { Principal } from '../platform/identity/principal';
+import { catalog, Scope } from '../platform/identity/permissions';
+import { almScope } from '../admin/identityAdapter';
 
 export interface ScopeRow { scope: Scope; companyCode?: string; siteCode?: string; costCenterCode?: string }
 
@@ -17,7 +18,7 @@ export function scopeRows(p: Principal, perm: string): ScopeRow[] {
   for (const r of p.roles) {
     if (!p.effectiveRoles.includes(r.role)) continue;
     const s = g[r.role]?.[perm];
-    if (s) rows.push({ scope: s, companyCode: r.companyCode, siteCode: r.siteCode, costCenterCode: r.costCenterCode });
+    if (s) rows.push({ scope: s, ...almScope(r) });
   }
   for (const role of p.effectiveRoles) {
     if (stored.has(role)) continue;

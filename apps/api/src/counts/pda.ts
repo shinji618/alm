@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { AlmError, E } from '../common/errors';
 import { Check, UUID } from '../common/validate';
-import type { Principal } from '../auth/principal';
+import type { Principal } from '../platform/identity/principal';
 import { defaultTemplateId } from '../labels/labels';
 import { completeWeb, FileStore, presignAssetPhoto } from '../files/files';
 import { assetScope, can, Params } from '../auth/scope';

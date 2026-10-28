@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { AlmError, E } from '../common/errors';
 import { Check, UUID } from '../common/validate';
-import type { Principal } from '../auth/principal';
+import type { Principal } from '../platform/identity/principal';
 import type { MailRequest } from '../notify/mail';
 import { createRequest } from '../requests/requests';
 import { createAsset } from '../assets/assets';

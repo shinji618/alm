@@ -3,7 +3,7 @@ import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Put, Query
 import type { Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { Db } from '../db/pool';
-import { securityEvent } from '../auth/login';
+import { securityEvent } from '../platform/identity/login';
 import { AlmError, E } from '../common/errors';
 import { Check } from '../common/validate';
 import { AlmContext, Ctx, Operation, txOf } from './context';

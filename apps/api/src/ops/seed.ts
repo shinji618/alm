@@ -5,9 +5,9 @@
 import { randomUUID } from 'node:crypto';
 import { seedFieldMappings } from '../sap/mappings';
 import { Client } from 'pg';
+import { roleCodes } from '../platform/identity/users';
 import { log } from '../common/log';
 
-const ROLES = ['SYS_ADMIN', 'ASSET_MANAGER', 'DEPT_MANAGER', 'ASSET_ACCOUNTANT', 'COUNTER', 'EMPLOYEE', 'AUDITOR'] as const;
 
 export interface MasterSeed {
   sites?: { code: string; name: string; address?: string; timeZone?: string; sapLocation?: string }[];
@@ -52,7 +52,7 @@ export function parseSeed(raw: string | undefined): SeedInput {
   for (const x of m?.labelTemplates ?? []) { code(x.code, 20, 'masters.labelTemplates.code'); if (!x.zpl?.includes('^XA')) throw new Error('masters.labelTemplates.zpl: ZPL(^XA…^XZ)'); }
   for (const u of s.users ?? []) {
     if (!/^[^@\s]+@[^@\s]+$/.test(u.email)) throw new Error(`users.email: ${u.email}`);
-    for (const r of u.roles) if (!(ROLES as readonly string[]).includes(r)) throw new Error(`users.roles: ${r}`);
+    for (const r of u.roles) if (!roleCodes().includes(r)) throw new Error(`users.roles: ${r}`);
     if (u.roles.includes('AUDITOR') && !u.validUntil) throw new Error('AUDITOR는 validUntil이 필요하다');
   }
   for (const co of s.companies ?? []) {
@@ -100,7 +100,7 @@ export async function seed(c: Client, s: SeedInput): Promise<{ tenantId: string;
       for (const role of u.roles) {
         await c.query(
           `INSERT INTO user_role (id, tenant_id, user_id, role, valid_until) VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (user_id, role, company_id, site_id, cost_center_id) DO UPDATE SET valid_until = EXCLUDED.valid_until`,
+           ON CONFLICT (user_id, role, scope_key) DO UPDATE SET valid_until = EXCLUDED.valid_until`,
           [randomUUID(), tenantId, userId, role, u.validUntil ?? null]);
       }
     }

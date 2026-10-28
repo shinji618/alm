@@ -48,7 +48,7 @@ INSERT 0 1
 INSERT 0 1
 INSERT 0 1
 SAVEPOINT
-psql:test_security.sql:30: ERROR:  duplicate key value violates unique constraint "user_role_user_id_role_company_id_site_id_cost_center_id_key"
+psql:test_security.sql:30: ERROR:  duplicate key value violates unique constraint "user_role_user_id_role_scope_key_key"
 ROLLBACK
 --- 5. append-only log table
 SAVEPOINT
