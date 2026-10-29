@@ -53,6 +53,7 @@ export const NAV: NavGroup[] = [
       { path: '/admin/number-ranges', labelKey: 'nav.numberRanges', screenId: 'ADM-055', wbs: '4.2', perm: 'master.read' },
       { path: '/admin/fin-masters', labelKey: 'nav.finMasters', screenId: 'ADM-030', wbs: '4.3', perm: 'master.write' },
       { path: '/admin/sap-masters', labelKey: 'nav.sapMasters', screenId: 'ADM-035', wbs: '7.4', perm: 'master.read' },
+      { path: '/admin/users', labelKey: 'nav.users', screenId: 'ADM-010', wbs: '4.12', perm: 'admin.user' },
       { path: '/admin/dept-managers', labelKey: 'nav.deptManagers', screenId: 'ADM-040', wbs: '4.3', perm: 'admin.user' },
       { path: '/admin/asset-import', labelKey: 'nav.assetImport', screenId: 'ADM-060', wbs: '9.3', perm: 'asset.write' },
     ],

@@ -18,6 +18,7 @@ import { CompanySettings } from '@/pages/admin/CompanySettings';
 import { FinMasters } from '@/pages/admin/FinMasters';
 import { SapMasters } from '@/pages/admin/SapMasters';
 import { DeptManagers } from '@/pages/admin/DeptManagers';
+import { UserAdmin } from '@/pages/admin/UserAdmin';
 import { SapIntegration } from '@/pages/sap/SapIntegration';
 import { CountList } from '@/pages/counts/CountList';
 import { CountDetail } from '@/pages/counts/CountDetail';
@@ -27,7 +28,7 @@ import { NumberRanges } from '@/pages/admin/NumberRanges';
 import { TaxFilingDetail } from '@/pages/tax/TaxFilingDetail';
 
 // 만든 화면(그 외 메뉴는 아직 자리 화면)
-const BUILT = new Set(['/', '/labels', '/assets', '/requests', '/counts', '/tax', '/sap', '/admin/companies', '/admin/fin-masters', '/admin/sap-masters', '/admin/categories', '/admin/number-ranges', '/admin/dept-managers', '/admin/asset-import', '/design']);
+const BUILT = new Set(['/', '/labels', '/assets', '/requests', '/counts', '/tax', '/sap', '/admin/companies', '/admin/fin-masters', '/admin/sap-masters', '/admin/categories', '/admin/number-ranges', '/admin/dept-managers', '/admin/users', '/admin/asset-import', '/design']);
 
 function Routed() {
   const { t } = useTranslation();
@@ -65,6 +66,7 @@ function Routed() {
         <Route path="/admin/categories" element={<AssetCategories />} />
         <Route path="/admin/number-ranges" element={<NumberRanges />} />
         <Route path="/admin/dept-managers" element={<DeptManagers />} />
+        <Route path="/admin/users" element={<UserAdmin />} />
         <Route path="/admin/asset-import" element={<AssetImport />} />
         {NAV_ITEMS.filter((i) => !BUILT.has(i.path)).map((i) => (
           <Route key={i.path} path={i.path} element={<Placeholder />} />
