@@ -22,6 +22,8 @@ ENUMS = {
  'RequestSource': ('요청 발생 출처', ['USER','ASSIGNMENT','COUNT_VARIANCE','RECONCILIATION','GOODS_RECEIPT']),
  'RetireType': ('폐기 유형', ['SCRAP','SALE','LOSS']),
  'ApprovalDecision': ('승인 결정', ['PENDING','APPROVED','REJECTED','SKIPPED']),
+ 'WorkflowDefStatus': ('워크플로 정의 상태', ['DRAFT','PUBLISHED','ARCHIVED']),
+ 'WorkflowInstanceStatus': ('워크플로 인스턴스 상태', ['IN_PROGRESS','APPROVED','REJECTED','CANCELLED']),
  'CampaignStatus': ('실사 캠페인 단계', ['SCOPING','COUNTING','REVIEW','POSTING','CLOSED','CANCELLED']),
  'CountTaskStatus': ('룸 실사 작업 상태', ['NOT_STARTED','IN_PROGRESS','COMPLETED']),
  'CountResult': ('실사 대상 판정', ['PENDING','FOUND','MISPLACED','NOT_FOUND']),
@@ -503,7 +505,7 @@ count_item_id | ->count_item | | 실사 차이에서 생성
 recon_diff_id | ->recon_diff | | 대사 차이에서 생성
 completed_at | ts | | 전기 완료·반려 일시
 ''', uniques=[('tenant_id','request_no')], indexes=[('tenant_id','status'),('asset_id',)], screens='ALM-230')
-t('request','approval','승인','자산 요청·구매요청의 단계별 승인. 둘 중 하나만 채움', '''
+t('request','approval','승인','자산 요청·구매요청의 단계별 승인. 둘 중 하나만 채움. 4.11부터 자산 요청 승인은 workflow_step이 맡고 이 테이블은 이관 전 기록 보관용이다(읽기만, 삭제 예정)', '''
 asset_request_id | ->asset_request | | 자산 요청
 purchase_request_id | ->purchase_request | | 구매요청
 step_no | int | NN | 단계(1부터). 부서 관리자 단계(이관은 보내는·받는 부서) 다음 자산회계(최종)
@@ -514,6 +516,45 @@ decision | E:ApprovalDecision | NN =PENDING | 결정
 comment | vc(500) | | 의견
 decided_at | ts | | 결정 일시
 ''', uniques=[('asset_request_id','step_no'),('purchase_request_id','step_no')], indexes=[('tenant_id','approver_role','decision')], screens='ALM-230, 210')
+
+t('request','workflow_definition','워크플로 정의','승인 흐름 정의(4.13, 결정 E-11). 대상 유형별로 버전을 쌓는다. 초안(DRAFT) 1개, 게시(PUBLISHED) 1개, 이전 게시는 ARCHIVED. 게시한 정의를 승인 실행에 연결하는 일은 4.10·4.11', '''
+subject_type | vc(40) | NN | 대상 유형 코드(제품이 정함. ALM: 자산 요청 유형 NEW_ASSET, CHANGE, TRANSFER, RETIRE, SALE)
+version_no | int | NN | 대상 유형별 버전(1부터)
+status | E:WorkflowDefStatus | NN =DRAFT | 초안·게시·보관
+name | vc(100) | NN | 흐름 이름
+steps | json | NN | 단계 목록. 각 단계: key, label, resolver(담당자 규칙 코드), fallback(담당자가 없을 때), mergeSame
+options | json | NN | 직무 분리 선택 규칙(필수 규칙은 엔진이 항상 적용하므로 저장하지 않음)
+change_note | vc(200) | | 변경 메모
+published_at | ts | | 게시 일시
+published_by | ->app_user | | 게시한 사용자
+''', uniques=[('tenant_id','subject_type','version_no')], indexes=[('tenant_id','subject_type','status')], screens='ADM-070')
+
+t('request','workflow_instance','워크플로 인스턴스','승인 엔진(4.10)이 실행하는 승인 1건. 대상(subject_type, subject_id)은 제품이 정한다. 진행 중 인스턴스는 대상당 1건(저장소가 잠금으로 보장). ALM 자산 요청 승인은 4.11부터 이 테이블을 쓴다(approval에서 이관, 0018)', '''
+subject_type | vc(40) | NN | 대상 유형(ALM: 자산 요청 유형)
+subject_id | uuid | NN | 대상 id(제품 테이블의 행, FK 없음)
+requester_id | ->app_user | NN | 요청자(본인 승인 불가 판단)
+status | E:WorkflowInstanceStatus | NN =IN_PROGRESS | 진행·승인·반려·취소
+current_step | int | NN =1 | 지금 단계 번호
+rules | json | NN | 직무 분리 선택 규칙(fixerCannotReapprove). 제출 때 정의에서 복사해 이후 정의가 바뀌어도 진행 중 건은 그대로
+submitted_at | ts | NN | 제출(재시작) 일시
+completed_at | ts | | 완료(승인·반려·취소) 일시
+''', indexes=[('tenant_id','subject_type','subject_id'),('tenant_id','status')], screens='-')
+t('request','workflow_step','워크플로 단계','승인 엔진 인스턴스의 단계. 담당자는 미리 정하지 않고 결정 시점에 제품의 자격 판단(역할·범위)으로 확인한다. 결정 값은 승인 테이블과 같은 ApprovalDecision', '''
+instance_id | ->workflow_instance | NN | 인스턴스
+step_no | int | NN | 단계(1부터)
+step_key | vc(30) | NN | 단계 키(정의의 key)
+label | vc(40) | NN | 화면 이름
+resolver | vc(60) | NN | 담당자 규칙 코드
+params | json | | 제품이 담당자 판단에 쓰는 값(예: 코스트센터 id)
+proxy | bool | NN =false | 담당자가 없어 대리 규칙으로 정한 단계
+merge_same | bool | NN =false | 앞 단계 승인자가 이 단계 자격도 있으면 함께 승인
+min_approvals | int | NN =1 | N명 중 M명(지금은 1만, 멀티 뱅크 자리)
+due_at | ts | | 승인 기한(지금은 기록만)
+status | E:ApprovalDecision | NN =PENDING | 결정
+approver_id | ->app_user | | 승인자(결정 시 기록)
+comment | vc(500) | | 의견
+decided_at | ts | | 결정 일시
+''', uniques=[('instance_id','step_no'),('instance_id','step_key')], indexes=[('tenant_id','status')], screens='-')
 
 # ---------------- count ----------------
 t('count','count_campaign','실사 캠페인','실물 실사 캠페인', '''

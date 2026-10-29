@@ -8099,6 +8099,335 @@ paths:
       security:
       - webAuth:
         - web
+  /admin/workflows:
+    get:
+      operationId: listWorkflows
+      summary: 워크플로 목록
+      tags:
+      - WEB
+      description: 'ADM-070 · 테이블: workflow_definition
+
+
+        - 대상 유형(자산 요청 5종)별 지금 쓰는 흐름. 게시본이 없으면 기본 정의(현재 동작)를 보여 준다.
+
+        - 게시한 정의는 아직 승인 실행에 연결되지 않는다(appliedToApprovals=false, 4.10·4.11).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowList'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: admin.config
+      x-scope:
+        SYS_ADMIN: '-'
+      security:
+      - webAuth:
+        - web
+  /admin/workflows/catalog:
+    get:
+      operationId: getWorkflowCatalog
+      summary: 워크플로 선택값
+      tags:
+      - WEB
+      description: 'ADM-070 · 테이블: -
+
+
+        - 담당자 규칙·대리 규칙은 제품이 정한 목록(고정). 자유 입력 불가. 필수 규칙(H-01, H-02)은 끌 수 없다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowCatalog'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: admin.config
+      x-scope:
+        SYS_ADMIN: '-'
+      security:
+      - webAuth:
+        - web
+  /admin/workflows/{subjectType}:
+    get:
+      operationId: getWorkflow
+      summary: 워크플로 상세
+      tags:
+      - WEB
+      description: 'ADM-070 · 테이블: workflow_definition
+
+
+        - 게시본·초안·기본 정의·버전 이력.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: subjectType
+        in: path
+        required: true
+        description: 대상 유형(NEW_ASSET, CHANGE, TRANSFER, RETIRE, SALE)
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowDetail'
+        '404':
+          $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: admin.config
+      x-scope:
+        SYS_ADMIN: '-'
+      security:
+      - webAuth:
+        - web
+  /admin/workflows/{subjectType}/draft:
+    put:
+      operationId: saveWorkflowDraft
+      summary: 워크플로 초안 저장
+      tags:
+      - WEB
+      description: 'ADM-070 · 테이블: workflow_definition, audit_log
+
+
+        - 초안이 없으면 새 버전을 만들고, 있으면 If-Match(version)로 바꾼다(없으면 428, 다르면 409 ALM-E310).
+
+        - 검사: 단계 1~5, 담당자 규칙·대리 규칙은 카탈로그 안, 같은 규칙 두 번 불가, 마지막은 최종 승인 규칙, 마지막 단계는 건너뛸 수 없음.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: subjectType
+        in: path
+        required: true
+        description: 대상 유형(NEW_ASSET, CHANGE, TRANSFER, RETIRE, SALE)
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        required: false
+        description: 초안이 있을 때 version 값
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowVersion'
+        '400':
+          $ref: '#/components/responses/E400'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '428':
+          $ref: '#/components/responses/E428'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: admin.config
+      x-scope:
+        SYS_ADMIN: '-'
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowDefinitionInput'
+    delete:
+      operationId: discardWorkflowDraft
+      summary: 워크플로 초안 버리기
+      tags:
+      - WEB
+      description: 'ADM-070 · 테이블: workflow_definition, audit_log
+
+
+        - 초안을 지운다. 게시본은 그대로.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: subjectType
+        in: path
+        required: true
+        description: 대상 유형(NEW_ASSET, CHANGE, TRANSFER, RETIRE, SALE)
+        schema:
+          type: string
+      responses:
+        '204':
+          description: 성공(본문 없음)
+        '404':
+          $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: admin.config
+      x-scope:
+        SYS_ADMIN: '-'
+      security:
+      - webAuth:
+        - web
+  /admin/workflows/{subjectType}/draft:publish:
+    post:
+      operationId: publishWorkflowDraft
+      summary: 워크플로 게시
+      tags:
+      - WEB
+      description: 'ADM-070 · 테이블: workflow_definition, audit_log
+
+
+        - 초안을 다시 검사하고 게시한다. 이전 게시본은 보관(ARCHIVED). If-Match: 초안 version.
+
+        - 게시본과 같으면 409 ALM-E321. 게시해도 승인 실행에는 아직 쓰이지 않는다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: subjectType
+        in: path
+        required: true
+        description: 대상 유형(NEW_ASSET, CHANGE, TRANSFER, RETIRE, SALE)
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        required: true
+        description: 초안 version 값
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowVersion'
+        '400':
+          $ref: '#/components/responses/E400'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '428':
+          $ref: '#/components/responses/E428'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: admin.config
+      x-scope:
+        SYS_ADMIN: '-'
+      security:
+      - webAuth:
+        - web
+  /admin/workflows/{subjectType}/versions/{versionNo}:restore:
+    post:
+      operationId: restoreWorkflowVersion
+      summary: 이전 버전을 초안으로 되돌리기
+      tags:
+      - WEB
+      description: 'ADM-070 · 테이블: workflow_definition, audit_log
+
+
+        - 선택한 버전의 내용으로 새 초안을 만든다. 초안이 이미 있으면 409 ALM-E321.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: subjectType
+        in: path
+        required: true
+        description: 대상 유형(NEW_ASSET, CHANGE, TRANSFER, RETIRE, SALE)
+        schema:
+          type: string
+      - name: versionNo
+        in: path
+        required: true
+        description: 버전 번호
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowVersion'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: admin.config
+      x-scope:
+        SYS_ADMIN: '-'
+      security:
+      - webAuth:
+        - web
+  /admin/workflows/{subjectType}:simulate:
+    post:
+      operationId: simulateWorkflow
+      summary: 워크플로 시험 실행
+      tags:
+      - WEB
+      description: 'ADM-070 · 테이블: workflow_definition, cost_center, user_role
+
+
+        - 요청을 만들지 않고 승인자만 계산한다. 정의는 본문(편집 중) → 초안 → 게시본 → 기본 정의 순.
+
+        - 코스트센터를 하나 이상 지정해야 한다. 요청자는 담당자에서 뺀다(H-01).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: subjectType
+        in: path
+        required: true
+        description: 대상 유형(NEW_ASSET, CHANGE, TRANSFER, RETIRE, SALE)
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowSimulation'
+        '400':
+          $ref: '#/components/responses/E400'
+        '404':
+          $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: admin.config
+      x-scope:
+        SYS_ADMIN: '-'
+      security:
+      - webAuth:
+        - web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowSimulateInput'
   /admin/cost-centers:
     get:
       operationId: listCostCenters
@@ -18888,6 +19217,488 @@ components:
           type: string
           format: date
           description: 유효 종료일(null이면 무기한)
+    WorkflowStep:
+      type: object
+      description: 워크플로 단계
+      properties:
+        key:
+          type: string
+          maxLength: 30
+          description: 단계 키(소문자 시작 영문 소문자·숫자·밑줄)
+        label:
+          type: string
+          maxLength: 40
+          description: 화면에 보이는 이름
+        resolver:
+          type: string
+          maxLength: 60
+          description: 담당자 규칙 코드(카탈로그)
+        fallback:
+          type: string
+          maxLength: 60
+          description: '담당자가 없을 때: SKIP(건너뜀) · NONE(제출 불가) · 대리 규칙 코드'
+        mergeSame:
+          type: boolean
+          description: 앞 단계와 담당자가 같으면 함께 승인(최종 단계는 false)
+      required:
+      - key
+      - label
+      - resolver
+      - fallback
+      - mergeSame
+    WorkflowOptions:
+      type: object
+      description: 워크플로 설정
+      properties:
+        fixerCannotReapprove:
+          type: boolean
+          description: 전기 오류를 보정한 사람은 다시 승인하지 못함
+        requesterNoStep:
+          type: boolean
+          description: 요청자를 대리 규칙 담당자에서도 뺌(엄격)
+        proxyIfAllSkipped:
+          type: boolean
+          description: 최종 단계 앞이 모두 비면 첫 단계를 대리 규칙으로 처리
+      required:
+      - fixerCannotReapprove
+      - requesterNoStep
+      - proxyIfAllSkipped
+    WorkflowDefinitionInput:
+      type: object
+      description: 워크플로 초안 저장
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          description: 흐름 이름
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowStep'
+          description: 단계(1~5개, 마지막은 최종 승인 규칙)
+        options:
+          allOf:
+          - $ref: '#/components/schemas/WorkflowOptions'
+          description: 설정(빠진 값은 기본)
+        changeNote:
+          type: string
+          maxLength: 200
+          description: 변경 메모
+      required:
+      - name
+      - steps
+    WorkflowVersion:
+      type: object
+      description: 워크플로 정의 버전(초안·게시)
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: workflow_definition.id
+        subjectType:
+          type: string
+          description: 대상 유형
+        versionNo:
+          type: integer
+          description: 버전 번호
+        status:
+          type: string
+          description: DRAFT, PUBLISHED, ARCHIVED
+        name:
+          type: string
+          description: 흐름 이름
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowStep'
+          description: 단계
+        options:
+          allOf:
+          - $ref: '#/components/schemas/WorkflowOptions'
+          description: 설정
+        changeNote:
+          type: string
+          description: 변경 메모
+        publishedAt:
+          type: string
+          format: date-time
+          description: 게시 일시
+        publishedByName:
+          type: string
+          description: 게시한 사람
+        updatedAt:
+          type: string
+          format: date-time
+          description: 수정 일시
+        updatedByName:
+          type: string
+          description: 수정한 사람
+        version:
+          type: integer
+          description: 낙관적 잠금 값(If-Match)
+      required:
+      - id
+      - subjectType
+      - versionNo
+      - status
+      - name
+      - steps
+      - options
+      - version
+    WorkflowVersionSummary:
+      type: object
+      description: 워크플로 버전 이력 한 줄
+      properties:
+        versionNo:
+          type: integer
+          description: 버전 번호
+        status:
+          type: string
+          description: DRAFT, PUBLISHED, ARCHIVED
+        name:
+          type: string
+          description: 흐름 이름
+        changeNote:
+          type: string
+          description: 변경 메모
+        publishedAt:
+          type: string
+          format: date-time
+          description: 게시 일시
+        publishedByName:
+          type: string
+          description: 게시한 사람
+        updatedAt:
+          type: string
+          format: date-time
+          description: 수정 일시
+        updatedByName:
+          type: string
+          description: 수정한 사람
+      required:
+      - versionNo
+      - status
+      - name
+    WorkflowDefault:
+      type: object
+      description: 기본 정의(현재 동작 그대로)
+      properties:
+        name:
+          type: string
+          description: 흐름 이름
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowStep'
+          description: 단계
+        options:
+          allOf:
+          - $ref: '#/components/schemas/WorkflowOptions'
+          description: 설정
+      required:
+      - name
+      - steps
+      - options
+    WorkflowDetail:
+      type: object
+      description: 대상 유형별 워크플로
+      properties:
+        subjectType:
+          type: string
+          description: 대상 유형
+        label:
+          type: string
+          description: 이름
+        appliedToApprovals:
+          type: boolean
+          description: 게시한 정의가 승인 실행에 쓰이는가(4.10·4.11 전까지 false)
+        published:
+          allOf:
+          - $ref: '#/components/schemas/WorkflowVersion'
+          description: 게시본
+        draft:
+          allOf:
+          - $ref: '#/components/schemas/WorkflowVersion'
+          description: 초안(최대 1개)
+        defaultDefinition:
+          allOf:
+          - $ref: '#/components/schemas/WorkflowDefault'
+          description: 기본 정의
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowVersionSummary'
+          description: 버전 이력(최신순)
+      required:
+      - subjectType
+      - label
+      - appliedToApprovals
+      - defaultDefinition
+      - versions
+    WorkflowSummary:
+      type: object
+      description: 워크플로 목록 한 줄
+      properties:
+        subjectType:
+          type: string
+          description: 대상 유형
+        label:
+          type: string
+          description: 이름
+        name:
+          type: string
+          description: 지금 쓰는 흐름 이름
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowStep'
+          description: 지금 쓰는 단계
+        publishedVersion:
+          type: integer
+          description: 게시 버전(없으면 기본 정의)
+        hasDraft:
+          type: boolean
+          description: 초안 있음
+        draftVersion:
+          type: integer
+          description: 초안 버전
+        usesDefault:
+          type: boolean
+          description: 기본 정의를 쓰는 중
+        updatedAt:
+          type: string
+          format: date-time
+          description: 마지막 수정
+      required:
+      - subjectType
+      - label
+      - name
+      - steps
+      - hasDraft
+      - usesDefault
+    WorkflowList:
+      type: object
+      description: 워크플로 목록
+      properties:
+        appliedToApprovals:
+          type: boolean
+          description: 게시한 정의가 승인 실행에 쓰이는가
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowSummary'
+          description: 대상 유형별
+      required:
+      - appliedToApprovals
+      - items
+    WorkflowSubject:
+      type: object
+      description: 대상 유형
+      properties:
+        code:
+          type: string
+          description: 코드
+        label:
+          type: string
+          description: 이름
+      required:
+      - code
+      - label
+    WorkflowResolver:
+      type: object
+      description: 담당자 규칙
+      properties:
+        code:
+          type: string
+          description: 코드
+        label:
+          type: string
+          description: 설명
+        subjects:
+          type: array
+          items:
+            type: string
+          description: 쓸 수 있는 대상 유형(없으면 모두)
+        final:
+          type: boolean
+          description: 최종 단계에 쓸 수 있음
+      required:
+      - code
+      - label
+    WorkflowFallback:
+      type: object
+      description: 대리 규칙
+      properties:
+        code:
+          type: string
+          description: 코드
+        label:
+          type: string
+          description: 설명
+        resolver:
+          type: string
+          description: 담당자를 찾는 규칙 코드
+      required:
+      - code
+      - label
+      - resolver
+    WorkflowRule:
+      type: object
+      description: 끌 수 없는 규칙
+      properties:
+        code:
+          type: string
+          description: 규칙 코드(H-01 등)
+        label:
+          type: string
+          description: 설명
+      required:
+      - code
+      - label
+    WorkflowCatalog:
+      type: object
+      description: 선택할 수 있는 값
+      properties:
+        subjects:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowSubject'
+          description: 대상 유형
+        resolvers:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowResolver'
+          description: 담당자 규칙
+        fallbacks:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowFallback'
+          description: 대리 규칙
+        mandatoryRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowRule'
+          description: 정의로 끌 수 없는 규칙
+        maxSteps:
+          type: integer
+          description: 단계 최대 수
+        appliedToApprovals:
+          type: boolean
+          description: 게시한 정의가 승인 실행에 쓰이는가
+      required:
+      - subjects
+      - resolvers
+      - fallbacks
+      - mandatoryRules
+      - maxSteps
+      - appliedToApprovals
+    WorkflowSimulateInput:
+      type: object
+      description: 시험 실행 입력
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          description: 편집 중인 정의를 시험할 때(steps와 함께)
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowStep'
+          description: 편집 중인 단계. 없으면 초안 → 게시본 → 기본 정의 순
+        options:
+          allOf:
+          - $ref: '#/components/schemas/WorkflowOptions'
+          description: 설정
+        sourceCostCenterId:
+          type: string
+          format: uuid
+          description: 보내는(현재) 코스트센터
+        targetCostCenterId:
+          type: string
+          format: uuid
+          description: 받는(대상) 코스트센터. 둘 중 하나는 필수
+        companyId:
+          type: string
+          format: uuid
+          description: 회사(자산회계 범위)
+        requesterId:
+          type: string
+          format: uuid
+          description: 요청자(담당자에서 뺌)
+    WorkflowPerson:
+      type: object
+      description: 담당자
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 사용자
+        name:
+          type: string
+          description: 이름
+        detail:
+          type: string
+          description: 코스트센터 코드·회사 범위
+      required:
+      - id
+      - name
+    WorkflowPlannedStep:
+      type: object
+      description: 시험 실행 단계
+      properties:
+        key:
+          type: string
+          description: 단계 키
+        label:
+          type: string
+          description: 이름
+        resolver:
+          type: string
+          description: 담당자 규칙
+        status:
+          type: string
+          description: ACTIVE, SKIPPED, MERGED
+        proxy:
+          type: boolean
+          description: 대리 규칙으로 정한 단계
+        missing:
+          type: boolean
+          description: 담당자가 없어 제출할 수 없는 단계
+        approvers:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowPerson'
+          description: 담당자
+      required:
+      - key
+      - label
+      - resolver
+      - status
+      - proxy
+      - approvers
+    WorkflowSimulation:
+      type: object
+      description: 시험 실행 결과
+      properties:
+        subjectType:
+          type: string
+          description: 대상 유형
+        source:
+          type: string
+          description: '쓴 정의: INPUT, DRAFT, PUBLISHED, DEFAULT'
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowPlannedStep'
+          description: 계산한 승인 단계
+        canSubmit:
+          type: boolean
+          description: 제출할 수 있음(빈 필수 단계 없음)
+      required:
+      - subjectType
+      - source
+      - steps
+      - canSubmit
     AssetImportFile:
       type: object
       description: 자산 일괄 업로드 파일

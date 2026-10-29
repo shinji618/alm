@@ -20,6 +20,8 @@ CREATE TYPE request_status AS ENUM ('DRAFT', 'SUBMITTED', 'MGR_APPROVED', 'ACCT_
 CREATE TYPE request_source AS ENUM ('USER', 'ASSIGNMENT', 'COUNT_VARIANCE', 'RECONCILIATION', 'GOODS_RECEIPT');  -- 요청 발생 출처
 CREATE TYPE retire_type AS ENUM ('SCRAP', 'SALE', 'LOSS');  -- 폐기 유형
 CREATE TYPE approval_decision AS ENUM ('PENDING', 'APPROVED', 'REJECTED', 'SKIPPED');  -- 승인 결정
+CREATE TYPE workflow_def_status AS ENUM ('DRAFT', 'PUBLISHED', 'ARCHIVED');  -- 워크플로 정의 상태
+CREATE TYPE workflow_instance_status AS ENUM ('IN_PROGRESS', 'APPROVED', 'REJECTED', 'CANCELLED');  -- 워크플로 인스턴스 상태
 CREATE TYPE campaign_status AS ENUM ('SCOPING', 'COUNTING', 'REVIEW', 'POSTING', 'CLOSED', 'CANCELLED');  -- 실사 캠페인 단계
 CREATE TYPE count_task_status AS ENUM ('NOT_STARTED', 'IN_PROGRESS', 'COMPLETED');  -- 룸 실사 작업 상태
 CREATE TYPE count_result AS ENUM ('PENDING', 'FOUND', 'MISPLACED', 'NOT_FOUND');  -- 실사 대상 판정
@@ -1551,7 +1553,7 @@ COMMENT ON TABLE asset_request IS '자산 요청 — 신규·변경·이관·폐
 CREATE INDEX ix_asset_request_tenant_id_status ON asset_request (tenant_id, status);
 CREATE INDEX ix_asset_request_asset_id ON asset_request (asset_id);
 
--- 승인: 자산 요청·구매요청의 단계별 승인. 둘 중 하나만 채움
+-- 승인: 자산 요청·구매요청의 단계별 승인. 둘 중 하나만 채움. 4.11부터 자산 요청 승인은 workflow_step이 맡고 이 테이블은 이관 전 기록 보관용이다(읽기만, 삭제 예정)
 CREATE TABLE approval (
   id uuid PRIMARY KEY,
   tenant_id uuid NOT NULL,
@@ -1589,8 +1591,134 @@ COMMENT ON COLUMN approval.created_by IS '생성자';
 COMMENT ON COLUMN approval.updated_at IS '변경 일시';
 COMMENT ON COLUMN approval.updated_by IS '변경자';
 COMMENT ON COLUMN approval.version IS '낙관적 잠금';
-COMMENT ON TABLE approval IS '승인 — 자산 요청·구매요청의 단계별 승인. 둘 중 하나만 채움';
+COMMENT ON TABLE approval IS '승인 — 자산 요청·구매요청의 단계별 승인. 둘 중 하나만 채움. 4.11부터 자산 요청 승인은 workflow_step이 맡고 이 테이블은 이관 전 기록 보관용이다(읽기만, 삭제 예정)';
 CREATE INDEX ix_approval_tenant_id_approver_role_decision ON approval (tenant_id, approver_role, decision);
+
+-- 워크플로 정의: 승인 흐름 정의(4.13, 결정 E-11). 대상 유형별로 버전을 쌓는다. 초안(DRAFT) 1개, 게시(PUBLISHED) 1개, 이전 게시는 ARCHIVED. 게시한 정의를 승인 실행에 연결하는 일은 4.10·4.11
+CREATE TABLE workflow_definition (
+  id uuid PRIMARY KEY,
+  tenant_id uuid NOT NULL,
+  subject_type varchar(40) NOT NULL,
+  version_no integer NOT NULL,
+  status workflow_def_status NOT NULL DEFAULT 'DRAFT',
+  name varchar(100) NOT NULL,
+  steps jsonb NOT NULL,
+  options jsonb NOT NULL,
+  change_note varchar(200),
+  published_at timestamptz,
+  published_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by uuid,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by uuid,
+  version integer NOT NULL DEFAULT 1,
+  UNIQUE (tenant_id, subject_type, version_no)
+);
+COMMENT ON COLUMN workflow_definition.id IS '기본키';
+COMMENT ON COLUMN workflow_definition.tenant_id IS '테넌트';
+COMMENT ON COLUMN workflow_definition.subject_type IS '대상 유형 코드(제품이 정함. ALM: 자산 요청 유형 NEW_ASSET, CHANGE, TRANSFER, RETIRE, SALE)';
+COMMENT ON COLUMN workflow_definition.version_no IS '대상 유형별 버전(1부터)';
+COMMENT ON COLUMN workflow_definition.status IS '초안·게시·보관';
+COMMENT ON COLUMN workflow_definition.name IS '흐름 이름';
+COMMENT ON COLUMN workflow_definition.steps IS '단계 목록. 각 단계: key, label, resolver(담당자 규칙 코드), fallback(담당자가 없을 때), mergeSame';
+COMMENT ON COLUMN workflow_definition.options IS '직무 분리 선택 규칙(필수 규칙은 엔진이 항상 적용하므로 저장하지 않음)';
+COMMENT ON COLUMN workflow_definition.change_note IS '변경 메모';
+COMMENT ON COLUMN workflow_definition.published_at IS '게시 일시';
+COMMENT ON COLUMN workflow_definition.published_by IS '게시한 사용자';
+COMMENT ON COLUMN workflow_definition.created_at IS '생성 일시';
+COMMENT ON COLUMN workflow_definition.created_by IS '생성자';
+COMMENT ON COLUMN workflow_definition.updated_at IS '변경 일시';
+COMMENT ON COLUMN workflow_definition.updated_by IS '변경자';
+COMMENT ON COLUMN workflow_definition.version IS '낙관적 잠금';
+COMMENT ON TABLE workflow_definition IS '워크플로 정의 — 승인 흐름 정의(4.13, 결정 E-11). 대상 유형별로 버전을 쌓는다. 초안(DRAFT) 1개, 게시(PUBLISHED) 1개, 이전 게시는 ARCHIVED. 게시한 정의를 승인 실행에 연결하는 일은 4.10·4.11';
+CREATE INDEX ix_workflow_definition_tenant_id_subject_type_status ON workflow_definition (tenant_id, subject_type, status);
+
+-- 워크플로 인스턴스: 승인 엔진(4.10)이 실행하는 승인 1건. 대상(subject_type, subject_id)은 제품이 정한다. 진행 중 인스턴스는 대상당 1건(저장소가 잠금으로 보장). ALM 자산 요청 승인은 4.11부터 이 테이블을 쓴다(approval에서 이관, 0018)
+CREATE TABLE workflow_instance (
+  id uuid PRIMARY KEY,
+  tenant_id uuid NOT NULL,
+  subject_type varchar(40) NOT NULL,
+  subject_id uuid NOT NULL,
+  requester_id uuid NOT NULL,
+  status workflow_instance_status NOT NULL DEFAULT 'IN_PROGRESS',
+  current_step integer NOT NULL DEFAULT 1,
+  rules jsonb NOT NULL,
+  submitted_at timestamptz NOT NULL,
+  completed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by uuid,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by uuid,
+  version integer NOT NULL DEFAULT 1
+);
+COMMENT ON COLUMN workflow_instance.id IS '기본키';
+COMMENT ON COLUMN workflow_instance.tenant_id IS '테넌트';
+COMMENT ON COLUMN workflow_instance.subject_type IS '대상 유형(ALM: 자산 요청 유형)';
+COMMENT ON COLUMN workflow_instance.subject_id IS '대상 id(제품 테이블의 행, FK 없음)';
+COMMENT ON COLUMN workflow_instance.requester_id IS '요청자(본인 승인 불가 판단)';
+COMMENT ON COLUMN workflow_instance.status IS '진행·승인·반려·취소';
+COMMENT ON COLUMN workflow_instance.current_step IS '지금 단계 번호';
+COMMENT ON COLUMN workflow_instance.rules IS '직무 분리 선택 규칙(fixerCannotReapprove). 제출 때 정의에서 복사해 이후 정의가 바뀌어도 진행 중 건은 그대로';
+COMMENT ON COLUMN workflow_instance.submitted_at IS '제출(재시작) 일시';
+COMMENT ON COLUMN workflow_instance.completed_at IS '완료(승인·반려·취소) 일시';
+COMMENT ON COLUMN workflow_instance.created_at IS '생성 일시';
+COMMENT ON COLUMN workflow_instance.created_by IS '생성자';
+COMMENT ON COLUMN workflow_instance.updated_at IS '변경 일시';
+COMMENT ON COLUMN workflow_instance.updated_by IS '변경자';
+COMMENT ON COLUMN workflow_instance.version IS '낙관적 잠금';
+COMMENT ON TABLE workflow_instance IS '워크플로 인스턴스 — 승인 엔진(4.10)이 실행하는 승인 1건. 대상(subject_type, subject_id)은 제품이 정한다. 진행 중 인스턴스는 대상당 1건(저장소가 잠금으로 보장). ALM 자산 요청 승인은 4.11부터 이 테이블을 쓴다(approval에서 이관, 0018)';
+CREATE INDEX ix_workflow_instance_tenant_id_subject_type_subject_id ON workflow_instance (tenant_id, subject_type, subject_id);
+CREATE INDEX ix_workflow_instance_tenant_id_status ON workflow_instance (tenant_id, status);
+
+-- 워크플로 단계: 승인 엔진 인스턴스의 단계. 담당자는 미리 정하지 않고 결정 시점에 제품의 자격 판단(역할·범위)으로 확인한다. 결정 값은 승인 테이블과 같은 ApprovalDecision
+CREATE TABLE workflow_step (
+  id uuid PRIMARY KEY,
+  tenant_id uuid NOT NULL,
+  instance_id uuid NOT NULL,
+  step_no integer NOT NULL,
+  step_key varchar(30) NOT NULL,
+  label varchar(40) NOT NULL,
+  resolver varchar(60) NOT NULL,
+  params jsonb,
+  proxy boolean NOT NULL DEFAULT false,
+  merge_same boolean NOT NULL DEFAULT false,
+  min_approvals integer NOT NULL DEFAULT 1,
+  due_at timestamptz,
+  status approval_decision NOT NULL DEFAULT 'PENDING',
+  approver_id uuid,
+  comment varchar(500),
+  decided_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by uuid,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by uuid,
+  version integer NOT NULL DEFAULT 1,
+  UNIQUE (instance_id, step_no),
+  UNIQUE (instance_id, step_key)
+);
+COMMENT ON COLUMN workflow_step.id IS '기본키';
+COMMENT ON COLUMN workflow_step.tenant_id IS '테넌트';
+COMMENT ON COLUMN workflow_step.instance_id IS '인스턴스';
+COMMENT ON COLUMN workflow_step.step_no IS '단계(1부터)';
+COMMENT ON COLUMN workflow_step.step_key IS '단계 키(정의의 key)';
+COMMENT ON COLUMN workflow_step.label IS '화면 이름';
+COMMENT ON COLUMN workflow_step.resolver IS '담당자 규칙 코드';
+COMMENT ON COLUMN workflow_step.params IS '제품이 담당자 판단에 쓰는 값(예: 코스트센터 id)';
+COMMENT ON COLUMN workflow_step.proxy IS '담당자가 없어 대리 규칙으로 정한 단계';
+COMMENT ON COLUMN workflow_step.merge_same IS '앞 단계 승인자가 이 단계 자격도 있으면 함께 승인';
+COMMENT ON COLUMN workflow_step.min_approvals IS 'N명 중 M명(지금은 1만, 멀티 뱅크 자리)';
+COMMENT ON COLUMN workflow_step.due_at IS '승인 기한(지금은 기록만)';
+COMMENT ON COLUMN workflow_step.status IS '결정';
+COMMENT ON COLUMN workflow_step.approver_id IS '승인자(결정 시 기록)';
+COMMENT ON COLUMN workflow_step.comment IS '의견';
+COMMENT ON COLUMN workflow_step.decided_at IS '결정 일시';
+COMMENT ON COLUMN workflow_step.created_at IS '생성 일시';
+COMMENT ON COLUMN workflow_step.created_by IS '생성자';
+COMMENT ON COLUMN workflow_step.updated_at IS '변경 일시';
+COMMENT ON COLUMN workflow_step.updated_by IS '변경자';
+COMMENT ON COLUMN workflow_step.version IS '낙관적 잠금';
+COMMENT ON TABLE workflow_step IS '워크플로 단계 — 승인 엔진 인스턴스의 단계. 담당자는 미리 정하지 않고 결정 시점에 제품의 자격 판단(역할·범위)으로 확인한다. 결정 값은 승인 테이블과 같은 ApprovalDecision';
+CREATE INDEX ix_workflow_step_tenant_id_status ON workflow_step (tenant_id, status);
 
 -- 실사 캠페인: 실물 실사 캠페인
 CREATE TABLE count_campaign (
@@ -2947,6 +3075,13 @@ ALTER TABLE approval ADD CONSTRAINT fk_approval_asset_request_id FOREIGN KEY (as
 ALTER TABLE approval ADD CONSTRAINT fk_approval_purchase_request_id FOREIGN KEY (purchase_request_id) REFERENCES purchase_request(id);
 ALTER TABLE approval ADD CONSTRAINT fk_approval_cost_center_id FOREIGN KEY (cost_center_id) REFERENCES cost_center(id);
 ALTER TABLE approval ADD CONSTRAINT fk_approval_approver_id FOREIGN KEY (approver_id) REFERENCES app_user(id);
+ALTER TABLE workflow_definition ADD CONSTRAINT fk_workflow_definition_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
+ALTER TABLE workflow_definition ADD CONSTRAINT fk_workflow_definition_published_by FOREIGN KEY (published_by) REFERENCES app_user(id);
+ALTER TABLE workflow_instance ADD CONSTRAINT fk_workflow_instance_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
+ALTER TABLE workflow_instance ADD CONSTRAINT fk_workflow_instance_requester_id FOREIGN KEY (requester_id) REFERENCES app_user(id);
+ALTER TABLE workflow_step ADD CONSTRAINT fk_workflow_step_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
+ALTER TABLE workflow_step ADD CONSTRAINT fk_workflow_step_instance_id FOREIGN KEY (instance_id) REFERENCES workflow_instance(id);
+ALTER TABLE workflow_step ADD CONSTRAINT fk_workflow_step_approver_id FOREIGN KEY (approver_id) REFERENCES app_user(id);
 ALTER TABLE count_campaign ADD CONSTRAINT fk_count_campaign_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenant(id);
 ALTER TABLE count_campaign ADD CONSTRAINT fk_count_campaign_company_id FOREIGN KEY (company_id) REFERENCES company(id);
 ALTER TABLE count_campaign ADD CONSTRAINT fk_count_campaign_owner_id FOREIGN KEY (owner_id) REFERENCES app_user(id);
@@ -3118,6 +3253,12 @@ ALTER TABLE asset_request ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p_asset_request_tenant ON asset_request USING (tenant_id = current_setting('app.tenant_id')::uuid);
 ALTER TABLE approval ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p_approval_tenant ON approval USING (tenant_id = current_setting('app.tenant_id')::uuid);
+ALTER TABLE workflow_definition ENABLE ROW LEVEL SECURITY;
+CREATE POLICY p_workflow_definition_tenant ON workflow_definition USING (tenant_id = current_setting('app.tenant_id')::uuid);
+ALTER TABLE workflow_instance ENABLE ROW LEVEL SECURITY;
+CREATE POLICY p_workflow_instance_tenant ON workflow_instance USING (tenant_id = current_setting('app.tenant_id')::uuid);
+ALTER TABLE workflow_step ENABLE ROW LEVEL SECURITY;
+CREATE POLICY p_workflow_step_tenant ON workflow_step USING (tenant_id = current_setting('app.tenant_id')::uuid);
 ALTER TABLE count_campaign ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p_count_campaign_tenant ON count_campaign USING (tenant_id = current_setting('app.tenant_id')::uuid);
 ALTER TABLE count_task ENABLE ROW LEVEL SECURITY;
@@ -3421,6 +3562,9 @@ CREATE TRIGGER tr_po_item_asset_audit AFTER INSERT OR UPDATE OR DELETE ON po_ite
 CREATE TRIGGER tr_goods_receipt_audit AFTER INSERT OR UPDATE OR DELETE ON goods_receipt FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_asset_request_audit AFTER INSERT OR UPDATE OR DELETE ON asset_request FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_approval_audit AFTER INSERT OR UPDATE OR DELETE ON approval FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_workflow_definition_audit AFTER INSERT OR UPDATE OR DELETE ON workflow_definition FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_workflow_instance_audit AFTER INSERT OR UPDATE OR DELETE ON workflow_instance FOR EACH ROW EXECUTE FUNCTION audit_row();
+CREATE TRIGGER tr_workflow_step_audit AFTER INSERT OR UPDATE OR DELETE ON workflow_step FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_count_campaign_audit AFTER INSERT OR UPDATE OR DELETE ON count_campaign FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_count_task_audit AFTER INSERT OR UPDATE OR DELETE ON count_task FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_count_item_audit AFTER INSERT OR UPDATE OR DELETE ON count_item FOR EACH ROW EXECUTE FUNCTION audit_row();

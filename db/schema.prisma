@@ -79,6 +79,9 @@ model Tenant {
   goodsReceipts GoodsReceipt[] @relation("goods_receipt_tenant_id")
   assetRequests AssetRequest[] @relation("asset_request_tenant_id")
   approvals Approval[] @relation("approval_tenant_id")
+  workflowDefinitions WorkflowDefinition[] @relation("workflow_definition_tenant_id")
+  workflowInstances WorkflowInstance[] @relation("workflow_instance_tenant_id")
+  workflowSteps WorkflowStep[] @relation("workflow_step_tenant_id")
   countCampaigns CountCampaign[] @relation("count_campaign_tenant_id")
   countTasks CountTask[] @relation("count_task_tenant_id")
   countItems CountItem[] @relation("count_item_tenant_id")
@@ -180,6 +183,9 @@ model AppUser {
   purchaseRequests PurchaseRequest[] @relation("purchase_request_requester_id")
   assetRequests AssetRequest[] @relation("asset_request_requester_id")
   approvals Approval[] @relation("approval_approver_id")
+  workflowDefinitions WorkflowDefinition[] @relation("workflow_definition_published_by")
+  workflowInstances WorkflowInstance[] @relation("workflow_instance_requester_id")
+  workflowSteps WorkflowStep[] @relation("workflow_step_approver_id")
   countCampaigns CountCampaign[] @relation("count_campaign_owner_id")
   countTasks CountTask[] @relation("count_task_assignee_id")
   countItemsCounted CountItem[] @relation("count_item_counted_by")
@@ -1781,7 +1787,7 @@ model AssetRequest {
   @@map("asset_request")
 }
 
-/// 승인 — 자산 요청·구매요청의 단계별 승인. 둘 중 하나만 채움
+/// 승인 — 자산 요청·구매요청의 단계별 승인. 둘 중 하나만 채움. 4.11부터 자산 요청 승인은 workflow_step이 맡고 이 테이블은 이관 전 기록 보관용이다(읽기만, 삭제 예정)
 model Approval {
   id String @id @default(uuid(7)) @db.Uuid
   /// 테넌트
@@ -1823,6 +1829,137 @@ model Approval {
   @@unique([purchaseRequestId, stepNo])
   @@index([tenantId, approverRole, decision])
   @@map("approval")
+}
+
+/// 워크플로 정의 — 승인 흐름 정의(4.13, 결정 E-11). 대상 유형별로 버전을 쌓는다. 초안(DRAFT) 1개, 게시(PUBLISHED) 1개, 이전 게시는 ARCHIVED. 게시한 정의를 승인 실행에 연결하는 일은 4.10·4.11
+model WorkflowDefinition {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("workflow_definition_tenant_id", fields: [tenantId], references: [id])
+  /// 대상 유형 코드(제품이 정함. ALM: 자산 요청 유형 NEW_ASSET, CHANGE, TRANSFER, RETIRE, SALE)
+  subjectType String @map("subject_type") @db.VarChar(40)
+  /// 대상 유형별 버전(1부터)
+  versionNo Int @map("version_no")
+  /// 초안·게시·보관
+  status WorkflowDefStatus @default(DRAFT)
+  /// 흐름 이름
+  name String @db.VarChar(100)
+  /// 단계 목록. 각 단계: key, label, resolver(담당자 규칙 코드), fallback(담당자가 없을 때), mergeSame
+  steps Json
+  /// 직무 분리 선택 규칙(필수 규칙은 엔진이 항상 적용하므로 저장하지 않음)
+  options Json
+  /// 변경 메모
+  changeNote String? @map("change_note") @db.VarChar(200)
+  /// 게시 일시
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+  /// 게시한 사용자
+  publishedBy String? @map("published_by") @db.Uuid
+  published AppUser? @relation("workflow_definition_published_by", fields: [publishedBy], references: [id])
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([tenantId, subjectType, versionNo])
+  @@index([tenantId, subjectType, status])
+  @@map("workflow_definition")
+}
+
+/// 워크플로 인스턴스 — 승인 엔진(4.10)이 실행하는 승인 1건. 대상(subject_type, subject_id)은 제품이 정한다. 진행 중 인스턴스는 대상당 1건(저장소가 잠금으로 보장). ALM 자산 요청 승인은 4.11부터 이 테이블을 쓴다(approval에서 이관, 0018)
+model WorkflowInstance {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("workflow_instance_tenant_id", fields: [tenantId], references: [id])
+  /// 대상 유형(ALM: 자산 요청 유형)
+  subjectType String @map("subject_type") @db.VarChar(40)
+  /// 대상 id(제품 테이블의 행, FK 없음)
+  subjectId String @map("subject_id") @db.Uuid
+  /// 요청자(본인 승인 불가 판단)
+  requesterId String @map("requester_id") @db.Uuid
+  requester AppUser @relation("workflow_instance_requester_id", fields: [requesterId], references: [id])
+  /// 진행·승인·반려·취소
+  status WorkflowInstanceStatus @default(IN_PROGRESS)
+  /// 지금 단계 번호
+  currentStep Int @default(1) @map("current_step")
+  /// 직무 분리 선택 규칙(fixerCannotReapprove). 제출 때 정의에서 복사해 이후 정의가 바뀌어도 진행 중 건은 그대로
+  rules Json
+  /// 제출(재시작) 일시
+  submittedAt DateTime @map("submitted_at") @db.Timestamptz(6)
+  /// 완료(승인·반려·취소) 일시
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  workflowSteps WorkflowStep[] @relation("workflow_step_instance_id")
+  @@index([tenantId, subjectType, subjectId])
+  @@index([tenantId, status])
+  @@map("workflow_instance")
+}
+
+/// 워크플로 단계 — 승인 엔진 인스턴스의 단계. 담당자는 미리 정하지 않고 결정 시점에 제품의 자격 판단(역할·범위)으로 확인한다. 결정 값은 승인 테이블과 같은 ApprovalDecision
+model WorkflowStep {
+  id String @id @default(uuid(7)) @db.Uuid
+  /// 테넌트
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant Tenant @relation("workflow_step_tenant_id", fields: [tenantId], references: [id])
+  /// 인스턴스
+  instanceId String @map("instance_id") @db.Uuid
+  instance WorkflowInstance @relation("workflow_step_instance_id", fields: [instanceId], references: [id])
+  /// 단계(1부터)
+  stepNo Int @map("step_no")
+  /// 단계 키(정의의 key)
+  stepKey String @map("step_key") @db.VarChar(30)
+  /// 화면 이름
+  label String @db.VarChar(40)
+  /// 담당자 규칙 코드
+  resolver String @db.VarChar(60)
+  /// 제품이 담당자 판단에 쓰는 값(예: 코스트센터 id)
+  params Json?
+  /// 담당자가 없어 대리 규칙으로 정한 단계
+  proxy Boolean @default(false)
+  /// 앞 단계 승인자가 이 단계 자격도 있으면 함께 승인
+  mergeSame Boolean @default(false) @map("merge_same")
+  /// N명 중 M명(지금은 1만, 멀티 뱅크 자리)
+  minApprovals Int @default(1) @map("min_approvals")
+  /// 승인 기한(지금은 기록만)
+  dueAt DateTime? @map("due_at") @db.Timestamptz(6)
+  /// 결정
+  status ApprovalDecision @default(PENDING)
+  /// 승인자(결정 시 기록)
+  approverId String? @map("approver_id") @db.Uuid
+  approver AppUser? @relation("workflow_step_approver_id", fields: [approverId], references: [id])
+  /// 의견
+  comment String? @db.VarChar(500)
+  /// 결정 일시
+  decidedAt DateTime? @map("decided_at") @db.Timestamptz(6)
+  /// 생성 일시
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// 생성자
+  createdBy String? @map("created_by") @db.Uuid
+  /// 변경 일시
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 변경자
+  updatedBy String? @map("updated_by") @db.Uuid
+  /// 낙관적 잠금
+  version Int @default(1)
+  @@unique([instanceId, stepNo])
+  @@unique([instanceId, stepKey])
+  @@index([tenantId, status])
+  @@map("workflow_step")
 }
 
 /// 실사 캠페인 — 실물 실사 캠페인
@@ -3312,6 +3449,23 @@ enum ApprovalDecision {
   REJECTED
   SKIPPED
   @@map("approval_decision")
+}
+
+/// 워크플로 정의 상태
+enum WorkflowDefStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+  @@map("workflow_def_status")
+}
+
+/// 워크플로 인스턴스 상태
+enum WorkflowInstanceStatus {
+  IN_PROGRESS
+  APPROVED
+  REJECTED
+  CANCELLED
+  @@map("workflow_instance_status")
 }
 
 /// 실사 캠페인 단계

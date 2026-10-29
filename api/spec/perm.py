@@ -168,6 +168,8 @@ OPS = {
     'listCompanies': 'admin.config', 'createCompany': 'admin.config', 'patchCompany': 'admin.config',
     'listCostCenters': 'master.read', 'createCostCenter': 'master.write', 'patchCostCenter': 'master.write',
     'listDeptManagers': 'admin.user', 'addDeptManager': 'admin.user', 'patchDeptManager': 'admin.user', 'removeDeptManager': 'admin.user',
+    'listWorkflows': 'admin.config', 'getWorkflowCatalog': 'admin.config', 'getWorkflow': 'admin.config', 'saveWorkflowDraft': 'admin.config', 'discardWorkflowDraft': 'admin.config',
+    'publishWorkflowDraft': 'admin.config', 'restoreWorkflowVersion': 'admin.config', 'simulateWorkflow': 'admin.config',
     'listAssetClasses': 'master.read', 'getSapMasterSummary': 'master.read', 'listSapMasters': 'master.read', 'listCategories': 'master.read', 'createCategory': 'master.write', 'patchCategory': 'master.write', 'deleteCategory': 'master.write', 'listNumberRanges': 'master.read', 'createNumberRange': 'master.write', 'patchNumberRange': 'master.write', 'deleteNumberRange': 'master.write', 'getAssetImportTemplate': 'asset.write', 'previewAssetImport': 'asset.write', 'applyAssetImport': 'asset.write',
     'listAuditLogs': 'audit.read', 'listSecurityEvents': 'audit.read',
 }

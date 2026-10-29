@@ -55,6 +55,7 @@ export const NAV: NavGroup[] = [
       { path: '/admin/sap-masters', labelKey: 'nav.sapMasters', screenId: 'ADM-035', wbs: '7.4', perm: 'master.read' },
       { path: '/admin/users', labelKey: 'nav.users', screenId: 'ADM-010', wbs: '4.12', perm: 'admin.user' },
       { path: '/admin/dept-managers', labelKey: 'nav.deptManagers', screenId: 'ADM-040', wbs: '4.3', perm: 'admin.user' },
+      { path: '/admin/workflows', labelKey: 'nav.workflows', screenId: 'ADM-070', wbs: '4.13', perm: 'admin.config' },
       { path: '/admin/asset-import', labelKey: 'nav.assetImport', screenId: 'ADM-060', wbs: '9.3', perm: 'asset.write' },
     ],
   },

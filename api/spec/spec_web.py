@@ -1782,6 +1782,154 @@ W('관리','PATCH','/admin/dept-managers/{id}','patchDeptManager','부서 관리
   [ '유효기간(user_role)과 이름·전화(app_user)를 바꾼다. 자기 자신은 403.'],params=[ID()])
 W('관리','DELETE','/admin/dept-managers/{id}','removeDeptManager','부서 관리자 해제',SA,None,None,'204, 403, 404','user_role, audit_log','ADM-040',
   [ '지정(user_role)을 지운다(사용자는 남김). 진행 중인 요청의 그 단계는 다른 부서 관리자 또는 대리(자산회계)가 결정.'],params=[ID()],ok='204')
+schema('WorkflowStep', '워크플로 단계', '''
+key | string(30) | Y | 단계 키(소문자 시작 영문 소문자·숫자·밑줄)
+label | string(40) | Y | 화면에 보이는 이름
+resolver | string(60) | Y | 담당자 규칙 코드(카탈로그)
+fallback | string(60) | Y | 담당자가 없을 때: SKIP(건너뜀) · NONE(제출 불가) · 대리 규칙 코드
+mergeSame | bool | Y | 앞 단계와 담당자가 같으면 함께 승인(최종 단계는 false)
+''')
+schema('WorkflowOptions', '워크플로 설정', '''
+fixerCannotReapprove | bool | Y | 전기 오류를 보정한 사람은 다시 승인하지 못함
+requesterNoStep | bool | Y | 요청자를 대리 규칙 담당자에서도 뺌(엄격)
+proxyIfAllSkipped | bool | Y | 최종 단계 앞이 모두 비면 첫 단계를 대리 규칙으로 처리
+''')
+schema('WorkflowDefinitionInput', '워크플로 초안 저장', '''
+name | string(100) | Y | 흐름 이름
+steps | [WorkflowStep] | Y | 단계(1~5개, 마지막은 최종 승인 규칙)
+options | WorkflowOptions | N | 설정(빠진 값은 기본)
+changeNote | string(200) | N | 변경 메모
+''')
+schema('WorkflowVersion', '워크플로 정의 버전(초안·게시)', '''
+id | uuid | Y | workflow_definition.id
+subjectType | string | Y | 대상 유형
+versionNo | int | Y | 버전 번호
+status | string | Y | DRAFT, PUBLISHED, ARCHIVED
+name | string | Y | 흐름 이름
+steps | [WorkflowStep] | Y | 단계
+options | WorkflowOptions | Y | 설정
+changeNote | string | N | 변경 메모
+publishedAt | datetime | N | 게시 일시
+publishedByName | string | N | 게시한 사람
+updatedAt | datetime | N | 수정 일시
+updatedByName | string | N | 수정한 사람
+version | int | Y | 낙관적 잠금 값(If-Match)
+''')
+schema('WorkflowVersionSummary', '워크플로 버전 이력 한 줄', '''
+versionNo | int | Y | 버전 번호
+status | string | Y | DRAFT, PUBLISHED, ARCHIVED
+name | string | Y | 흐름 이름
+changeNote | string | N | 변경 메모
+publishedAt | datetime | N | 게시 일시
+publishedByName | string | N | 게시한 사람
+updatedAt | datetime | N | 수정 일시
+updatedByName | string | N | 수정한 사람
+''')
+schema('WorkflowDefault', '기본 정의(현재 동작 그대로)', '''
+name | string | Y | 흐름 이름
+steps | [WorkflowStep] | Y | 단계
+options | WorkflowOptions | Y | 설정
+''')
+schema('WorkflowDetail', '대상 유형별 워크플로', '''
+subjectType | string | Y | 대상 유형
+label | string | Y | 이름
+appliedToApprovals | bool | Y | 게시한 정의가 승인 실행에 쓰이는가(4.10·4.11 전까지 false)
+published | WorkflowVersion | N | 게시본
+draft | WorkflowVersion | N | 초안(최대 1개)
+defaultDefinition | WorkflowDefault | Y | 기본 정의
+versions | [WorkflowVersionSummary] | Y | 버전 이력(최신순)
+''')
+schema('WorkflowSummary', '워크플로 목록 한 줄', '''
+subjectType | string | Y | 대상 유형
+label | string | Y | 이름
+name | string | Y | 지금 쓰는 흐름 이름
+steps | [WorkflowStep] | Y | 지금 쓰는 단계
+publishedVersion | int | N | 게시 버전(없으면 기본 정의)
+hasDraft | bool | Y | 초안 있음
+draftVersion | int | N | 초안 버전
+usesDefault | bool | Y | 기본 정의를 쓰는 중
+updatedAt | datetime | N | 마지막 수정
+''')
+schema('WorkflowList', '워크플로 목록', '''
+appliedToApprovals | bool | Y | 게시한 정의가 승인 실행에 쓰이는가
+items | [WorkflowSummary] | Y | 대상 유형별
+''')
+schema('WorkflowSubject', '대상 유형', '''
+code | string | Y | 코드
+label | string | Y | 이름
+''')
+schema('WorkflowResolver', '담당자 규칙', '''
+code | string | Y | 코드
+label | string | Y | 설명
+subjects | [string] | N | 쓸 수 있는 대상 유형(없으면 모두)
+final | bool | N | 최종 단계에 쓸 수 있음
+''')
+schema('WorkflowFallback', '대리 규칙', '''
+code | string | Y | 코드
+label | string | Y | 설명
+resolver | string | Y | 담당자를 찾는 규칙 코드
+''')
+schema('WorkflowRule', '끌 수 없는 규칙', '''
+code | string | Y | 규칙 코드(H-01 등)
+label | string | Y | 설명
+''')
+schema('WorkflowCatalog', '선택할 수 있는 값', '''
+subjects | [WorkflowSubject] | Y | 대상 유형
+resolvers | [WorkflowResolver] | Y | 담당자 규칙
+fallbacks | [WorkflowFallback] | Y | 대리 규칙
+mandatoryRules | [WorkflowRule] | Y | 정의로 끌 수 없는 규칙
+maxSteps | int | Y | 단계 최대 수
+appliedToApprovals | bool | Y | 게시한 정의가 승인 실행에 쓰이는가
+''')
+schema('WorkflowSimulateInput', '시험 실행 입력', '''
+name | string(100) | N | 편집 중인 정의를 시험할 때(steps와 함께)
+steps | [WorkflowStep] | N | 편집 중인 단계. 없으면 초안 → 게시본 → 기본 정의 순
+options | WorkflowOptions | N | 설정
+sourceCostCenterId | uuid | N | 보내는(현재) 코스트센터
+targetCostCenterId | uuid | N | 받는(대상) 코스트센터. 둘 중 하나는 필수
+companyId | uuid | N | 회사(자산회계 범위)
+requesterId | uuid | N | 요청자(담당자에서 뺌)
+''')
+schema('WorkflowPerson', '담당자', '''
+id | uuid | Y | 사용자
+name | string | Y | 이름
+detail | string | N | 코스트센터 코드·회사 범위
+''')
+schema('WorkflowPlannedStep', '시험 실행 단계', '''
+key | string | Y | 단계 키
+label | string | Y | 이름
+resolver | string | Y | 담당자 규칙
+status | string | Y | ACTIVE, SKIPPED, MERGED
+proxy | bool | Y | 대리 규칙으로 정한 단계
+missing | bool | N | 담당자가 없어 제출할 수 없는 단계
+approvers | [WorkflowPerson] | Y | 담당자
+''')
+schema('WorkflowSimulation', '시험 실행 결과', '''
+subjectType | string | Y | 대상 유형
+source | string | Y | 쓴 정의: INPUT, DRAFT, PUBLISHED, DEFAULT
+steps | [WorkflowPlannedStep] | Y | 계산한 승인 단계
+canSubmit | bool | Y | 제출할 수 있음(빈 필수 단계 없음)
+''')
+WF = [('subjectType','path','string','Y','대상 유형(NEW_ASSET, CHANGE, TRANSFER, RETIRE, SALE)')]
+W('관리','GET','/admin/workflows','listWorkflows','워크플로 목록',SA,None,'WorkflowList','200','workflow_definition','ADM-070',
+  [ '대상 유형(자산 요청 5종)별 지금 쓰는 흐름. 게시본이 없으면 기본 정의(현재 동작)를 보여 준다.', '게시한 정의는 아직 승인 실행에 연결되지 않는다(appliedToApprovals=false, 4.10·4.11).'])
+W('관리','GET','/admin/workflows/catalog','getWorkflowCatalog','워크플로 선택값',SA,None,'WorkflowCatalog','200','-','ADM-070',
+  [ '담당자 규칙·대리 규칙은 제품이 정한 목록(고정). 자유 입력 불가. 필수 규칙(H-01, H-02)은 끌 수 없다.'])
+W('관리','GET','/admin/workflows/{subjectType}','getWorkflow','워크플로 상세',SA,None,'WorkflowDetail','200, 404','workflow_definition','ADM-070',
+  [ '게시본·초안·기본 정의·버전 이력.'],params=WF)
+W('관리','PUT','/admin/workflows/{subjectType}/draft','saveWorkflowDraft','워크플로 초안 저장',SA,'WorkflowDefinitionInput','WorkflowVersion','200, 400, 404, 409, 428','workflow_definition, audit_log','ADM-070',
+  [ '초안이 없으면 새 버전을 만들고, 있으면 If-Match(version)로 바꾼다(없으면 428, 다르면 409 ALM-E310).', '검사: 단계 1~5, 담당자 규칙·대리 규칙은 카탈로그 안, 같은 규칙 두 번 불가, 마지막은 최종 승인 규칙, 마지막 단계는 건너뛸 수 없음.'],
+  params=WF+[('If-Match','header','string','N','초안이 있을 때 version 값')])
+W('관리','DELETE','/admin/workflows/{subjectType}/draft','discardWorkflowDraft','워크플로 초안 버리기',SA,None,None,'204, 404','workflow_definition, audit_log','ADM-070',
+  [ '초안을 지운다. 게시본은 그대로.'],params=WF,ok='204')
+W('관리','POST','/admin/workflows/{subjectType}/draft:publish','publishWorkflowDraft','워크플로 게시',SA,None,'WorkflowVersion','200, 400, 404, 409, 428','workflow_definition, audit_log','ADM-070',
+  [ '초안을 다시 검사하고 게시한다. 이전 게시본은 보관(ARCHIVED). If-Match: 초안 version.', '게시본과 같으면 409 ALM-E321. 게시해도 승인 실행에는 아직 쓰이지 않는다.'],
+  params=WF+[('If-Match','header','string','Y','초안 version 값')])
+W('관리','POST','/admin/workflows/{subjectType}/versions/{versionNo}:restore','restoreWorkflowVersion','이전 버전을 초안으로 되돌리기',SA,None,'WorkflowVersion','200, 404, 409','workflow_definition, audit_log','ADM-070',
+  [ '선택한 버전의 내용으로 새 초안을 만든다. 초안이 이미 있으면 409 ALM-E321.'],
+  params=WF+[('versionNo','path','int','Y','버전 번호')])
+W('관리','POST','/admin/workflows/{subjectType}:simulate','simulateWorkflow','워크플로 시험 실행',SA,'WorkflowSimulateInput','WorkflowSimulation','200, 400, 404','workflow_definition, cost_center, user_role','ADM-070',
+  [ '요청을 만들지 않고 승인자만 계산한다. 정의는 본문(편집 중) → 초안 → 게시본 → 기본 정의 순.', '코스트센터를 하나 이상 지정해야 한다. 요청자는 담당자에서 뺀다(H-01).'],params=WF)
 MA = 'SYS_ADMIN, ASSET_MANAGER'
 W('관리','GET','/admin/cost-centers','listCostCenters','코스트센터 관리 목록',MA+', ASSET_ACCOUNTANT, AUDITOR',None,'CostCenterRowList','200, 400','cost_center, company','관리',
   [ 'SAP 회사의 코스트센터는 읽기 전용(editable=false).'],params=[('companyId','query','uuid','N','회사')])

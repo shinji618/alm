@@ -1,5 +1,5 @@
 // 관리(openapi 관리 영역): 사용자·역할·직무 충돌·공통 코드·설정·회사(SAP 연계·승인 단계). 권한은 가드가 operationId로 확인(admin.user·admin.config)
-import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Put, Query, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Inject, Param, Patch, Post, Put, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { Db } from '../db/pool';
 import { PrincipalCache } from '../platform/identity/principal';
@@ -13,6 +13,7 @@ import * as sapm from '../admin/sapMasters';
 import * as cats from '../admin/categories';
 import * as ranges from '../admin/numberRanges';
 import * as dm from '../admin/deptmanagers';
+import * as wf from '../admin/workflows';
 import * as imp from '../admin/assetImport';
 import { AlmContext, Ctx, Operation, txOf } from './context';
 import { DB, PRINCIPALS, CENTRAL } from './tokens';
@@ -266,5 +267,67 @@ export class AdminController {
   async removeDeptManager(@Ctx() ctx: AlmContext, @Param('id') id: string) {
     const userId = await this.db.withTx(txOf(ctx), (c) => dm.removeDeptManager(c, id, ctx.principal!.userId, this.cx(ctx)));
     this.cache.clearUser(userId);
+  }
+
+  // 워크플로 정의 관리(ADM-070, 4.13). 게시해도 승인 실행에는 아직 연결되지 않는다
+  @Get('workflows')
+  @Operation('listWorkflows')
+  listWorkflows(@Ctx() ctx: AlmContext) {
+    return this.db.withTx(txOf(ctx), (c) => wf.listWorkflows(c));
+  }
+
+  @Get('workflows/catalog')
+  @Operation('getWorkflowCatalog')
+  getWorkflowCatalog() {
+    return wf.catalog();
+  }
+
+  @Get('workflows/:subjectType')
+  @Operation('getWorkflow')
+  getWorkflow(@Ctx() ctx: AlmContext, @Param('subjectType') subjectType: string) {
+    return this.db.withTx(txOf(ctx), (c) => wf.getWorkflow(c, subjectType));
+  }
+
+  @Put('workflows/:subjectType/draft')
+  @Operation('saveWorkflowDraft')
+  async saveWorkflowDraft(@Ctx() ctx: AlmContext, @Param('subjectType') subjectType: string, @Headers('if-match') ifMatch: string | undefined,
+    @Body() body: unknown, @Res({ passthrough: true }) res: Response) {
+    const r = await this.db.withTx(txOf(ctx), (c) => wf.saveDraft(c, ctx.principal!, subjectType, ifMatch, body));
+    res.setHeader('ETag', `"${r.version}"`);
+    return r;
+  }
+
+  @Delete('workflows/:subjectType/draft')
+  @HttpCode(204)
+  @Operation('discardWorkflowDraft')
+  async discardWorkflowDraft(@Ctx() ctx: AlmContext, @Param('subjectType') subjectType: string) {
+    await this.db.withTx(txOf(ctx), (c) => wf.discardDraft(c, subjectType));
+  }
+
+  @Post('workflows/:subjectType/draft\\:publish')
+  @HttpCode(200)
+  @Operation('publishWorkflowDraft')
+  async publishWorkflowDraft(@Ctx() ctx: AlmContext, @Param('subjectType') subjectType: string, @Headers('if-match') ifMatch: string | undefined,
+    @Res({ passthrough: true }) res: Response) {
+    const r = await this.db.withTx(txOf(ctx), (c) => wf.publishDraft(c, ctx.principal!, subjectType, ifMatch));
+    res.setHeader('ETag', `"${r.version}"`);
+    return r;
+  }
+
+  @Post('workflows/:subjectType/versions/:versionNo\\:restore')
+  @HttpCode(200)
+  @Operation('restoreWorkflowVersion')
+  async restoreWorkflowVersion(@Ctx() ctx: AlmContext, @Param('subjectType') subjectType: string, @Param('versionNo') versionNo: string,
+    @Res({ passthrough: true }) res: Response) {
+    const r = await this.db.withTx(txOf(ctx), (c) => wf.restoreVersion(c, ctx.principal!, subjectType, Number(versionNo)));
+    res.setHeader('ETag', `"${r.version}"`);
+    return r;
+  }
+
+  @Post('workflows/:subjectType\\:simulate')
+  @HttpCode(200)
+  @Operation('simulateWorkflow')
+  simulateWorkflow(@Ctx() ctx: AlmContext, @Param('subjectType') subjectType: string, @Body() body: unknown) {
+    return this.db.withTx(txOf(ctx), (c) => wf.simulate(c, subjectType, body));
   }
 }

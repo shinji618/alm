@@ -20,3 +20,18 @@ test('platform/identity는 ALM 모듈을 import하지 않는다', () => {
   }
   assert.deepEqual(bad, []);
 });
+
+// 워크플로 정의 모델(4.13, E-01): platform/workflow도 같은 규칙. 같은 모듈 외에는 어떤 ALM·다른 platform도 import하지 않는다
+test('platform/workflow는 ALM 모듈을 import하지 않는다', () => {
+  const wf = join(root, 'platform', 'workflow');
+  const files = readdirSync(wf).filter((f) => f.endsWith('.ts'));
+  assert.ok(files.length >= 4);
+  const bad: string[] = [];
+  for (const f of files) {
+    for (const m of readFileSync(join(wf, f), 'utf8').matchAll(/from '(\.[^']*)'/g)) {
+      const target = relative(root, resolve(wf, m[1])).replace(/\\/g, '/');
+      if (target !== 'platform/workflow' && !target.startsWith('platform/workflow/')) bad.push(`${f} → ${target}`);
+    }
+  }
+  assert.deepEqual(bad, []);
+});
