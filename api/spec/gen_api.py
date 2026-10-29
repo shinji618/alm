@@ -99,7 +99,7 @@ def build_openapi():
                 op['responses'][c] = {'$ref': f'#/components/responses/E{c}'}
         paths.setdefault(e['path'], {})[e['method'].lower()] = op
     err_desc = {'400': '형식 오류', '401': '인증 실패', '403': '권한 없음', '404': '대상 없음', '409': '충돌', '410': '동기화 토큰 만료',
-                '413': '파일 크기 초과', '422': '업무 규칙 위반', '429': '호출 제한', '500': '서버 오류'}
+                '413': '파일 크기 초과', '428': '필수 조건 헤더 없음(If-Match)', '422': '업무 규칙 위반', '429': '호출 제한', '500': '서버 오류'}
     doc = {
         'openapi': '3.1.0',
         'info': {'title': 'ALM API — Web · PDA · SAP', 'version': '0.4.0', 'license': {'name': 'Proprietary — BSG America', 'identifier': 'LicenseRef-BSG-Proprietary'},
