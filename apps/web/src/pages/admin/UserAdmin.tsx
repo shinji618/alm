@@ -108,6 +108,7 @@ function UserDrawer({ user, onClose, onChanged }: { user: UserRow; onClose: () =
     const e: Record<string, string> = {};
     if (auditor && rows.length > 1) e.roles = t('users.auditorAlone');
     rows.forEach((r, i) => {
+      if (!r.role) e[`roles[${i}].role`] = t('users.roleRequired');
       if (r.role === 'DEPT_MANAGER' && !r.costCenterCode?.trim()) e[`roles[${i}].costCenterCode`] = t('users.ccRequired');
       if (r.role === 'AUDITOR' && !r.validUntil) e[`roles[${i}].validUntil`] = t('users.untilRequired');
       if (r.validFrom && r.validUntil && r.validFrom > r.validUntil) e[`roles[${i}].validUntil`] = t('dm.dateOrder');
@@ -148,7 +149,7 @@ function UserDrawer({ user, onClose, onChanged }: { user: UserRow; onClose: () =
         <div key={i} className={s.notice} data-testid="role-row">
           <FormGrid onSubmit={() => undefined}>
             <SelectField label={t('users.role')} value={r.role} disabled={self} error={errors[`roles[${i}].role`]} onChange={(e) => set(i, { role: e.target.value })}
-              options={ASSIGNABLE.map((c) => ({ value: c, label: c }))} />
+              options={[{ value: '', label: t('users.selectRole'), disabled: true }, ...ASSIGNABLE.map((c) => ({ value: c, label: c }))]} />
             {r.role === 'DEPT_MANAGER' && (
               <TextField label={t('users.costCenter')} required maxLength={10} disabled={self} value={r.costCenterCode ?? ''} error={errors[`roles[${i}].costCenterCode`]}
                 onChange={(e) => set(i, { costCenterCode: e.target.value })} />
@@ -161,8 +162,8 @@ function UserDrawer({ user, onClose, onChanged }: { user: UserRow; onClose: () =
         </div>
       ))}
       <div className={s.headRow}>
-        {!self && <Button onClick={() => setRows((v) => [...v, { role: ASSIGNABLE.find((c) => !v.some((x) => x.role === c)) ?? 'ASSET_MANAGER' }])}>{t('users.addRole')}</Button>}
-        {!self && <Button variant="primary" disabled={saving} onClick={() => void save()}>{t('common.save')}</Button>}
+        {!self && <Button onClick={() => setRows((v) => [...v, { role: '' }])}>{t('users.addRole')}</Button>}
+        {!self && <Button variant="primary" disabled={saving} onClick={() => void save()}>{saving ? t('users.saving') : t('common.save')}</Button>}
       </div>
       <h3>{t('users.account')}</h3>
       {!self && <Button onClick={() => void toggleActive()}>{t(user.isActive ? 'users.deactivate' : 'users.activate')}</Button>}

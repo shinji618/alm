@@ -61,6 +61,21 @@ describe('user and role administration (ADM-010)', () => {
     expect(await within(drawer).findByText('An auditor (AUDITOR) cannot be combined with other roles')).toBeInTheDocument();
   });
 
+  it('starts a new role row empty so a high role is never assigned by accident', async () => {
+    window.history.pushState({}, '', '/admin/users');
+    const puts: unknown[] = [];
+    mockFetch((url, init) => { if (init.method === 'PUT') { puts.push(1); return { body: ITEMS[0] }; } return list(url); });
+    render(<App initialMe={admin} />);
+    const user = userEvent.setup();
+    await user.click((await screen.findByText('Staff One')).closest('tr')!);
+    const drawer = screen.getByRole('dialog');
+    await user.click(within(drawer).getByRole('button', { name: 'Add role' }));
+    expect(within(drawer).getByLabelText('Role')).toHaveValue('');
+    await user.click(within(drawer).getByRole('button', { name: 'Save' }));
+    expect(await within(drawer).findByText('Select a role', { selector: 'p, span, div' })).toBeInTheDocument();
+    expect(puts).toHaveLength(0);
+  });
+
   it('locks the signed-in admin\'s own roles', async () => {
     window.history.pushState({}, '', '/admin/users');
     mockFetch(list);
