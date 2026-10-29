@@ -1833,7 +1833,7 @@ options | WorkflowOptions | Y | 설정
 schema('WorkflowDetail', '대상 유형별 워크플로', '''
 subjectType | string | Y | 대상 유형
 label | string | Y | 이름
-appliedToApprovals | bool | Y | 게시한 정의가 승인 실행에 쓰이는가(4.10·4.11 전까지 false)
+appliedToApprovals | bool | Y | 게시한 정의가 승인 실행에 쓰이는가(4.11 마무리부터 true)
 published | WorkflowVersion | N | 게시본
 draft | WorkflowVersion | N | 초안(최대 1개)
 defaultDefinition | WorkflowDefault | Y | 기본 정의
@@ -1912,7 +1912,7 @@ canSubmit | bool | Y | 제출할 수 있음(빈 필수 단계 없음)
 ''')
 WF = [('subjectType','path','string','Y','대상 유형(NEW_ASSET, CHANGE, TRANSFER, RETIRE, SALE)')]
 W('관리','GET','/admin/workflows','listWorkflows','워크플로 목록',SA,None,'WorkflowList','200','workflow_definition','ADM-070',
-  [ '대상 유형(자산 요청 5종)별 지금 쓰는 흐름. 게시본이 없으면 기본 정의(현재 동작)를 보여 준다.', '게시한 정의는 아직 승인 실행에 연결되지 않는다(appliedToApprovals=false, 4.10·4.11).'])
+  [ '대상 유형(자산 요청 5종)별 지금 쓰는 흐름. 게시본이 없으면 기본 정의(현재 동작)를 보여 준다.', '게시한 정의는 새로 제출·재승인하는 요청부터 승인 실행에 쓰인다(진행 중인 승인은 그대로). 회사 승인 단계가 2보다 작으면 회사 설정이 우선해 내장 규칙을 쓴다.'])
 W('관리','GET','/admin/workflows/catalog','getWorkflowCatalog','워크플로 선택값',SA,None,'WorkflowCatalog','200','-','ADM-070',
   [ '담당자 규칙·대리 규칙은 제품이 정한 목록(고정). 자유 입력 불가. 필수 규칙(H-01, H-02)은 끌 수 없다.'])
 W('관리','GET','/admin/workflows/{subjectType}','getWorkflow','워크플로 상세',SA,None,'WorkflowDetail','200, 404','workflow_definition','ADM-070',
@@ -1923,7 +1923,7 @@ W('관리','PUT','/admin/workflows/{subjectType}/draft','saveWorkflowDraft','워
 W('관리','DELETE','/admin/workflows/{subjectType}/draft','discardWorkflowDraft','워크플로 초안 버리기',SA,None,None,'204, 404','workflow_definition, audit_log','ADM-070',
   [ '초안을 지운다. 게시본은 그대로.'],params=WF,ok='204')
 W('관리','POST','/admin/workflows/{subjectType}/draft:publish','publishWorkflowDraft','워크플로 게시',SA,None,'WorkflowVersion','200, 400, 404, 409, 428','workflow_definition, audit_log','ADM-070',
-  [ '초안을 다시 검사하고 게시한다. 이전 게시본은 보관(ARCHIVED). If-Match: 초안 version.', '게시본과 같으면 409 ALM-E321. 게시해도 승인 실행에는 아직 쓰이지 않는다.'],
+  [ '초안을 다시 검사하고 게시한다. 이전 게시본은 보관(ARCHIVED). If-Match: 초안 version.', '게시본과 같으면 409 ALM-E321. 게시하면 이후 제출·재승인하는 요청부터 그 정의로 승인 단계가 만들어진다(진행 중인 승인은 그대로).'],
   params=WF+[('If-Match','header','string','Y','초안 version 값')])
 W('관리','POST','/admin/workflows/{subjectType}/versions/{versionNo}:restore','restoreWorkflowVersion','이전 버전을 초안으로 되돌리기',SA,None,'WorkflowVersion','200, 404, 409','workflow_definition, audit_log','ADM-070',
   [ '선택한 버전의 내용으로 새 초안을 만든다. 초안이 이미 있으면 409 ALM-E321.'],

@@ -28,7 +28,7 @@ import { nextNumbers } from '../assets/tags';
 import { almScope } from '../admin/identityAdapter';
 import { desc2 } from '../common/sap-text';
 import * as wf from '../platform/workflow';
-import { AlmStep, SUBJECT, cancelActiveFlow, latestFlowId, toStepPlans, wfCall } from './approvalAdapter';
+import { AlmStep, DefRequest, SUBJECT, cancelActiveFlow, latestFlowId, publishedDefinition, stepsFromDefinition, toStepPlans, wfCall } from './approvalAdapter';
 
 export const TYPES = ['NEW_ASSET', 'CHANGE', 'TRANSFER', 'RETIRE', 'SALE'] as const;
 export const REQ_STATUSES = ['DRAFT', 'SUBMITTED', 'MGR_APPROVED', 'ACCT_APPROVED', 'POSTED', 'POST_ERROR', 'REJECTED', 'CANCELLED'] as const;
@@ -139,7 +139,7 @@ async function deptManagerIds(c: PoolClient, ccId: string, requesterId: string):
   [ccId, requesterId])).rows[0]?.ids ?? '';
 }
 
-async function planSteps(c: PoolClient, r: Record<string, any>): Promise<AlmStep[]> {
+async function builtinSteps(c: PoolClient, r: Record<string, any>): Promise<AlmStep[]> {
   const from = r.asset_cost_center_id ?? null, to = r.target_cost_center_id ?? null;
   const ccs: string[] = r.request_type === 'TRANSFER' && from && to && from !== to ? [from, to] : [responsibleCc(r)];
   const dept: AlmStep[] = [];
@@ -152,6 +152,15 @@ async function planSteps(c: PoolClient, r: Record<string, any>): Promise<AlmStep
   }
   if (!dept.length) dept.push({ role: 'DEPT_MANAGER', ccId: responsibleCc(r), proxy: true });   // 아무도 없으면 대리 승인
   return Number(r.approval_steps ?? 2) >= 2 ? [...dept, { role: 'ASSET_ACCOUNTANT', ccId: null }] : dept;
+}
+
+// 게시한 정의(관리 > 워크플로)가 있으면 그것으로, 없으면 위 내장 규칙. 회사 승인 단계가 2보다 작으면(SAP 끈 회사가 줄인 경우) 회사 설정이 우선해 내장 규칙을 쓴다
+async function planSteps(c: PoolClient, r: Record<string, any>): Promise<{ steps: AlmStep[]; rules?: wf.EngineRules }> {
+  if (Number(r.approval_steps ?? 2) >= 2) {
+    const def = await publishedDefinition(c, r.request_type);
+    if (def) return stepsFromDefinition(c, def, r as DefRequest);
+  }
+  return { steps: await builtinSteps(c, r) };
 }
 
 // ---- 엔진 훅(4.11): 상태 매핑(E-04)·알림·최종 승인 후처리를 ALM 요청 도메인에 연결한다. 모두 호출한 트랜잭션 안에서 실행된다
@@ -192,11 +201,12 @@ function flowHooks(c: PoolClient, p: Principal, mails: MailRequest[], ctx: FlowC
 
 // 제출·재승인: 계획을 엔진 단계로 만들어 시작(같은 요청에 진행 중인 승인이 있으면 409)
 async function startFlow(c: PoolClient, p: Principal, r: Record<string, any>, mails: MailRequest[], restartFrom?: string) {
-  const plan = toStepPlans(await planSteps(c, r));
+  const planned = await planSteps(c, r);
+  const plan = toStepPlans(planned.steps);
   const store = new wf.PgStore(c, p.userId), hooks = flowHooks(c, p, mails);
   await wfCall(() => (restartFrom
-    ? wf.restart(store, hooks, restartFrom, p.userId, plan)
-    : wf.submit(store, hooks, { tenantId: p.tenantId, subjectType: SUBJECT, subjectId: r.id, requesterId: r.requester_id, plan, createdBy: p.userId })));
+    ? wf.restart(store, hooks, restartFrom, p.userId, plan, planned.rules)
+    : wf.submit(store, hooks, { tenantId: p.tenantId, subjectType: SUBJECT, subjectId: r.id, requesterId: r.requester_id, plan, rules: planned.rules, createdBy: p.userId })));
 }
 
 // 볼 수 있는가: 범위 안, 요청자, 또는 어느 단계든 승인 자격(결정한 사람 포함)

@@ -1,5 +1,5 @@
 // 워크플로 정의의 ALM 어댑터(WBS 4.13, 결정 E-11): 대상 유형·담당자 규칙 카탈로그, 기본 정의, 담당자 풀이(시험 실행)
-//   기본 정의 = 지금 requests.ts planSteps가 하는 동작(승인 실행은 아직 이 정의를 읽지 않는다. 연결은 4.10·4.11)
+//   기본 정의 = 게시본이 없을 때 requests.ts가 쓰는 내장 규칙과 같은 동작. 게시본이 있으면 승인 실행이 그 정의를 읽는다(requests/approvalAdapter.ts)
 //   승인자 자격(역할 행 범위·approval.decide)은 승인 시점에 requests.ts가 따로 확인하므로 여기서는 "누가 담당이 되는가"만 계산한다
 import type { PoolClient } from 'pg';
 import type { Catalog, DefOptions, Person, ResolveFn, StepDef, WorkflowDef } from '../platform/workflow';

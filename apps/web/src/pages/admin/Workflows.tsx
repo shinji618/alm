@@ -1,6 +1,6 @@
 // 관리 > 워크플로(ADM-070, WBS 4.13, 결정 E-11): 대상 유형(자산 요청 5종)별 승인 흐름 정의. admin.config(시스템 관리자)
 //   자유 설계기가 아니다. 단계·담당자 규칙·대리 규칙은 제품이 정한 목록에서만 고른다. 직무 분리 규칙(H-01·H-02)은 끌 수 없다
-//   저장 → 초안, 게시 → 새 버전(이전 게시본은 보관). 게시한 정의는 아직 승인 실행에 쓰이지 않는다(4.10·4.11)
+//   저장 → 초안, 게시 → 새 버전(이전 게시본은 보관). 게시한 정의는 이후 제출·재승인하는 요청의 승인 단계에 쓰인다(4.11 마무리)
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ViewHeader } from '@/components/layout';

@@ -454,6 +454,68 @@ test('부서 관리자 관리(ADM-040)와 이관 승인 단계: 없는 쪽 건�
   assert.equal((await call('acct', 'POST', `/approvals/${await step(t3.id, 3)}:approve`, {})).body.requestStatus, 'POSTED');
 });
 
+test('게시한 승인 정의가 실제 승인에 쓰인다: 단계 구성·직무 분리 옵션, 담당자 없음 거절, 회사 승인 단계 1이면 내장 규칙, 게시본 삭제 시 내장 규칙', { skip }, async () => {
+  const FINAL = { key: 'accounting', label: '자산회계 최종 승인', resolver: 'ROLE_ASSET_ACCOUNTANT', fallback: 'NONE', mergeSame: false };
+  const publish = async (subject: string, steps: unknown[], options: Record<string, unknown>) => {
+    const d = await call('adm', 'PUT', `/admin/workflows/${subject}/draft`, { name: `${subject} 시험`, steps, options });
+    assert.equal(d.status, 200, JSON.stringify(d.body));
+    const p = await call('adm', 'POST', `/admin/workflows/${subject}/draft:publish`, undefined, { 'if-match': d.headers.get('etag')! });
+    assert.equal(p.status, 200, JSON.stringify(p.body));
+  };
+  const mk = async (tag: string) => (await q(`INSERT INTO asset (id, tenant_id, asset_tag, description, category_id, status, source, company_id, site_id, room_id, cost_center_id)
+    VALUES (gen_random_uuid(), $1, $2::varchar, 'T laptop', $3, 'IN_STOCK', 'MANUAL', $4, $5, $6, $7) RETURNING id`, [tenantId, tag, ids.cat, ids.co, ids.site, ids.room1, ids.cc100]))[0].id as string;
+  const transfer = async (asset: string, cc: string, submit = true) => (await call('mgr', 'POST', '/asset-requests', { requestType: 'TRANSFER', assetId: asset, reason: '이동',
+    targetCostCenterId: cc, effectiveDate: '2026-11-01', submit })).body;
+  const shape = (b: { approvals: { approverRole: string; costCenter?: string }[] }) => b.approvals.map((x) => [x.approverRole, x.costCenter]);
+  const base = await q(`SELECT sap_enabled, approval_steps FROM company WHERE id = $1`, [ids.co]);
+  ids.cc400 = (await q(`INSERT INTO cost_center (id, tenant_id, controlling_area, cost_center_code, name, company_id, profit_center_id)
+    VALUES (gen_random_uuid(), $1, 'A000', 'CC400', 'CC400', $2, $3) RETURNING id`, [tenantId, ids.co, ids.pc1]))[0].id;
+  try {
+    // 받는 부서 관리자만 승인하는 정의(CC200에는 dept1·new가 있음) + 보정자 제한 해제
+    await publish('TRANSFER', [{ key: 'target_dept', label: '받는 부서 관리자', resolver: 'DEPT_MANAGER_TARGET', fallback: 'SKIP', mergeSame: true }, FINAL],
+      { fixerCannotReapprove: false, requesterNoStep: false, proxyIfAllSkipped: true });
+    const t1 = await transfer(await mk('T-0101'), ids.cc200);
+    assert.deepEqual(shape(t1), [['DEPT_MANAGER', 'CC200 · CC200'], ['ASSET_ACCOUNTANT', undefined]], '게시한 정의의 단계 구성');
+    assert.equal((await q(`SELECT rules->>'fixerCannotReapprove' AS f FROM workflow_instance WHERE subject_id = $1`, [t1.id]))[0].f, 'false', '정의의 옵션이 인스턴스에 복사된다');
+    assert.deepEqual((await q(`SELECT step_key, label FROM workflow_step WHERE instance_id = (SELECT id FROM workflow_instance WHERE subject_id = $1) ORDER BY step_no`, [t1.id])).map((x) => [x.step_key, x.label]),
+      [['target_dept', '받는 부서 관리자'], ['accounting', '자산회계 최종 승인']]);
+    assert.equal((await call('dept1', 'POST', `/approvals/${await step(t1.id, 1)}:approve`, {})).body.requestStatus, 'MGR_APPROVED', '승인은 기존처럼 동작');
+    await call('mgr', 'POST', `/asset-requests/${t1.id}:cancel`);
+
+    // 담당자가 없고 건너뛸 수 없는 중간 단계(CC400에는 부서 관리자 없음)는 제출 거절, 건너뛰는 정의면 통과
+    await call('adm', 'POST', '/admin/workflows/TRANSFER:simulate', { targetCostCenterId: ids.cc400 });   // 시험 실행은 계속 동작
+    await publish('TRANSFER', [{ key: 'target_dept', label: '받는 부서 관리자', resolver: 'DEPT_MANAGER_TARGET', fallback: 'NONE', mergeSame: true }, FINAL],
+      { fixerCannotReapprove: true, requesterNoStep: false, proxyIfAllSkipped: false });
+    const t2 = await transfer(await mk('T-0102'), ids.cc400, false);
+    const rej = await call('mgr', 'POST', `/asset-requests/${t2.id}:submit`);
+    assert.deepEqual([rej.status, rej.body.code], [422, 'ALM-E100'], JSON.stringify(rej.body));
+    assert.match(rej.body.detail, /담당자가 없어 제출할 수 없습니다/);
+    assert.equal((await q(`SELECT count(*)::int AS n FROM workflow_instance WHERE subject_id = $1`, [t2.id]))[0].n, 0, '제출이 거절되면 승인이 만들어지지 않는다');
+    await publish('TRANSFER', [{ key: 'target_dept', label: '받는 부서 관리자', resolver: 'DEPT_MANAGER_TARGET', fallback: 'SKIP', mergeSame: true }, FINAL],
+      { fixerCannotReapprove: true, requesterNoStep: false, proxyIfAllSkipped: false });
+    const ok = await call('mgr', 'POST', `/asset-requests/${t2.id}:submit`);
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.deepEqual(shape(ok.body), [['ASSET_ACCOUNTANT', undefined]], '건너뛰는 단계는 만들지 않는다');
+    await call('mgr', 'POST', `/asset-requests/${t2.id}:cancel`);
+
+    // 회사 승인 단계가 2보다 작으면(SAP 끈 회사가 줄임) 회사 설정이 우선해 내장 규칙
+    await q(`UPDATE company SET sap_enabled = false, approval_steps = 1 WHERE id = $1`, [ids.co]);
+    const t3 = await transfer(await mk('T-0103'), ids.cc200);
+    assert.deepEqual(shape(t3), [['DEPT_MANAGER', 'CC100 · CC100'], ['DEPT_MANAGER', 'CC200 · CC200']], '내장 규칙(자산회계 없음)');
+    await call('mgr', 'POST', `/asset-requests/${t3.id}:cancel`);
+    await q(`UPDATE company SET sap_enabled = $2, approval_steps = $3 WHERE id = $1`, [ids.co, base[0].sap_enabled, base[0].approval_steps]);
+
+    // 게시본이 없으면 내장 규칙(보내는 → 받는 → 자산회계)
+    await q(`DELETE FROM workflow_definition WHERE subject_type = 'TRANSFER'`);
+    const t4 = await transfer(await mk('T-0104'), ids.cc200);
+    assert.deepEqual(shape(t4), [['DEPT_MANAGER', 'CC100 · CC100'], ['DEPT_MANAGER', 'CC200 · CC200'], ['ASSET_ACCOUNTANT', undefined]]);
+    await call('mgr', 'POST', `/asset-requests/${t4.id}:cancel`);
+  } finally {
+    await q(`UPDATE company SET sap_enabled = $2, approval_steps = $3 WHERE id = $1`, [ids.co, base[0].sap_enabled, base[0].approval_steps]);
+    await q(`DELETE FROM workflow_definition WHERE subject_type = 'TRANSFER'`);
+  }
+});
+
 test('SAP 마스터 조회(ADM-035): 읽기 전용·종류별 건수·SAP 회사만·직접 등록 클래스 제외·권한', { skip }, async () => {
   assert.equal((await call('emp', 'GET', '/admin/sap-masters/summary')).status, 403);
   assert.equal((await call('emp', 'GET', '/admin/sap-masters/PLANT')).status, 403);

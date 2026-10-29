@@ -1,6 +1,7 @@
 // 워크플로 정의 관리(관리 > 워크플로, ADM-070, WBS 4.13, 결정 E-11). 권한: admin.config(시스템 관리자만)
 //   대상 유형(자산 요청 5종)마다 정의를 버전으로 쌓는다. 초안(DRAFT) 최대 1개, 게시(PUBLISHED) 최대 1개, 이전 게시는 ARCHIVED.
-//   게시한 정의는 아직 승인 실행(requests.ts planSteps)에 연결되지 않는다(4.10·4.11). 화면에는 그 사실을 알린다(appliedToApprovals: false)
+//   게시한 정의는 승인 실행(requests.ts planSteps → approvalAdapter stepsFromDefinition)이 읽는다. 새로 제출·재승인하는 건부터 적용되고 진행 중인 승인은 그대로다
+//   예외: 회사 승인 단계가 2보다 작으면(SAP 끈 회사가 줄임) 회사 설정이 우선해 내장 규칙을 쓴다
 //   변경 이력은 감사 트리거(audit_row)가 남긴다. 직무 분리 필수 규칙(H-01·H-02)은 정의로 끌 수 없다
 import type { PoolClient } from 'pg';
 import { randomUUID } from 'node:crypto';
@@ -18,8 +19,8 @@ const subjectOf = (code: string) => {
   return s;
 };
 
-// applied: 게시한 정의가 승인 실행에 쓰이는가. 4.10·4.11 전까지 false
-export const APPLIED_TO_APPROVALS = false;
+// applied: 게시한 정의가 승인 실행에 쓰이는가(4.11 마무리부터 true)
+export const APPLIED_TO_APPROVALS = true;
 
 const COLS = `d.id, d.subject_type, d.version_no, d.status, d.name, d.steps, d.options, d.change_note, d.published_at, d.updated_at, d.version,
   pu.display_name AS published_by_name, uu.display_name AS updated_by_name`;

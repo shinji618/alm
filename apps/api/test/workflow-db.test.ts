@@ -208,7 +208,7 @@ test('API: 시험 실행(simulate) — 기본 정의로 부서 관리자·자산
 test('API: 목록·선택값·상세, 권한(시스템 관리자만)', { skip }, async () => {
   const list = await call('adm', 'GET', WF);
   assert.equal(list.status, 200);
-  assert.equal(list.body.appliedToApprovals, false);
+  assert.equal(list.body.appliedToApprovals, true);
   assert.deepEqual(list.body.items.map((i: any) => [i.subjectType, i.usesDefault, i.hasDraft]), ['NEW_ASSET', 'CHANGE', 'TRANSFER', 'RETIRE', 'SALE'].map((t) => [t, true, false]));
   const cat = await call('adm', 'GET', `${WF}/catalog`);
   assert.equal(cat.body.maxSteps, 5);
