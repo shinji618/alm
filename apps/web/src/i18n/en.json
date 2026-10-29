@@ -1491,7 +1491,7 @@
   "wf": {
     "title": "Approval workflows",
     "description": "Define who approves each type of asset request. Steps, approver rules and fallbacks are chosen from fixed lists; the segregation-of-duties rules cannot be turned off.",
-    "notApplied": "Published definitions are not used when requests are submitted yet. Approvals keep following the built-in flow until the approval engine is connected (WBS 4.10–4.11).",
+    "notApplied": "Published definitions are not used when requests are submitted yet. Approvals already run on the approval engine (WBS 4.10–4.11); applying published definitions to live approvals comes later.",
     "colSubject": "Request type",
     "colName": "Flow name",
     "colFlow": "Flow",
@@ -1554,6 +1554,34 @@
       "PUBLISHED": "Published",
       "DRAFT": "Draft",
       "ARCHIVED": "Archived"
-    }
+    },
+    "subject": {
+      "NEW_ASSET": "New asset registration",
+      "CHANGE": "Asset change",
+      "TRANSFER": "Asset transfer",
+      "RETIRE": "Asset retirement",
+      "SALE": "Asset sale"
+    },
+    "resolverName": {
+      "DEPT_MANAGER_RESPONSIBLE": "Department manager of the responsible cost center (target for new/change, the asset's current one otherwise)",
+      "DEPT_MANAGER_SOURCE": "Department manager of the sending (current) cost center",
+      "DEPT_MANAGER_TARGET": "Department manager of the receiving (target) cost center",
+      "ROLE_ASSET_ACCOUNTANT": "Asset accountant (company code scope)"
+    },
+    "fallbackName": {
+      "PROXY_ASSET_ACCOUNTANT": "Asset accountant approves as proxy ([Proxy] shown in the comment)"
+    },
+    "rule": {
+      "H-01": "The requester cannot approve their own request",
+      "H-02": "One person cannot approve two steps of the same request"
+    },
+    "stepDefault": {
+      "dept": "Department manager",
+      "source_dept": "Sending department manager",
+      "target_dept": "Receiving department manager",
+      "accounting": "Asset accountant final approval"
+    },
+    "defaultName": "{{label}} approval",
+    "allCompanies": "All companies"
   }
 }

@@ -27,14 +27,24 @@ interface CostCenterRow { id: string; companyId: string; companyCode: string; co
 interface Form { name: string; steps: WfStep[]; options: WfOptions; changeNote: string }
 const day = (v?: string) => (v ? v.slice(0, 10) : '');
 
+type T = (key: string, opts?: Record<string, unknown>) => string;
+const KO_SUBJECT: Record<string, string> = { NEW_ASSET: '신규 자산 등록', CHANGE: '자산 정보 변경', TRANSFER: '자산 이관', RETIRE: '자산 폐기', SALE: '자산 매각' };
+const KO_STEP: Record<string, string> = { dept: '부서 관리자', source_dept: '보내는 부서 관리자', target_dept: '받는 부서 관리자', accounting: '자산회계 최종 승인' };
+// 서버가 코드와 함께 주는 기본 문구(요청 유형·담당자 규칙·대리 규칙·필수 규칙)는 코드로 번역하고, 모르는 코드는 서버 값을 쓴다
+const byCode = (t: T, kind: string, code: string, fallback: string) => t(`wf.${kind}.${code}`, { defaultValue: fallback });
+const subjectName = (t: T, code: string, label: string) => byCode(t, 'subject', code, label);
+// 기본 정의의 이름·단계 이름(서버 기본값 그대로일 때만 번역). 사용자가 바꾼 이름은 입력한 그대로 보여 준다
+const flowName = (t: T, subject: string, name: string) => (name === `${KO_SUBJECT[subject]} 승인` ? t('wf.defaultName', { label: subjectName(t, subject, KO_SUBJECT[subject]) }) : name);
+const stepName = (t: T, st: { key: string; label: string }) => (KO_STEP[st.key] === st.label ? t(`wf.stepDefault.${st.key}`) : st.label);
+
 export function Workflows() {
   const { t } = useTranslation();
   const [open, setOpen] = useState<string>();
   const list = useAsync((sig) => api.get<WfList>('/admin/workflows', sig), []);
   const columns = useMemo<Column<WfSummary>[]>(() => [
-    { key: 'label', label: t('wf.colSubject') },
-    { key: 'name', label: t('wf.colName') },
-    { key: 'steps', label: t('wf.colFlow'), render: (x) => x.steps.map((st) => st.label).join(' → ') },
+    { key: 'label', label: t('wf.colSubject'), render: (x) => subjectName(t, x.subjectType, x.label) },
+    { key: 'name', label: t('wf.colName'), render: (x) => flowName(t, x.subjectType, x.name) },
+    { key: 'steps', label: t('wf.colFlow'), render: (x) => x.steps.map((st) => stepName(t, st)).join(' → ') },
     { key: 'usesDefault', label: t('wf.colInUse'), render: (x) => (x.usesDefault
       ? <StatusPill tone="neutral">{t('wf.default')}</StatusPill>
       : <StatusPill tone="ok">{t('wf.publishedV', { n: x.publishedVersion })}</StatusPill>) },
@@ -52,7 +62,7 @@ export function Workflows() {
             empty={<EmptyState message={t('common.noResults')} />} />
         )}
       </Panel>
-      {current && <Editor subject={current.subjectType} label={current.label} onClose={() => setOpen(undefined)} onChanged={() => list.reload()} />}
+      {current && <Editor subject={current.subjectType} label={subjectName(t, current.subjectType, current.label)} onClose={() => setOpen(undefined)} onChanged={() => list.reload()} />}
     </>
   );
 }
@@ -79,9 +89,9 @@ function Editor({ subject, label, onClose, onChanged }: { subject: string; label
 
   const cat = catalog.data;
   const resolvers = (cat?.resolvers ?? []).filter((r) => !r.subjects || r.subjects.includes(subject));
-  const resolverLabel = (code: string) => cat?.resolvers.find((r) => r.code === code)?.label ?? code;
+  const resolverLabel = (code: string) => byCode(t, 'resolverName', code, cat?.resolvers.find((r) => r.code === code)?.label ?? code);
   const fallbackOptions = [{ value: 'SKIP', label: t('wf.fbSkip') }, { value: 'NONE', label: t('wf.fbNone') },
-    ...(cat?.fallbacks ?? []).map((x) => ({ value: x.code, label: x.label }))];
+    ...(cat?.fallbacks ?? []).map((x) => ({ value: x.code, label: byCode(t, 'fallbackName', x.code, x.label) }))];
   const transfer = subject === 'TRANSFER';
   const ccOptions = [{ value: '', label: t('wf.selectCc') }, ...(ccs.data?.items ?? []).filter((c) => c.isActive).map((c) => ({ value: c.id, label: `${c.companyCode} · ${c.costCenterCode} ${c.name}` }))];
 
@@ -164,7 +174,7 @@ function Editor({ subject, label, onClose, onChanged }: { subject: string; label
             <div className={s.headRow}><strong>{t('wf.step', { n: i + 1 })}</strong>{last && <StatusPill tone="info">{t('wf.finalStep')}</StatusPill>}</div>
             <TextField label={t('wf.stepLabel')} maxLength={40} value={st.label} error={errors[`steps[${i}].label`]} onChange={(e) => setStep(i, { label: e.target.value })} />
             <SelectField label={t('wf.resolver')} value={st.resolver} error={errors[`steps[${i}].resolver`]} onChange={(e) => setStep(i, { resolver: e.target.value })}
-              options={resolvers.map((r) => ({ value: r.code, label: r.label }))} />
+              options={resolvers.map((r) => ({ value: r.code, label: resolverLabel(r.code) }))} />
             <SelectField label={t('wf.fallback')} value={st.fallback} error={errors[`steps[${i}].fallback`]} onChange={(e) => setStep(i, { fallback: e.target.value })}
               options={fallbackOptions.filter((o) => !(last && o.value === 'SKIP'))} />
             {!last && <CheckboxField label={t('wf.mergeSame')} checked={st.mergeSame} onChange={(e) => setStep(i, { mergeSame: e.target.checked })} />}
@@ -186,7 +196,7 @@ function Editor({ subject, label, onClose, onChanged }: { subject: string; label
       <CheckboxField label={t('wf.optProxy')} checked={f.options.proxyIfAllSkipped} onChange={(e) => setF({ ...f, options: { ...f.options, proxyIfAllSkipped: e.target.checked } })} />
       <div className={s.notice}>
         <strong>{t('wf.mandatory')}</strong>
-        {cat.mandatoryRules.map((r) => <div key={r.code}>{r.code} · {r.label}</div>)}
+        {cat.mandatoryRules.map((r) => <div key={r.code}>{r.code} · {byCode(t, 'rule', r.code, r.label)}</div>)}
       </div>
       <TextField label={t('wf.changeNote')} maxLength={200} value={f.changeNote} onChange={(e) => setF({ ...f, changeNote: e.target.value })} />
       <div className={s.formActions}>
@@ -206,12 +216,12 @@ function Editor({ subject, label, onClose, onChanged }: { subject: string; label
           {sim.steps.map((st) => (
             <div key={st.key} className={s.notice}>
               <div className={s.headRow}>
-                <strong>{st.label}</strong>
+                <strong>{stepName(t, st)}</strong>
                 <StatusPill tone={st.missing ? 'warn' : st.status === 'ACTIVE' ? 'ok' : 'neutral'}>{st.missing ? t('wf.missing') : t(`wf.status.${st.status}`)}</StatusPill>
                 {st.proxy && <StatusPill tone="info">{t('wf.proxy')}</StatusPill>}
               </div>
               <div className="faint">{resolverLabel(st.resolver)}</div>
-              <div>{st.approvers.length ? st.approvers.map((a) => `${a.name}${a.detail ? ` (${a.detail})` : ''}`).join(', ') : '—'}</div>
+              <div>{st.approvers.length ? st.approvers.map((a) => `${a.name}${a.detail ? ` (${a.detail === '전체 회사' ? t('wf.allCompanies') : a.detail})` : ''}`).join(', ') : '—'}</div>
             </div>
           ))}
         </div>
@@ -221,7 +231,7 @@ function Editor({ subject, label, onClose, onChanged }: { subject: string; label
       {d.versions.map((v) => (
         <div key={v.versionNo} className={s.notice} data-testid="wf-version">
           <div className={s.headRow}>
-            <strong>v{v.versionNo}</strong><span>{v.name}</span>
+            <strong>v{v.versionNo}</strong><span>{flowName(t, subject, v.name)}</span>
             <StatusPill tone={v.status === 'PUBLISHED' ? 'ok' : v.status === 'DRAFT' ? 'warn' : 'neutral'}>{t(`wf.vstatus.${v.status}`)}</StatusPill>
           </div>
           <div className="faint">{[day(v.publishedAt ?? v.updatedAt), v.publishedByName ?? v.updatedByName, v.changeNote].filter(Boolean).join(' · ')}</div>
