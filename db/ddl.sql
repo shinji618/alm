@@ -1553,7 +1553,7 @@ COMMENT ON TABLE asset_request IS '자산 요청 — 신규·변경·이관·폐
 CREATE INDEX ix_asset_request_tenant_id_status ON asset_request (tenant_id, status);
 CREATE INDEX ix_asset_request_asset_id ON asset_request (asset_id);
 
--- 승인: 자산 요청·구매요청의 단계별 승인. 둘 중 하나만 채움. 4.11부터 자산 요청 승인은 workflow_step이 맡고 이 테이블은 이관 전 기록 보관용이다(읽기만, 삭제 예정)
+-- 승인: 자산 요청·구매요청의 단계별 승인. 둘 중 하나만 채움. 4.11부터 자산 요청 승인은 workflow_step이 맡고 이 테이블은 이관 전 기록 보관용이다(읽기만. 감사 보호로 삭제하지 않음, 0019)
 CREATE TABLE approval (
   id uuid PRIMARY KEY,
   tenant_id uuid NOT NULL,
@@ -1591,7 +1591,7 @@ COMMENT ON COLUMN approval.created_by IS '생성자';
 COMMENT ON COLUMN approval.updated_at IS '변경 일시';
 COMMENT ON COLUMN approval.updated_by IS '변경자';
 COMMENT ON COLUMN approval.version IS '낙관적 잠금';
-COMMENT ON TABLE approval IS '승인 — 자산 요청·구매요청의 단계별 승인. 둘 중 하나만 채움. 4.11부터 자산 요청 승인은 workflow_step이 맡고 이 테이블은 이관 전 기록 보관용이다(읽기만, 삭제 예정)';
+COMMENT ON TABLE approval IS '승인 — 자산 요청·구매요청의 단계별 승인. 둘 중 하나만 채움. 4.11부터 자산 요청 승인은 workflow_step이 맡고 이 테이블은 이관 전 기록 보관용이다(읽기만. 감사 보호로 삭제하지 않음, 0019)';
 CREATE INDEX ix_approval_tenant_id_approver_role_decision ON approval (tenant_id, approver_role, decision);
 
 -- 워크플로 정의: 승인 흐름 정의(4.13, 결정 E-11). 대상 유형별로 버전을 쌓는다. 초안(DRAFT) 1개, 게시(PUBLISHED) 1개, 이전 게시는 ARCHIVED. 게시한 정의를 승인 실행에 연결하는 일은 4.10·4.11
@@ -3524,6 +3524,8 @@ REVOKE UPDATE, DELETE, TRUNCATE ON recon_snapshot FROM alm_app;
 REVOKE UPDATE, DELETE, TRUNCATE ON audit_log FROM alm_app;
 REVOKE UPDATE, DELETE, TRUNCATE ON security_event FROM alm_app;
 REVOKE DELETE, TRUNCATE ON sap_if_run FROM alm_app;
+-- 읽기 전용 보관 테이블(4.11 이전 승인 기록. 감사 보호로 삭제하지 않고 쓰기만 회수)
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON approval FROM alm_app;
 
 CREATE TRIGGER tr_tenant_audit AFTER INSERT OR UPDATE OR DELETE ON tenant FOR EACH ROW EXECUTE FUNCTION audit_row();
 CREATE TRIGGER tr_tenant_domain_audit AFTER INSERT OR UPDATE OR DELETE ON tenant_domain FOR EACH ROW EXECUTE FUNCTION audit_row();

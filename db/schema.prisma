@@ -1787,7 +1787,7 @@ model AssetRequest {
   @@map("asset_request")
 }
 
-/// 승인 — 자산 요청·구매요청의 단계별 승인. 둘 중 하나만 채움. 4.11부터 자산 요청 승인은 workflow_step이 맡고 이 테이블은 이관 전 기록 보관용이다(읽기만, 삭제 예정)
+/// 승인 — 자산 요청·구매요청의 단계별 승인. 둘 중 하나만 채움. 4.11부터 자산 요청 승인은 workflow_step이 맡고 이 테이블은 이관 전 기록 보관용이다(읽기만. 감사 보호로 삭제하지 않음, 0019)
 model Approval {
   id String @id @default(uuid(7)) @db.Uuid
   /// 테넌트

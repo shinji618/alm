@@ -72,6 +72,10 @@ test('0018: approval → workflow_instance·step 이관(상태 매핑, id·코�
     assert.deepEqual(steps.filter((s) => s.request_no === 'R3').map((s) => s.created_by), [req, mgr], '단계 생성자(보정자 판단)가 보존된다');
     assert.deepEqual(steps.filter((s) => s.request_no === 'R4').map((s) => s.status), ['SKIPPED', 'SKIPPED']);
     assert.equal((await q(`SELECT count(*)::int AS n FROM approval`))[0].n, 8, 'approval 원본은 그대로 남는다');
+    // 0019: 앱 계정은 approval을 읽기만 한다(쓰기 회수), 테이블은 감사 보호 때문에 남는다
+    const priv = async (p: string) => (await q(`SELECT has_table_privilege('alm_app', 'approval', $1) AS ok`, [p]))[0].ok as boolean;
+    assert.equal(await priv('SELECT'), true);
+    for (const p of ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) assert.equal(await priv(p), false, `${p} 회수`);
   } finally { await o.end(); }
 });
 
@@ -93,5 +97,26 @@ test('0018: 구매요청 승인 행이 있으면 이관을 거절한다', { skip
     await o.query(`INSERT INTO approval (id, tenant_id, purchase_request_id, step_no, approver_role) VALUES (gen_random_uuid(), $1, gen_random_uuid(), 1, 'DEPT_MANAGER')`, [T]);
     await o.query(`SET session_replication_role = origin`);
     await assert.rejects(migrate(o, all), /구매요청 승인 행/);
+  } finally { await o.end(); su = new Client({ host, port, user: 'postgres', database: 'postgres' }); await su.connect(); await su.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`); await su.end(); }
+});
+
+test('0019: 이관되지 않은 approval 행이 있으면 읽기 전용으로 바꾸지 않는다', { skip }, async () => {
+  const name = `${dbName}_u`;
+  su = new Client({ host, port, user: 'postgres', database: 'postgres' });
+  await su.connect(); await su.query(`CREATE DATABASE ${name}`); await su.end();
+  const o = new Client({ host, port, user: 'postgres', database: name });
+  await o.connect();
+  try {
+    const all = loadMigrations(join(__dirname, '..', '..', 'migrations'));
+    const i18 = all.findIndex((m) => m.file.startsWith('0018_'));
+    await migrate(o, all.slice(0, i18 + 1));   // 0018까지 적용한 뒤 옛 코드가 approval에 쓴 상황을 만든다
+    const T = '00000000-0000-0000-0000-0000000000b3';
+    const q = async (sql: string, a: unknown[] = []) => (await o.query(sql, a)).rows;
+    await q(`INSERT INTO tenant (id, code, name, idp_provider_name) VALUES ($1, 'M19', 't', 'T-M19')`, [T]);
+    const u = (await q(`INSERT INTO app_user (id, tenant_id, email, display_name) VALUES (gen_random_uuid(), $1, 'r@m19.test', 'r') RETURNING id`, [T]))[0].id;
+    const r = (await q(`INSERT INTO asset_request (id, tenant_id, request_no, request_type, status, source, requester_id, reason, current_step, submitted_at)
+      VALUES (gen_random_uuid(), $1, 'R1', 'CHANGE', 'SUBMITTED', 'USER', $2, 'r', 1, now()) RETURNING id`, [T, u]))[0].id;
+    await q(`INSERT INTO approval (id, tenant_id, asset_request_id, step_no, approver_role) VALUES (gen_random_uuid(), $1, $2, 1, 'DEPT_MANAGER')`, [T, r]);
+    await assert.rejects(migrate(o, all), /옮겨지지 않은 approval 행/);
   } finally { await o.end(); su = new Client({ host, port, user: 'postgres', database: 'postgres' }); await su.connect(); await su.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`); await su.end(); }
 });

@@ -505,7 +505,7 @@ count_item_id | ->count_item | | 실사 차이에서 생성
 recon_diff_id | ->recon_diff | | 대사 차이에서 생성
 completed_at | ts | | 전기 완료·반려 일시
 ''', uniques=[('tenant_id','request_no')], indexes=[('tenant_id','status'),('asset_id',)], screens='ALM-230')
-t('request','approval','승인','자산 요청·구매요청의 단계별 승인. 둘 중 하나만 채움. 4.11부터 자산 요청 승인은 workflow_step이 맡고 이 테이블은 이관 전 기록 보관용이다(읽기만, 삭제 예정)', '''
+t('request','approval','승인','자산 요청·구매요청의 단계별 승인. 둘 중 하나만 채움. 4.11부터 자산 요청 승인은 workflow_step이 맡고 이 테이블은 이관 전 기록 보관용이다(읽기만. 감사 보호로 삭제하지 않음, 0019)', '''
 asset_request_id | ->asset_request | | 자산 요청
 purchase_request_id | ->purchase_request | | 구매요청
 step_no | int | NN | 단계(1부터). 부서 관리자 단계(이관은 보내는·받는 부서) 다음 자산회계(최종)
@@ -958,3 +958,4 @@ AUDIT_EXCLUDE = ['discovery_run', 'discovery_item', 'software_install', 'label_p
 # 앱 계정(alm_app)에서 UPDATE·DELETE를 뺄 로그 테이블(추가만). sap_if_run은 종료 시각 갱신이 있어 DELETE만 뺌
 APPEND_ONLY = ['asset_event', 'count_scan', 'sap_if_message', 'recon_snapshot', 'audit_log', 'security_event']
 NO_DELETE = ['sap_if_run']
+READ_ONLY = ['approval']   # 4.11 이전 승인 기록(보관). 앱 계정의 쓰기 회수

@@ -1,5 +1,5 @@
 import re, json, sys
-from spec import ENUMS, DOMAINS, T, AUDIT_EXCLUDE, APPEND_ONLY, NO_DELETE
+from spec import ENUMS, DOMAINS, T, AUDIT_EXCLUDE, APPEND_ONLY, NO_DELETE, READ_ONLY
 
 def camel(s):
     p = s.split('_'); return p[0] + ''.join(x[:1].upper() + x[1:] for x in p[1:])
@@ -220,6 +220,9 @@ def build_ddl():
         o.append(f'REVOKE UPDATE, DELETE, TRUNCATE ON {n} FROM alm_app;')
     for n in NO_DELETE:
         o.append(f'REVOKE DELETE, TRUNCATE ON {n} FROM alm_app;')
+    o.append('-- 읽기 전용 보관 테이블(4.11 이전 승인 기록. 감사 보호로 삭제하지 않고 쓰기만 회수)')
+    for n in READ_ONLY:
+        o.append(f'REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON {n} FROM alm_app;')
     o.append('')
     for t in T:
         if t['mode'] != 'log' and t['name'] not in AUDIT_EXCLUDE:
@@ -257,6 +260,7 @@ def doc_table(t):
     if t['name'] == 'tenant': extra.append("CHECK idp_provider_name은 T-로 시작하는 대문자·숫자·하이픈(밑줄 금지)")
     if t['name'] == 'user_role': extra.append('UNIQUE는 NULLS NOT DISTINCT(범위가 빈 같은 역할 중복 방지)')
     if t['name'] in APPEND_ONLY: extra.append('앱 계정은 추가만(수정·삭제 불가)')
+    if t['name'] in READ_ONLY: extra.append('앱 계정은 조회만(보관용 읽기 전용)')
     if t['mode'] == 'log': extra.append('로그 테이블: 공통 컬럼 중 id·tenant_id·created_at만')
     if t.get('partition'): extra.append(f'월 파티션(PARTITION BY RANGE {t["partition"]}), 기본키 (id, {t["partition"]}). 13개월 뒤 S3 보관')
     if t['mode'] == 'root': extra.append('tenant_id 없음')
