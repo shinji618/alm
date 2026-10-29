@@ -14,6 +14,7 @@ import { Check, UUID } from '../common/validate';
 import type { Principal } from '../platform/identity/principal';
 import { allowsPlace, assetScope, Params } from '../auth/scope';
 import { detail } from './assets';
+import { startDefaultFlow } from '../requests/approvalAdapter';
 import { nextNumbers } from './tags';
 
 const state = (m: string) => new AlmError(409, 'ALM-E322', m);
@@ -98,10 +99,7 @@ async function transferRequest(c: PoolClient, p: Principal, a: Record<string, an
       target_cost_center_id, target_room_id, is_profit_center_change, created_by, updated_by)
     VALUES ($1, $2, $3, $4, 'SUBMITTED', 'ASSIGNMENT', $5, $6, now(), 'ALM-111 할당에 따른 코스트센터 변경', $7, $8, $9, $6, $6)`,
   [id, p.tenantId, no, type, a.id, p.userId, ccId, roomId, pcChange]);
-  for (const [step, role] of [[1, 'DEPT_MANAGER'], [2, 'ASSET_ACCOUNTANT']] as const) {
-    await c.query(`INSERT INTO approval (id, tenant_id, asset_request_id, step_no, approver_role, created_by) VALUES ($1, $2, $3, $4, $5, $6)`,
-      [randomUUID(), p.tenantId, id, step, role, p.userId]);
-  }
+  await startDefaultFlow(c, p, id);
   return { id, requestNo: no, requestType: type, status: 'SUBMITTED' };
 }
 

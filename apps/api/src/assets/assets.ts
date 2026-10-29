@@ -15,6 +15,7 @@ import { nextAssetTags, nextNumbers } from './tags';
 import { desc2 } from '../common/sap-text';
 import { defaultTemplateId } from '../labels/labels';
 import { attachComponents, bundleView, componentCost } from './bundles';
+import { startDefaultFlow } from '../requests/approvalAdapter';
 
 export const STATUSES = ['ON_ORDER', 'IN_STOCK', 'IN_USE', 'IN_REPAIR', 'MISSING', 'RETIRED', 'DISPOSED'] as const;
 export const STAGES = ['PLAN', 'PROCURE', 'DEPLOY', 'OPERATE', 'MAINTAIN', 'RETIRE'] as const;
@@ -331,10 +332,7 @@ async function newAssetRequest(c: PoolClient, p: Principal, o: { assetId: string
       asset_class_id, acquisition_value, target_cost_center_id, target_room_id, created_by, updated_by)
     VALUES ($1, $2, $3, 'NEW_ASSET', 'SUBMITTED', 'USER', $4, $5, now(), 'ALM-112 자산 등록(SAP 등록 체크)', $6, $7, $8, $9, $5, $5)`,
   [id, p.tenantId, no, o.assetId, p.userId, o.classId, o.value, o.costCenterId, o.roomId]);
-  for (const [step, role] of [[1, 'DEPT_MANAGER'], [2, 'ASSET_ACCOUNTANT']] as const) {
-    await c.query(`INSERT INTO approval (id, tenant_id, asset_request_id, step_no, approver_role, created_by) VALUES ($1, $2, $3, $4, $5, $6)`,
-      [randomUUID(), p.tenantId, id, step, role, p.userId]);
-  }
+  await startDefaultFlow(c, p, id);
   return { id, requestNo: no, requestType: 'NEW_ASSET', status: 'SUBMITTED' };
 }
 

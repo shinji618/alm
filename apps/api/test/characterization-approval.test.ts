@@ -39,7 +39,7 @@ async function call(who: string, method: string, path: string, body?: unknown, h
   return { status: r.status, headers: r.headers, body: text ? JSON.parse(text) : undefined };
 }
 const q = async (sql: string, p: unknown[] = []) => (await owner.query(sql, p)).rows;
-const step = async (reqId: string, no: number) => (await q('SELECT id FROM approval WHERE asset_request_id = $1 AND step_no = $2', [reqId, no]))[0].id as string;
+const step = async (reqId: string, no: number) => (await q('SELECT ws.id FROM workflow_step ws JOIN workflow_instance wi ON wi.id = ws.instance_id WHERE wi.subject_id = $1 AND ws.step_no = $2', [reqId, no]))[0].id as string;
 
 before(async () => {
   if (skip) return;
@@ -176,7 +176,7 @@ test('승인 가드: 1단계 승인자는 2단계도 자격이 있어도 결정 
   const a = await newAsset(true);
   const r = await call('mgr', 'POST', '/asset-requests', { requestType: 'TRANSFER', assetId: a, reason: '이관', targetCostCenterId: ids.cc300, effectiveDate: '2026-11-01', submit: true });
   assert.equal(r.status, 201);
-  const steps = await q('SELECT step_no, approver_role FROM approval WHERE asset_request_id = $1 ORDER BY step_no', [r.body.id]);
+  const steps = await q('SELECT ws.step_no, ws.resolver AS approver_role FROM workflow_step ws JOIN workflow_instance wi ON wi.id = ws.instance_id WHERE wi.subject_id = $1 ORDER BY ws.step_no', [r.body.id]);
   assert.deepEqual(steps.map((s) => s.approver_role), ['DEPT_MANAGER', 'DEPT_MANAGER', 'ASSET_ACCOUNTANT']);
   assert.equal((await call('dept1', 'POST', `/approvals/${await step(r.body.id, 1)}:approve`, {})).status, 200);
   // both는 2단계(CC300 부서 관리자)를 승인 → 3단계(자산회계) 자격도 있지만 같은 사람이 이어서 승인할 수 없다
@@ -225,7 +225,7 @@ test('최종 승인 뒤 취소: 전기 건이 READY면 CANCELLED로, 승인 이�
   const c = await call('mgr', 'POST', `/asset-requests/${r.body.id}:cancel`);
   assert.equal(c.status, 200); assert.equal(c.body.status, 'CANCELLED');
   assert.deepEqual((await q('SELECT status FROM sap_posting WHERE asset_request_id = $1', [r.body.id]))[0], { status: 'CANCELLED' });
-  assert.deepEqual((await q('SELECT decision FROM approval WHERE asset_request_id = $1 ORDER BY step_no', [r.body.id])).map((x) => x.decision), ['APPROVED', 'APPROVED']);
+  assert.deepEqual((await q('SELECT ws.status AS decision FROM workflow_step ws JOIN workflow_instance wi ON wi.id = ws.instance_id WHERE wi.subject_id = $1 ORDER BY ws.step_no', [r.body.id])).map((x) => x.decision), ['APPROVED', 'APPROVED']);
   assert.equal((await q('SELECT room_id FROM asset WHERE id = $1', [a]))[0].room_id, ids.room1, '자산 값은 바뀌지 않음');
 });
 

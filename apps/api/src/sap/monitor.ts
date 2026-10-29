@@ -11,6 +11,7 @@ import type { Principal } from '../platform/identity/principal';
 import { can } from '../auth/scope';
 import { nextNumbers } from '../assets/tags';
 import { rebuildPosting } from '../requests/requests';
+import { cancelActiveFlow } from '../requests/approvalAdapter';
 
 const iso = (d: unknown) => (d instanceof Date ? d.toISOString() : d ? String(d) : undefined);
 const clean = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
@@ -203,7 +204,7 @@ export async function cancelPosting(c: PoolClient, p: Principal, id: string, bod
   }
   await c.query(`UPDATE sap_posting SET status = 'CANCELLED', lease_until = NULL, updated_at = now(), updated_by = $2, version = version + 1 WHERE id = $1`, [id, p.userId]);
   if (r.asset_request_id) {
-    await c.query(`UPDATE approval SET decision = 'SKIPPED', updated_at = now(), version = version + 1 WHERE asset_request_id = $1 AND decision = 'PENDING'`, [r.asset_request_id]);
+    await cancelActiveFlow(c, p.userId, r.asset_request_id);
     await c.query(`UPDATE asset_request SET status = 'CANCELLED', completed_at = now(), updated_at = now(), updated_by = $2, version = version + 1
       WHERE id = $1 AND status NOT IN ('POSTED', 'CANCELLED')`, [r.asset_request_id, p.userId]);
   }

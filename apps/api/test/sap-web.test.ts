@@ -224,12 +224,19 @@ test('전기 오류 보정(:fix): 기술 필드는 바로 READY, 회계 필드�
   const t2 = await call('acct', 'POST', `/asset-requests/${a.req}:fix`, { comment: '분실로 정정', changes: { retireType: 'LOSS' } }, { 'if-match': `"${r1.version}"` });
   assert.equal(t2.status, 200); assert.equal(t2.body.status, 'SUBMITTED');
   assert.equal((await q('SELECT status FROM sap_posting WHERE id = $1', [a.posting]))[0].status, 'CANCELLED');
-  const [s1] = await q('SELECT id FROM approval WHERE asset_request_id = $1 AND step_no = 1', [a.req]);
+  const [s1] = await q('SELECT ws.id FROM workflow_step ws JOIN workflow_instance wi ON wi.id = ws.instance_id WHERE wi.subject_id = $1 AND ws.step_no = 1', [a.req]);
   // 자산 S1은 앞 시험(대사)에서 CC200이 되어 CC200 부서 관리자가 1단계
   assert.equal((await call('dept', 'POST', `/approvals/${s1.id}:approve`, {})).status, 200);
-  const [s2] = await q('SELECT id FROM approval WHERE asset_request_id = $1 AND step_no = 2', [a.req]);
+  const [s2] = await q('SELECT ws.id FROM workflow_step ws JOIN workflow_instance wi ON wi.id = ws.instance_id WHERE wi.subject_id = $1 AND ws.step_no = 2', [a.req]);
   const sod = await call('acct', 'POST', `/approvals/${s2.id}:approve`, {});
   assert.equal(sod.status, 403); assert.equal(sod.body.code, 'ALM-E403', '보정한 사람은 다시 만든 단계를 결정할 수 없음');
+  // 4.11 결정 1: 보정한 사람에게는 승인함·상세 승인 동작에서도 그 단계를 숨긴다. 보정 뒤 재승인은 같은 승인 인스턴스를 다시 시작한다
+  const mine = async (who: string) => (await call(who, 'GET', '/approvals/inbox')).body.items.filter((x: { targetId: string }) => x.targetId === a.req);
+  assert.equal((await mine('acct')).length, 0, '보정한 자산회계의 승인함에는 없다');
+  assert.deepEqual((await mine('acct2')).map((x: { approvalId: string }) => x.approvalId), [s2.id]);
+  assert.equal((await call('acct', 'GET', `/asset-requests/${a.req}`)).body.actions.approve, undefined);
+  assert.equal((await call('acct2', 'GET', `/asset-requests/${a.req}`)).body.actions.approve, s2.id);
+  assert.equal((await q(`SELECT count(*)::int AS n FROM workflow_instance WHERE subject_id = $1`, [a.req]))[0].n, 1);
   const fin = await call('acct2', 'POST', `/approvals/${s2.id}:approve`, {});
   assert.equal(fin.body.requestStatus, 'ACCT_APPROVED');
   const [p2] = await q('SELECT status, attempt_count, payload FROM sap_posting WHERE id = $1', [a.posting]);

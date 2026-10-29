@@ -40,7 +40,7 @@ async function call(who: string, method: string, path: string, body?: unknown, h
   return { status: r.status, headers: r.headers, body: text ? JSON.parse(text) : undefined };
 }
 const q = async (sql: string, p: unknown[] = []) => (await owner.query(sql, p)).rows;
-const step = async (reqId: string, no: number) => (await q('SELECT id FROM approval WHERE asset_request_id = $1 AND step_no = $2', [reqId, no]))[0].id as string;
+const step = async (reqId: string, no: number) => (await q('SELECT ws.id FROM workflow_step ws JOIN workflow_instance wi ON wi.id = ws.instance_id WHERE wi.subject_id = $1 AND ws.step_no = $2', [reqId, no]))[0].id as string;
 async function sapResult(postingId: string, body: Record<string, unknown>) {
   await owner.query('BEGIN');
   try {
@@ -195,7 +195,7 @@ test('반려(의견 필수) → 요청자 메일, 자산 그대로. ALM 전용 �
   assert.equal(noComment.status, 400);
   const rj = await call('dept1', 'POST', `/approvals/${s1}:reject`, { comment: '수리 가능' });
   assert.equal(rj.status, 200); assert.equal(rj.body.requestStatus, 'REJECTED');
-  assert.deepEqual((await q('SELECT decision FROM approval WHERE asset_request_id = $1 ORDER BY step_no', [r.body.id])).map((x) => x.decision), ['REJECTED', 'SKIPPED']);
+  assert.deepEqual((await q('SELECT ws.status AS decision FROM workflow_step ws JOIN workflow_instance wi ON wi.id = ws.instance_id WHERE wi.subject_id = $1 ORDER BY ws.step_no', [r.body.id])).map((x) => x.decision), ['REJECTED', 'SKIPPED']);
   assert.equal((await q('SELECT status FROM asset WHERE id = $1', [ids.localA]))[0].status, 'IN_STOCK');
 
   const sale = await call('mgr', 'POST', '/asset-requests', { requestType: 'SALE', assetId: ids.localA, reason: '노후 매각', saleAmount: 120, buyer: 'Recycler Inc', submit: true });
