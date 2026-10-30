@@ -15,7 +15,8 @@ export interface WfVersion { id: string; subjectType: string; versionNo: number;
   publishedAt?: string; publishedByName?: string; updatedAt?: string; updatedByName?: string; version: number }
 export interface WfVersionRow { versionNo: number; status: string; name: string; changeNote?: string; publishedAt?: string; publishedByName?: string; updatedAt?: string; updatedByName?: string }
 export interface WfSummary { subjectType: string; label: string; name: string; steps: WfStep[]; publishedVersion?: number; hasDraft: boolean; draftVersion?: number; usesDefault: boolean; updatedAt?: string }
-export interface WfList { appliedToApprovals: boolean; items: WfSummary[] }
+export interface WfFixedFlow { code: string; label: string; note: string; steps: { key: string; label: string; resolver: string }[] }
+export interface WfList { appliedToApprovals: boolean; fixedFlows?: WfFixedFlow[]; items: WfSummary[] }
 export interface WfDetail { subjectType: string; label: string; appliedToApprovals: boolean; published?: WfVersion; draft?: WfVersion;
   defaultDefinition: { name: string; steps: WfStep[]; options: WfOptions }; versions: WfVersionRow[] }
 export interface WfCatalog { subjects: { code: string; label: string }[]; resolvers: { code: string; label: string; subjects?: string[]; final?: boolean }[];
@@ -51,6 +52,12 @@ export function Workflows() {
     { key: 'hasDraft', label: t('wf.colDraft'), render: (x) => (x.hasDraft ? <StatusPill tone="warn">{t('wf.draftV', { n: x.draftVersion })}</StatusPill> : '') },
     { key: 'updatedAt', label: t('wf.colUpdated'), render: (x) => day(x.updatedAt) },
   ], [t]);
+  const fixedColumns = useMemo<Column<WfFixedFlow>[]>(() => [
+    { key: 'label', label: t('wf.colScreen'), render: (x) => t(`wf.fixed.${x.code}.label`, { defaultValue: x.label }) },
+    { key: 'steps', label: t('wf.colFlow'), render: (x) => x.steps.map((st) => t(`wf.fixedStep.${st.key}`, { defaultValue: st.label })).join(' → ') },
+    { key: 'note', label: t('wf.colNote'), render: (x) => t(`wf.fixed.${x.code}.note`, { defaultValue: x.note }) },
+    { key: 'mode', label: t('wf.colInUse'), render: () => <StatusPill tone="neutral">{t('wf.readOnly')}</StatusPill> },
+  ], [t]);
   const current = list.data?.items.find((x) => x.subjectType === open);
   return (
     <>
@@ -62,6 +69,11 @@ export function Workflows() {
             empty={<EmptyState message={t('common.noResults')} />} />
         )}
       </Panel>
+      {!!list.data?.fixedFlows?.length && (
+        <Panel title={t('wf.fixedTitle')} subtitle={t('wf.fixedNote')} padded={false}>
+          <DataTable rows={list.data.fixedFlows} columns={fixedColumns} rowId={(x) => x.code} empty={<EmptyState message={t('common.noResults')} />} />
+        </Panel>
+      )}
       {current && <Editor subject={current.subjectType} label={subjectName(t, current.subjectType, current.label)} onClose={() => setOpen(undefined)} onChanged={() => list.reload()} />}
     </>
   );

@@ -1582,6 +1582,25 @@
       "accounting": "Asset accountant final approval"
     },
     "defaultName": "{{label}} approval",
-    "allCompanies": "All companies"
+    "allCompanies": "All companies",
+    "fixedTitle": "Fixed approval flows (read-only)",
+    "fixedNote": "These approvals are created by other screens and use a fixed flow in the application. They cannot be changed here.",
+    "colScreen": "Screen",
+    "colNote": "What it approves",
+    "readOnly": "Read-only",
+    "fixed": {
+      "ALM-111": {
+        "label": "Asset assignment (ALM-111)",
+        "note": "Approval for the transfer or change request created automatically when an assignment changes the cost center"
+      },
+      "ALM-112": {
+        "label": "Asset registration (ALM-112)",
+        "note": "Approval for the new-asset request created when an asset is registered with the SAP registration box checked"
+      }
+    },
+    "fixedStep": {
+      "dept1": "Department manager approval",
+      "acct": "Asset accounting approval"
+    }
   }
 }

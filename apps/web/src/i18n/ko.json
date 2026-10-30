@@ -1582,6 +1582,25 @@
       "accounting": "자산회계 최종 승인"
     },
     "defaultName": "{{label}} 승인",
-    "allCompanies": "전체 회사"
+    "allCompanies": "전체 회사",
+    "fixedTitle": "고정 승인 흐름(읽기 전용)",
+    "fixedNote": "다른 화면이 만드는 승인으로, 흐름이 프로그램에 고정되어 있어 여기서 바꿀 수 없습니다.",
+    "colScreen": "화면",
+    "colNote": "어떤 승인인가",
+    "readOnly": "읽기 전용",
+    "fixed": {
+      "ALM-111": {
+        "label": "자산 할당(ALM-111)",
+        "note": "할당 화면에서 코스트센터가 바뀌면 자동으로 만들어지는 이관·변경 요청의 승인"
+      },
+      "ALM-112": {
+        "label": "자산 등록(ALM-112)",
+        "note": "SAP 등록을 체크해 자산을 등록하면 만들어지는 신규 자산 요청의 승인"
+      }
+    },
+    "fixedStep": {
+      "dept1": "부서 관리자 승인",
+      "acct": "자산회계 승인"
+    }
   }
 }

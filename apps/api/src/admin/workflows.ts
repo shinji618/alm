@@ -9,7 +9,7 @@ import { AlmError, E } from '../common/errors';
 import { Check, UUID } from '../common/validate';
 import type { Principal } from '../platform/identity/principal';
 import { parseDefinition, planSteps, sameDefinition, toStored, validateDefinition, WorkflowDef } from '../platform/workflow';
-import { ALM_CATALOG, almResolver, defaultDefinition, SimCtx, SUBJECTS } from './workflowAdapter';
+import { ALM_CATALOG, almResolver, defaultDefinition, FIXED_FLOWS, SimCtx, SUBJECTS } from './workflowAdapter';
 
 const iso = (d: unknown) => (d instanceof Date ? d.toISOString() : d ? String(d) : undefined);
 const clean = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== null)) as T;
@@ -44,6 +44,7 @@ export async function listWorkflows(c: PoolClient) {
   const rows = (await c.query(`SELECT ${COLS} ${FROM} WHERE d.status IN ('DRAFT', 'PUBLISHED')`)).rows;
   return {
     appliedToApprovals: APPLIED_TO_APPROVALS,
+    fixedFlows: FIXED_FLOWS,   // 정의로 바꿀 수 없는 고정 흐름(읽기 전용 표시)
     items: SUBJECTS.map((s) => {
       const pub = rows.find((r) => r.subject_type === s.code && r.status === 'PUBLISHED');
       const draft = rows.find((r) => r.subject_type === s.code && r.status === 'DRAFT');

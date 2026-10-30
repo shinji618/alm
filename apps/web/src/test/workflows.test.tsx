@@ -44,7 +44,7 @@ describe('workflow definitions (ADM-070)', () => {
     mockFetch((url, init) => {
       const m = init.method ?? 'GET';
       if (url.endsWith('/admin/workflows') && m === 'GET') {
-        return { body: { appliedToApprovals: false, items: [{ subjectType: 'NEW_ASSET', label: 'New asset registration', name: detail.draft?.name ?? 'New asset approval',
+        return { body: { appliedToApprovals: false, fixedFlows: [{ code: 'ALM-111', label: '자산 할당(ALM-111)', note: '서버 문구', steps: [{ key: 'dept1', label: '부서 관리자 승인', resolver: 'DEPT_MANAGER_RESPONSIBLE' }, { key: 'acct', label: '자산회계 승인', resolver: 'ROLE_ASSET_ACCOUNTANT' }] }], items: [{ subjectType: 'NEW_ASSET', label: 'New asset registration', name: detail.draft?.name ?? 'New asset approval',
           steps: STEPS, hasDraft: !!detail.draft, draftVersion: detail.draft?.versionNo, usesDefault: !detail.published }] } };
       }
       if (url.endsWith('/admin/workflows/catalog')) return { body: CATALOG };
@@ -73,6 +73,12 @@ describe('workflow definitions (ADM-070)', () => {
     const row = (await screen.findByText('New asset registration')).closest('tr')!;
     expect(within(row).getByText('Built-in default')).toBeInTheDocument();
     expect(within(row).getByText('Department manager → Asset accounting')).toBeInTheDocument();
+    // 고정 승인 흐름(ALM-111·112)은 읽기 전용: 영문으로 번역되고, 눌러도 편집 창이 열리지 않는다
+    const fixed = (await screen.findByText('Asset assignment (ALM-111)')).closest('tr')!;
+    expect(within(fixed).getByText('Department manager approval → Asset accounting approval')).toBeInTheDocument();
+    expect(within(fixed).getByText('Read-only')).toBeInTheDocument();
+    await userEvent.setup().click(fixed);
+    expect(screen.queryByRole('dialog')).toBeNull();
 
     await user.click(row);
     const drawer = await screen.findByRole('dialog');

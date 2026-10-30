@@ -1850,8 +1850,20 @@ draftVersion | int | N | 초안 버전
 usesDefault | bool | Y | 기본 정의를 쓰는 중
 updatedAt | datetime | N | 마지막 수정
 ''')
+schema('WorkflowFixedStep', '고정 승인 흐름의 단계', '''
+key | string | Y | 단계 식별자
+label | string | Y | 단계 이름
+resolver | string | Y | 담당자 규칙 코드
+''')
+schema('WorkflowFixedFlow', '고정 승인 흐름(읽기 전용)', '''
+code | string | Y | 화면 코드(ALM-111, ALM-112)
+label | string | Y | 이름
+note | string | Y | 어떤 승인인가
+steps | [WorkflowFixedStep] | Y | 단계(코드에 고정, 정의로 바꿀 수 없음)
+''')
 schema('WorkflowList', '워크플로 목록', '''
 appliedToApprovals | bool | Y | 게시한 정의가 승인 실행에 쓰이는가
+fixedFlows | [WorkflowFixedFlow] | Y | 정의로 바꿀 수 없는 고정 승인 흐름(ALM-111 할당·ALM-112 등록). 읽기 전용 표시
 items | [WorkflowSummary] | Y | 대상 유형별
 ''')
 schema('WorkflowSubject', '대상 유형', '''

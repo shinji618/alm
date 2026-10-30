@@ -19482,6 +19482,46 @@ components:
       - steps
       - hasDraft
       - usesDefault
+    WorkflowFixedStep:
+      type: object
+      description: 고정 승인 흐름의 단계
+      properties:
+        key:
+          type: string
+          description: 단계 식별자
+        label:
+          type: string
+          description: 단계 이름
+        resolver:
+          type: string
+          description: 담당자 규칙 코드
+      required:
+      - key
+      - label
+      - resolver
+    WorkflowFixedFlow:
+      type: object
+      description: 고정 승인 흐름(읽기 전용)
+      properties:
+        code:
+          type: string
+          description: 화면 코드(ALM-111, ALM-112)
+        label:
+          type: string
+          description: 이름
+        note:
+          type: string
+          description: 어떤 승인인가
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowFixedStep'
+          description: 단계(코드에 고정, 정의로 바꿀 수 없음)
+      required:
+      - code
+      - label
+      - note
+      - steps
     WorkflowList:
       type: object
       description: 워크플로 목록
@@ -19489,6 +19529,11 @@ components:
         appliedToApprovals:
           type: boolean
           description: 게시한 정의가 승인 실행에 쓰이는가
+        fixedFlows:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowFixedFlow'
+          description: 정의로 바꿀 수 없는 고정 승인 흐름(ALM-111 할당·ALM-112 등록). 읽기 전용 표시
         items:
           type: array
           items:
@@ -19496,6 +19541,7 @@ components:
           description: 대상 유형별
       required:
       - appliedToApprovals
+      - fixedFlows
       - items
     WorkflowSubject:
       type: object

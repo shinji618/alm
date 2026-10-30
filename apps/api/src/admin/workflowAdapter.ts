@@ -44,6 +44,19 @@ export function defaultDefinition(subjectType: string): WorkflowDef {
   return { subjectType, name: `${subject?.label ?? subjectType} 승인`, steps, options };
 }
 
+// ---- 정의로 바꿀 수 없는 고정 승인 흐름(화면에는 읽기 전용으로만 보여 준다) ----
+//   ALM-111 할당 화면(코스트센터 변경 → 이관·변경 요청)과 ALM-112 등록 화면(SAP 등록 체크 → 신규 자산 요청)이 만드는 승인은
+//   requests/approvalAdapter.ts startDefaultFlow가 단계를 고정한다(부서 관리자 → 자산회계). 정의(워크플로 관리)와 무관하다
+export interface FixedFlow { code: string; label: string; note: string; steps: { key: string; label: string; resolver: string }[] }
+const FIXED_STEPS = [
+  { key: 'dept1', label: '부서 관리자 승인', resolver: 'DEPT_MANAGER_RESPONSIBLE' },
+  { key: 'acct', label: '자산회계 승인', resolver: 'ROLE_ASSET_ACCOUNTANT' },
+];
+export const FIXED_FLOWS: FixedFlow[] = [
+  { code: 'ALM-111', label: '자산 할당(ALM-111)', note: '할당 화면에서 코스트센터가 바뀌면 자동으로 만들어지는 이관·변경 요청의 승인', steps: FIXED_STEPS },
+  { code: 'ALM-112', label: '자산 등록(ALM-112)', note: 'SAP 등록을 체크해 자산을 등록하면 만들어지는 신규 자산 요청의 승인', steps: FIXED_STEPS },
+];
+
 // ---- 시험 실행 문맥과 담당자 풀이 ----
 export interface SimCtx { sourceCostCenterId?: string; targetCostCenterId?: string; companyId?: string }
 

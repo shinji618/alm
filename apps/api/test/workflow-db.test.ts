@@ -209,6 +209,8 @@ test('API: 목록·선택값·상세, 권한(시스템 관리자만)', { skip },
   const list = await call('adm', 'GET', WF);
   assert.equal(list.status, 200);
   assert.equal(list.body.appliedToApprovals, true);
+  assert.deepEqual(list.body.fixedFlows.map((f: any) => [f.code, f.steps.map((s: any) => s.resolver)]),
+    [['ALM-111', ['DEPT_MANAGER_RESPONSIBLE', 'ROLE_ASSET_ACCOUNTANT']], ['ALM-112', ['DEPT_MANAGER_RESPONSIBLE', 'ROLE_ASSET_ACCOUNTANT']]], '고정 흐름은 읽기 전용으로 목록에 실린다');
   assert.deepEqual(list.body.items.map((i: any) => [i.subjectType, i.usesDefault, i.hasDraft]), ['NEW_ASSET', 'CHANGE', 'TRANSFER', 'RETIRE', 'SALE'].map((t) => [t, true, false]));
   const cat = await call('adm', 'GET', `${WF}/catalog`);
   assert.equal(cat.body.maxSteps, 5);
