@@ -148,6 +148,7 @@ test('IF-AA-01: 새로 만들기·태그로 연결·변경 이력·비활성·E1
     { asset_tag: 'BSG-0001', sap_asset_no: '100002', serial_no: 'SN-ALM-1', source: 'MANUAL', status: 'IN_USE', is_capitalized: true, category_code: 'NB' },
     { asset_tag: 'S100001', sap_asset_no: '100001', serial_no: null, source: 'SAP', status: 'IN_USE', is_capitalized: true, category_code: 'SAP-UNCLASSIFIED' },
   ], 'ALM 기준 필드(시리얼)는 덮지 않음');
+  assert.equal((await q(`SELECT name FROM category WHERE category_code = 'SAP-UNCLASSIFIED'`))[0].name, 'SAP Unclassified', '시스템이 만드는 카테고리 이름은 영문');
 
   // 같은 값 → SKIPPED, 비활성일 → RETIRED + 이벤트
   const s = await post('/sap/assets:upsert', { batchId: 'AA-2', records: [asset('100001'), asset('100002', { deactDate: '2026-10-01', inventoryNo: 'BSG-0001' })] });
