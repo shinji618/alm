@@ -1601,6 +1601,10 @@
     "fixedStep": {
       "dept1": "Department manager approval",
       "acct": "Asset accounting approval"
-    }
+    },
+    "fixedDetailTitle": "{{label}} — approval flow",
+    "fixedViewNote": "Read-only. This flow is fixed in the application and is not set by a workflow definition, so it cannot be edited or published here.",
+    "on": "On",
+    "off": "Off"
   }
 }

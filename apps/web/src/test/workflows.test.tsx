@@ -44,7 +44,7 @@ describe('workflow definitions (ADM-070)', () => {
     mockFetch((url, init) => {
       const m = init.method ?? 'GET';
       if (url.endsWith('/admin/workflows') && m === 'GET') {
-        return { body: { appliedToApprovals: false, fixedFlows: [{ code: 'ALM-111', label: '자산 할당(ALM-111)', note: '서버 문구', steps: [{ key: 'dept1', label: '부서 관리자 승인', resolver: 'DEPT_MANAGER_RESPONSIBLE' }, { key: 'acct', label: '자산회계 승인', resolver: 'ROLE_ASSET_ACCOUNTANT' }] }], items: [{ subjectType: 'NEW_ASSET', label: 'New asset registration', name: detail.draft?.name ?? 'New asset approval',
+        return { body: { appliedToApprovals: false, fixedFlows: [{ code: 'ALM-111', label: '자산 할당(ALM-111)', note: '서버 문구', fixerCannotReapprove: true, steps: [{ key: 'dept1', label: '부서 관리자 승인', resolver: 'DEPT_MANAGER_RESPONSIBLE', fallback: 'PROXY_ASSET_ACCOUNTANT', mergeSame: true }, { key: 'acct', label: '자산회계 승인', resolver: 'ROLE_ASSET_ACCOUNTANT', fallback: 'NONE', mergeSame: false }] }], items: [{ subjectType: 'NEW_ASSET', label: 'New asset registration', name: detail.draft?.name ?? 'New asset approval',
           steps: STEPS, hasDraft: !!detail.draft, draftVersion: detail.draft?.versionNo, usesDefault: !detail.published }] } };
       }
       if (url.endsWith('/admin/workflows/catalog')) return { body: CATALOG };
@@ -78,7 +78,12 @@ describe('workflow definitions (ADM-070)', () => {
     expect(within(fixed).getByText('Department manager approval → Asset accounting approval')).toBeInTheDocument();
     expect(within(fixed).getByText('Read-only')).toBeInTheDocument();
     await userEvent.setup().click(fixed);
-    expect(screen.queryByRole('dialog')).toBeNull();
+    const view = await screen.findByRole('dialog');
+    expect(await within(view).findAllByTestId('wf-fixed-step')).toHaveLength(2);
+    expect(within(view).getByText(/Read-only\. This flow is fixed/)).toBeInTheDocument();
+    expect(within(view).queryByRole('textbox')).toBeNull();
+    expect(within(view).queryByRole('button', { name: /Save draft|Publish/ })).toBeNull();
+    await userEvent.setup().click(within(view).getByRole('button', { name: /close/i }));
 
     await user.click(row);
     const drawer = await screen.findByRole('dialog');

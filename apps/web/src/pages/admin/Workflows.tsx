@@ -15,7 +15,7 @@ export interface WfVersion { id: string; subjectType: string; versionNo: number;
   publishedAt?: string; publishedByName?: string; updatedAt?: string; updatedByName?: string; version: number }
 export interface WfVersionRow { versionNo: number; status: string; name: string; changeNote?: string; publishedAt?: string; publishedByName?: string; updatedAt?: string; updatedByName?: string }
 export interface WfSummary { subjectType: string; label: string; name: string; steps: WfStep[]; publishedVersion?: number; hasDraft: boolean; draftVersion?: number; usesDefault: boolean; updatedAt?: string }
-export interface WfFixedFlow { code: string; label: string; note: string; steps: { key: string; label: string; resolver: string }[] }
+export interface WfFixedFlow { code: string; label: string; note: string; steps: WfStep[]; fixerCannotReapprove: boolean }
 export interface WfList { appliedToApprovals: boolean; fixedFlows?: WfFixedFlow[]; items: WfSummary[] }
 export interface WfDetail { subjectType: string; label: string; appliedToApprovals: boolean; published?: WfVersion; draft?: WfVersion;
   defaultDefinition: { name: string; steps: WfStep[]; options: WfOptions }; versions: WfVersionRow[] }
@@ -41,6 +41,7 @@ const stepName = (t: T, st: { key: string; label: string }) => (KO_STEP[st.key] 
 export function Workflows() {
   const { t } = useTranslation();
   const [open, setOpen] = useState<string>();
+  const [openFixed, setOpenFixed] = useState<string>();
   const list = useAsync((sig) => api.get<WfList>('/admin/workflows', sig), []);
   const columns = useMemo<Column<WfSummary>[]>(() => [
     { key: 'label', label: t('wf.colSubject'), render: (x) => subjectName(t, x.subjectType, x.label) },
@@ -59,6 +60,7 @@ export function Workflows() {
     { key: 'mode', label: t('wf.colInUse'), render: () => <StatusPill tone="neutral">{t('wf.readOnly')}</StatusPill> },
   ], [t]);
   const current = list.data?.items.find((x) => x.subjectType === open);
+  const fixedCurrent = list.data?.fixedFlows?.find((x) => x.code === openFixed);
   return (
     <>
       <ViewHeader crumb={t('company.crumb')} title={t('wf.title')} description={t('wf.description')} />
@@ -71,11 +73,49 @@ export function Workflows() {
       </Panel>
       {!!list.data?.fixedFlows?.length && (
         <Panel title={t('wf.fixedTitle')} subtitle={t('wf.fixedNote')} padded={false}>
-          <DataTable rows={list.data.fixedFlows} columns={fixedColumns} rowId={(x) => x.code} empty={<EmptyState message={t('common.noResults')} />} />
+          <DataTable rows={list.data.fixedFlows} columns={fixedColumns} rowId={(x) => x.code} onRowClick={(x) => setOpenFixed(x.code)} empty={<EmptyState message={t('common.noResults')} />} />
         </Panel>
       )}
+      {fixedCurrent && <FixedViewer flow={fixedCurrent} onClose={() => setOpenFixed(undefined)} />}
       {current && <Editor subject={current.subjectType} label={subjectName(t, current.subjectType, current.label)} onClose={() => setOpen(undefined)} onChanged={() => list.reload()} />}
     </>
+  );
+}
+
+// 고정 승인 흐름의 상세(읽기 전용 표시). 입력란·저장 버튼 없이 값만 보여 준다
+function FixedViewer({ flow, onClose }: { flow: WfFixedFlow; onClose: () => void }) {
+  const { t } = useTranslation();
+  const catalog = useAsync((sig) => api.get<WfCatalog>('/admin/workflows/catalog', sig), []);
+  const cat = catalog.data;
+  const title = t('wf.fixedDetailTitle', { label: t(`wf.fixed.${flow.code}.label`, { defaultValue: flow.label }) });
+  const resolverLabel = (code: string) => byCode(t, 'resolverName', code, cat?.resolvers.find((r) => r.code === code)?.label ?? code);
+  const fallbackLabel = (code: string) => (code === 'SKIP' ? t('wf.fbSkip') : code === 'NONE' ? t('wf.fbNone') : byCode(t, 'fallbackName', code, cat?.fallbacks.find((x) => x.code === code)?.label ?? code));
+  const onOff = (v: boolean) => t(v ? 'wf.on' : 'wf.off');
+  return (
+    <Drawer open onClose={onClose} label={title} title={title} badges={<StatusPill tone="neutral">{t('wf.readOnly')}</StatusPill>}>
+      <div className={s.notice} role="note">{t('wf.fixedViewNote')}</div>
+      <p>{t(`wf.fixed.${flow.code}.note`, { defaultValue: flow.note })}</p>
+      <h3>{t('wf.steps')}</h3>
+      {flow.steps.map((st, i) => {
+        const last = i === flow.steps.length - 1;
+        return (
+          <div key={st.key} className={s.notice} data-testid="wf-fixed-step">
+            <div className={s.headRow}><strong>{t('wf.step', { n: i + 1 })}</strong><span>{t(`wf.fixedStep.${st.key}`, { defaultValue: st.label })}</span>{last && <StatusPill tone="info">{t('wf.finalStep')}</StatusPill>}</div>
+            <div>{t('wf.resolver')}: {resolverLabel(st.resolver)}</div>
+            <div>{t('wf.fallback')}: {fallbackLabel(st.fallback)}</div>
+            {!last && <div>{t('wf.mergeSame')}: {onOff(st.mergeSame)}</div>}
+          </div>
+        );
+      })}
+      <h3>{t('wf.options')}</h3>
+      <div>{t('wf.optFixer')}: {onOff(flow.fixerCannotReapprove)}</div>
+      {cat && (
+        <div className={s.notice}>
+          <strong>{t('wf.mandatory')}</strong>
+          {cat.mandatoryRules.map((r) => <div key={r.code}>{r.code} · {byCode(t, 'rule', r.code, r.label)}</div>)}
+        </div>
+      )}
+    </Drawer>
   );
 }
 

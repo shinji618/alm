@@ -19495,10 +19495,18 @@ components:
         resolver:
           type: string
           description: 담당자 규칙 코드
+        fallback:
+          type: string
+          description: 담당자가 없을 때 처리(SKIP·NONE·대리 규칙 코드)
+        mergeSame:
+          type: boolean
+          description: 앞 단계와 같은 담당자면 함께 승인
       required:
       - key
       - label
       - resolver
+      - fallback
+      - mergeSame
     WorkflowFixedFlow:
       type: object
       description: 고정 승인 흐름(읽기 전용)
@@ -19517,11 +19525,15 @@ components:
           items:
             $ref: '#/components/schemas/WorkflowFixedStep'
           description: 단계(코드에 고정, 정의로 바꿀 수 없음)
+        fixerCannotReapprove:
+          type: boolean
+          description: 전기 오류를 보정한 사람은 그 재승인을 할 수 없다
       required:
       - code
       - label
       - note
       - steps
+      - fixerCannotReapprove
     WorkflowList:
       type: object
       description: 워크플로 목록
