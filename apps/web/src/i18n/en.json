@@ -1606,5 +1606,29 @@
     "fixedViewNote": "Read-only. This flow is fixed in the application and is not set by a workflow definition, so it cannot be edited or published here.",
     "on": "On",
     "off": "Off"
+  },
+  "sysText": {
+    "reasonRegister": "ALM-112 Asset registration (SAP registration check)",
+    "reasonChange": "ALM-111 Asset information change (SAP master update)",
+    "reasonAssign": "ALM-111 Cost center change due to assignment",
+    "proxyAssetAccounting": "[Proxy] No department manager → decided by Asset Accounting",
+    "proxyAssetManager": "[Proxy] No department manager → decided by Asset Manager",
+    "merged": "[Same approver] Approved together with step {{n}}",
+    "postingExhausted": "SAP posting attempts exceeded {{n}} (no result reply)",
+    "ifName": {
+      "IF-MD-01": "Org & code master",
+      "IF-AA-01": "Asset master delta",
+      "IF-AA-02": "Asset values",
+      "IF-MM-01": "Asset purchase orders",
+      "IF-MM-03": "Goods receipt",
+      "IF-AA-03": "Asset creation",
+      "IF-AA-04": "Asset master change",
+      "IF-AA-05": "Asset transfer",
+      "IF-AA-06": "Retirement / sale",
+      "IF-AA-07": "Inventory count result",
+      "IF-MM-02": "Purchase order creation",
+      "IF-RC-01": "Reconciliation extract",
+      "IF-OP-01": "Manual run request"
+    }
   }
 }

@@ -7,6 +7,7 @@ import { AssetTag, Button, Drawer, EmptyState, FormGrid, KeyValue, Panel, Select
 import { api, ApiError } from '@/lib/api';
 import { formatDate, formatDateTime, formatUsd, type Lang } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
+import { sysText } from '@/lib/serverText';
 import { useSession } from '@/lib/session';
 import { statusTone, type ApprovalStep, type RequestDetail as Detail } from './types';
 import s from '../assets/assets.module.css';
@@ -129,7 +130,7 @@ function Values({ d, lang }: { d: Detail; lang: Lang }) {
   const masked = t('request.detail.masked');
   const amount = (v?: number) => (v !== undefined ? <span className="num">{formatUsd(v, 2)}</span> : d.amountMasked ? masked : undefined);
   const items: { label: string; value: ReactNode }[] = [
-    { label: t('request.field.reason'), value: q.reason },
+    { label: t('request.field.reason'), value: sysText(t, q.reason) },
     { label: t('request.field.sapAsset'), value: d.asset?.sapAssetNo ? <span className="mono">{d.asset.companyCode}/{d.asset.sapAssetNo}</span> : t('asset.fin.notInSap') },
   ];
   switch (q.requestType) {
@@ -169,7 +170,7 @@ function Approvals({ steps }: { steps: ApprovalStep[] }) {
       body: (
         <div>
           <strong>{t(`request.decision.${x.decision}`)}</strong>{x.approverName && <span> · {x.approverName}</span>}
-          {x.comment && <div className="small">{x.comment}</div>}
+          {x.comment && <div className="small">{sysText(t, x.comment)}</div>}
         </div>
       ),
     }))} />
@@ -196,7 +197,7 @@ function Posting({ d }: { d: Detail }) {
       ]} />
       {p.messages.length > 0 && (
         <ul className="small" style={{ margin: '8px 0 0', paddingLeft: 16 }}>
-          {p.messages.map((m, i) => <li key={i}><span className="mono">{m.type} {m.id} {m.number}</span> {m.text}</li>)}
+          {p.messages.map((m, i) => <li key={i}><span className="mono">{m.type} {m.id} {m.number}</span> {sysText(t, m.text)}</li>)}
         </ul>
       )}
     </>

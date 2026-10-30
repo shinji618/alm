@@ -9,6 +9,7 @@ import {
 } from '@/components/ui';
 import { api, ApiError, qs } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
+import { ifName, sysText } from '@/lib/serverText';
 import type { Tone } from '@/lib/status';
 import { useAsync } from '@/lib/useAsync';
 import { useSession } from '@/lib/session';
@@ -80,7 +81,7 @@ function Status({ onRuns, onQueue }: { onRuns: (iface: string) => void; onQueue:
   if (!d) return <span className="muted">{t('common.loading')}</span>;
   const columns: Column<IfStatus>[] = [
     { key: 'interfaceId', label: 'IF', render: (x) => <span className="mono">{x.interfaceId}</span> },
-    { key: 'name', label: t('sap.col.name') },
+    { key: 'name', label: t('sap.col.name'), render: (x) => ifName(t, x.interfaceId, x.name) },
     { key: 'direction', label: t('sap.col.direction'), render: (x) => t(`sap.direction.${x.direction}`) },
     { key: 'everyMinutes', label: t('sap.col.every'), render: (x) => every(t, x.everyMinutes) },
     { key: 'lastRunAt', label: t('sap.col.lastRun'), render: (x) => formatDateTime(x.lastRunAt) },
@@ -189,7 +190,7 @@ function RunDrawer({ run, onClose }: { run: RunRow; onClose: () => void }) {
         { key: 'recordKey', label: t('sap.col.key'), render: (x) => <span className="mono small">{x.recordKey}</span> },
         { key: 'result', label: t('sap.col.result') },
         { key: 'errorCode', label: t('sap.col.code'), render: (x) => <span className="mono">{x.errorCode ?? ''}</span> },
-        { key: 'message', label: t('sap.col.message'), render: (x) => <span className="small">{x.message}</span> },
+        { key: 'message', label: t('sap.col.message'), render: (x) => <span className="small">{sysText(t, x.message)}</span> },
       ]} />
     </Drawer>
   );
@@ -207,7 +208,7 @@ function Postings() {
     { key: 'status', label: t('sap.col.status'), render: (x) => <StatusPill tone={postTone[x.status]}>{t(`request.posting.statuses.${x.status}`)}</StatusPill> },
     { key: 'assetTag', label: t('request.col.asset'), render: (x) => <span className="mono">{x.assetTag ?? '—'}</span> },
     { key: 'attemptCount', label: t('sap.col.attempts'), align: 'right' },
-    { key: 'lastMessage', label: t('sap.col.message'), render: (x) => <span className="small">{x.lastMessage}</span> },
+    { key: 'lastMessage', label: t('sap.col.message'), render: (x) => <span className="small">{sysText(t, x.lastMessage)}</span> },
     { key: 'updatedAt', label: t('sap.col.updated'), render: (x) => formatDateTime(x.updatedAt) },
   ], [t]);
   return (
@@ -263,7 +264,7 @@ function PostingDrawer({ id, onClose, onChanged }: { id: string; onClose: () => 
             { label: t('request.posting.resultAt'), value: formatDateTime(x.summary.resultAt) },
           ]} />
           {x.summary.messages.length > 0 && (
-            <ul className="small" style={{ paddingLeft: 16 }}>{x.summary.messages.map((m, i) => <li key={i}><span className="mono">{m.type} {m.id} {m.number}</span> {m.text}</li>)}</ul>
+            <ul className="small" style={{ paddingLeft: 16 }}>{x.summary.messages.map((m, i) => <li key={i}><span className="mono">{m.type} {m.id} {m.number}</span> {sysText(t, m.text)}</li>)}</ul>
           )}
           <details><summary className="small">{t('sap.payload')}</summary><pre className="small mono" style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(x.payload, null, 2)}</pre></details>
           {x.summary.status === 'CLAIMED' && (

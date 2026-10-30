@@ -10,6 +10,7 @@ import { api, ApiError } from '@/lib/api';
 import { formatDate, formatDateTime, formatUsd, type Lang } from '@/lib/format';
 import { stageCodeColorVar, statusCodeTone } from '@/lib/status';
 import { useAsync } from '@/lib/useAsync';
+import { sysText } from '@/lib/serverText';
 import { useSession } from '@/lib/session';
 import type { AssetDetail as Detail, ChangeResult, Lookups, LookupItem } from './types';
 import { RequestDrawer } from '../requests/RequestDrawer';
@@ -239,7 +240,7 @@ function History({ id }: { id: string; lang: Lang }) {
       body: (
         <div>
           <strong>{e.eventType}</strong>{e.requestNo && <span className="small muted"> · {e.requestNo}</span>}{e.sapDocumentNo && <span className="small muted"> · SAP {e.sapDocumentNo}</span>}
-          {e.reason && <div className="small">{e.reason}</div>}
+          {e.reason && <div className="small">{sysText(t, e.reason)}</div>}
           {e.changes && (
             <ul className="small muted" style={{ margin: '4px 0 0', paddingLeft: 16 }}>
               {Object.entries(e.changes).map(([k, v]) => (
