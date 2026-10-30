@@ -14,10 +14,11 @@ import '@fontsource/jetbrains-mono/600.css';
 import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
 import '@/styles/global.css';
 import '@/i18n';
-import { applyTheme, getThemePref } from '@/lib/theme';
+import { applyPalette, applyTheme, getPalettePref, getThemePref } from '@/lib/theme';
 import { App } from './App';
 
 applyTheme(getThemePref());
+applyPalette(getPalettePref());
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -9,6 +9,9 @@
     "themeSystem": "System",
     "themeLight": "Light",
     "themeDark": "Dark",
+    "palette": "Color theme",
+    "paletteGreen": "Green",
+    "paletteBlue": "Blue",
     "signOut": "Sign out",
     "loadingSession": "Checking your sign-in…",
     "sessionError": "Could not load your session: {{message}}"

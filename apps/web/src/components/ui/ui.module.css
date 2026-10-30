@@ -589,3 +589,33 @@ textarea.input {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ───────── Blue palette: 형태 (data-palette="blue") — Green에는 영향 없음 ───────── */
+:global(:root[data-palette='blue']) .btn { border-radius: 7px; }
+:global(:root[data-palette='blue']) .btnPrimary { background: var(--grad); border-color: transparent; color: #fff; box-shadow: 0 4px 14px rgba(91, 92, 230, 0.35); }
+:global(:root[data-palette='blue']) .btnPrimary:hover:not(:disabled) { filter: brightness(1.07); }
+:global(:root[data-palette='blue']) .pill { border-radius: 999px; padding: 2px 9px; font-size: 12px; }
+:global(:root[data-palette='blue']) .tag { border-radius: 4px; padding: 2px 7px; }
+:global(:root[data-palette='blue']) .panel { border-radius: 10px; box-shadow: var(--shadow); }
+:global(:root[data-palette='blue']) .panelTitle { font-weight: 700; }
+:global(:root[data-palette='blue']) .kpi { position: relative; overflow: hidden; border-radius: 10px; box-shadow: var(--shadow); padding: 14px 16px 14px 19px; }
+:global(:root[data-palette='blue']) .kpi::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); }
+:global(:root[data-palette='blue']) .kpi:nth-child(5n + 1)::after { background: var(--sky); }
+:global(:root[data-palette='blue']) .kpi:nth-child(5n + 2)::after { background: var(--accent); }
+:global(:root[data-palette='blue']) .kpi:nth-child(5n + 3)::after { background: var(--violet); }
+:global(:root[data-palette='blue']) .kpi:nth-child(5n + 4)::after { background: var(--indigo); }
+:global(:root[data-palette='blue']) .kpi:nth-child(5n + 5)::after { background: #a58bf0; }
+:global(:root[data-palette='blue']) .kpi.kpiWarn::after { background: var(--warn); }
+:global(:root[data-palette='blue']) .kpi.kpiBad::after { background: var(--bad); }
+:global(:root[data-palette='blue']) .kpiValue { font-size: 27px; font-weight: 700; }
+:global(:root[data-palette='blue']) .chip { height: 28px; padding: 0 11px; border-radius: 999px; font-size: 12.5px; }
+:global(:root[data-palette='blue']) .chipOn { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+:global(:root[data-palette='blue']) .tabOn { color: var(--accent); }
+:global(:root[data-palette='blue']) .drawer { box-shadow: -10px 0 40px rgba(20, 25, 80, 0.25); }
+:global(:root[data-palette='blue']) .drawerHead { background: var(--drawer-head); color: #fff; border-bottom: 0; }
+:global(:root[data-palette='blue']) .drawerTitle { color: #fff; }
+:global(:root[data-palette='blue']) .drawerHead :global(.muted) { color: rgba(255, 255, 255, 0.8); }
+:global(:root[data-palette='blue']) .bar { border-radius: 5px; }
+:global(:root[data-palette='blue']) .bar > span[style*='var(--accent)'] { background: var(--grad) !important; }
+:global(:root[data-palette='blue']) .timeline { border-left-width: 2px; }
+:global(:root[data-palette='blue']) .event::before { background: var(--grad); border-color: var(--surface); }

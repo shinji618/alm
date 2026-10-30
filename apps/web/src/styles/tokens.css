@@ -128,3 +128,130 @@
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.3);
   color-scheme: dark;
 }
+
+/*
+ * Blue palette (PAS Application) — <html data-palette="blue">
+ * 기본(Green) 값은 그대로 두고, 같은 변수 이름에 Blue 값만 덮어쓴다. 라이트·다크는 Green과 같은 방식(OS 설정 / data-theme).
+ * 색 말고 형태(그라디언트 메뉴·알약 칩·둥근 카드 등)는 각 *.module.css 끝의 'Blue palette' 블록에 있다.
+ */
+:root[data-palette='blue'] {
+  /* color — light */
+  --bg: #f2f3fb;
+  --surface: #ffffff;
+  --sunk: #e9ebf8;
+  --line: #d8dcf0;
+  --ink: #141a3d;
+  --muted: #586088;
+  --faint: #8a91b5;
+  --accent: #3d4fd6;
+  --accent-ink: #ffffff;
+  --accent-soft: #e3e7fd;
+  --tag: #e6c449;
+  --tag-ink: #2a2306;
+  --ok: #1f8f6f;
+  --ok-soft: #dcf3ec;
+  --warn: #a96a05;
+  --warn-soft: #fbecc9;
+  --bad: #c23b52;
+  --bad-soft: #fbe0e5;
+  --info: #2b78d6;
+  --info-soft: #dfebfb;
+  --rail: #121743;
+  --rail-2: #1a2160;
+  --rail-ink: #b9c0ea;
+  --rail-hi: #ffffff;
+  --rail-sub: #7f89d6;
+  --rail-line: rgba(255, 255, 255, 0.1);
+  --scrim: rgba(14, 18, 56, 0.4);
+  --shadow: 0 1px 2px rgba(25, 30, 90, 0.06), 0 6px 20px rgba(25, 30, 90, 0.07);
+  --sky: #2ba3ee;
+  --violet: #7a5ae0;
+  --indigo: #2d3a8c;
+  --grad: linear-gradient(135deg, #2ba3ee 0%, #6f6ae6 55%, #7a5ae0 100%);
+  --grad-nav: linear-gradient(90deg, rgba(43, 163, 238, 0.28), rgba(122, 90, 224, 0.28));
+  --drawer-head: linear-gradient(135deg, #1a2160, #3a3fa8 60%, #6a56d6);
+  --stage-plan: #2ba3ee;
+  --stage-procure: #4a7ee8;
+  --stage-deploy: #7a5ae0;
+  --stage-operate: #3d3fb5;
+  --stage-maintain: #a58bf0;
+  --stage-retire: #8a91b5;
+  --rail-w: 240px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-palette='blue']:not([data-theme='light']) {
+    --bg: #0c1030;
+    --surface: #141a4a;
+    --sunk: #1b2260;
+    --line: #2a3274;
+    --ink: #e8eafc;
+    --muted: #a3abd8;
+    --faint: #737cb0;
+    --accent: #8da0ff;
+    --accent-ink: #0c1030;
+    --accent-soft: #232c7a;
+    --tag: #e2bf3e;
+    --tag-ink: #231d04;
+    --ok: #5fd0ac;
+    --ok-soft: #173d3a;
+    --warn: #eab356;
+    --warn-soft: #3c3014;
+    --bad: #f08099;
+    --bad-soft: #47182b;
+    --info: #7db4f5;
+    --info-soft: #1a3366;
+    --rail: #080b26;
+    --rail-2: #10164a;
+    --rail-ink: #b9c0ea;
+    --rail-hi: #ffffff;
+    --rail-sub: #7f89d6;
+    --rail-line: rgba(255, 255, 255, 0.1);
+    --scrim: rgba(0, 0, 0, 0.55);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 6px 20px rgba(0, 0, 0, 0.3);
+    --sky: #5cc0f5;
+    --violet: #a58bf0;
+    --indigo: #8da0ff;
+    --stage-operate: #6a76e8;
+    --stage-retire: #737cb0;
+    color-scheme: dark;
+  }
+}
+
+:root[data-palette='blue'][data-theme='dark'] {
+  --bg: #0c1030;
+  --surface: #141a4a;
+  --sunk: #1b2260;
+  --line: #2a3274;
+  --ink: #e8eafc;
+  --muted: #a3abd8;
+  --faint: #737cb0;
+  --accent: #8da0ff;
+  --accent-ink: #0c1030;
+  --accent-soft: #232c7a;
+  --tag: #e2bf3e;
+  --tag-ink: #231d04;
+  --ok: #5fd0ac;
+  --ok-soft: #173d3a;
+  --warn: #eab356;
+  --warn-soft: #3c3014;
+  --bad: #f08099;
+  --bad-soft: #47182b;
+  --info: #7db4f5;
+  --info-soft: #1a3366;
+  --rail: #080b26;
+  --rail-2: #10164a;
+  --rail-ink: #b9c0ea;
+  --rail-hi: #ffffff;
+  --rail-sub: #7f89d6;
+  --rail-line: rgba(255, 255, 255, 0.1);
+  --scrim: rgba(0, 0, 0, 0.55);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 6px 20px rgba(0, 0, 0, 0.3);
+  --sky: #5cc0f5;
+  --violet: #a58bf0;
+  --indigo: #8da0ff;
+  --stage-operate: #6a76e8;
+  --stage-retire: #737cb0;
+  color-scheme: dark;
+}

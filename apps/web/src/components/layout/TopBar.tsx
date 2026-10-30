@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import s from './layout.module.css';
 import { Button } from '../ui';
-import { applyTheme, getThemePref, type ThemePref } from '@/lib/theme';
+import { applyPalette, applyTheme, getPalettePref, getThemePref, type PalettePref, type ThemePref } from '@/lib/theme';
 import { setLanguage } from '@/i18n';
 
 export interface TopBarProps {
@@ -20,6 +20,7 @@ export function TopBar({ userName, userRole, onMenu, onSearch, onSignOut }: TopB
   const { t, i18n } = useTranslation();
   const [menu, setMenu] = useState(false);
   const [theme, setTheme] = useState<ThemePref>(getThemePref());
+  const [palette, setPalette] = useState<PalettePref>(getPalettePref());
   const ref = useRef<HTMLDivElement>(null);
   const initials = userName
     .split(' ')
@@ -85,6 +86,20 @@ export function TopBar({ userName, userRole, onMenu, onSearch, onSignOut }: TopB
                 <option value="system">{t('app.themeSystem')}</option>
                 <option value="light">{t('app.themeLight')}</option>
                 <option value="dark">{t('app.themeDark')}</option>
+              </select>
+            </label>
+            <label className={s.menuRow}>
+              {t('app.palette')}
+              <select
+                value={palette}
+                onChange={(e) => {
+                  const v = e.target.value as PalettePref;
+                  setPalette(v);
+                  applyPalette(v);
+                }}
+              >
+                <option value="green">{t('app.paletteGreen')}</option>
+                <option value="blue">{t('app.paletteBlue')}</option>
               </select>
             </label>
             {onSignOut && (

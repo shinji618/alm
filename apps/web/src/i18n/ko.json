@@ -9,6 +9,9 @@
     "themeSystem": "시스템",
     "themeLight": "라이트",
     "themeDark": "다크",
+    "palette": "컬러 테마",
+    "paletteGreen": "그린",
+    "paletteBlue": "블루",
     "signOut": "로그아웃",
     "loadingSession": "로그인 확인 중…",
     "sessionError": "로그인 정보를 불러오지 못했습니다: {{message}}"

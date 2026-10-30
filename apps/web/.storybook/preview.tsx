@@ -27,15 +27,24 @@ const preview: Preview = {
       description: 'UI language',
       toolbar: { icon: 'globe', items: [{ value: 'en', title: 'English' }, { value: 'ko', title: '한국어' }], dynamicTitle: true },
     },
+    palette: {
+      description: 'Color palette',
+      toolbar: { icon: 'paintbrush', items: [{ value: 'green', title: 'Green' }, { value: 'blue', title: 'Blue' }], dynamicTitle: true },
+    },
   },
-  initialGlobals: { locale: 'en' },
+  initialGlobals: { locale: 'en', palette: 'green' },
   decorators: [
     withThemeByDataAttribute({ themes: { light: 'light', dark: 'dark' }, defaultTheme: 'light', attributeName: 'data-theme' }),
     (Story, ctx) => {
       const locale = (ctx.globals.locale as string) ?? 'en';
+      const palette = (ctx.globals.palette as string) ?? 'green';
       useEffect(() => {
         void i18n.changeLanguage(locale);
       }, [locale]);
+      useEffect(() => {
+        if (palette === 'blue') document.documentElement.setAttribute('data-palette', 'blue');
+        else document.documentElement.removeAttribute('data-palette');
+      }, [palette]);
       return (
         <ToastProvider>
           <ConfirmProvider>
