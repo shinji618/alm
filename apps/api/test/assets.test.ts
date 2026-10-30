@@ -158,6 +158,7 @@ test('상세: 범위 밖 404, 수정 가능 필드, 금액 마스킹, 하위 탭
   const m = await call('mgr', 'GET', `/assets/${ids.a1}`);
   assert.equal(m.headers.get('etag'), '"1"');
   assert.equal(m.body.financial.netBookValue, 1125); assert.equal(m.body.financial.valueAsOf, '2026/009');
+  assert.ok(!Number.isNaN(Date.parse(m.body.financial.valueReceivedAt)), '금액 수신 시각(asset_value.received_at)을 내려준다');
   assert.ok(m.body.editableFields.includes('dueBackDate'));
   const e = await call('emp', 'GET', `/assets/${ids.a1}`);
   assert.equal(e.body.financial.netBookValue, null); assert.deepEqual(e.body.editableFields, []);

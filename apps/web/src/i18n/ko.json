@@ -214,7 +214,8 @@
       "usefulLife": "내용연수(년)",
       "valueAsOf": "금액 기준",
       "tco": "TCO 추정",
-      "sapSyncedAt": "마지막 SAP 수신",
+      "valueReceivedAt": "금액 수신",
+      "sapSyncedAt": "마스터 갱신",
       "notInSap": "아직 SAP에 없음",
       "noSapNote": "이 회사는 SAP 연계를 쓰지 않습니다. 금액은 구매가 기준입니다."
     },

@@ -245,8 +245,9 @@ accumDepreciation | number | N | 감가상각누계액
 netBookValue | number | N | 장부가액
 usefulLifeYears | int | N | 내용연수
 valueAsOf | string | N | 금액 기준 회계연도·기간 (예: 2026/009)
+valueReceivedAt | datetime | N | 금액 수신 일시(IF-AA-02). 최신 기간 금액을 SAP에서 마지막으로 받아 반영한 시각. 값이 같으면 갱신하지 않음
 tcoEstimate | number | N | TCO 추정(구매가 + 계약 금액 배분)
-sapSyncedAt | datetime | N | 마지막 SAP 수신
+sapSyncedAt | datetime | N | SAP 마스터(IF-AA-01) 마지막 갱신. 내용이 바뀐 때와 전기 결과 회신 때만 갱신(금액 수신 시각은 valueReceivedAt)
 origins | [AssetOrigin] | N | 취득 출처(PO·AuC 정산). SAP 자산만, IF-AA-02로 수신
 ''')
 schema('AssetOrigin', '취득 출처 1건(Financial & SAP 탭)', '''

@@ -179,6 +179,7 @@ function Financial({ d, lang }: { d: Detail; lang: Lang }) {
       { label: t('asset.fin.accum'), value: <span className="num">{formatUsd(f.accumDepreciation, 2)}</span> },
       { label: t('asset.fin.nbv'), value: <span className="num">{formatUsd(f.netBookValue, 2)}</span> },
       { label: t('asset.fin.valueAsOf'), value: f.valueAsOf },
+      { label: t('asset.fin.valueReceivedAt'), value: f.valueReceivedAt && formatDateTime(f.valueReceivedAt) },
       { label: t('asset.fin.tco'), value: <span className="num">{formatUsd(f.tcoEstimate, 2)}</span> },
       { label: t('asset.fin.sapSyncedAt'), value: f.sapSyncedAt && formatDateTime(f.sapSyncedAt) },
     ]} />

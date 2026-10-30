@@ -16,7 +16,7 @@ export interface AssetDetail {
   lastCountDate?: string; lastSeenAt?: string; notes?: string;
   financial: { isCapitalized: boolean; companyCode: string; sapEnabled?: boolean; sapAssetNo?: string; sapSubNo?: string; assetClass?: string; capDate?: string;
     acquisitionValue?: number | null; accumDepreciation?: number | null; netBookValue?: number | null; usefulLifeYears?: number; valueAsOf?: string;
-    tcoEstimate?: number | null; sapSyncedAt?: string; origins?: AssetOrigin[] };
+    tcoEstimate?: number | null; sapSyncedAt?: string; valueReceivedAt?: string; origins?: AssetOrigin[] };
   purchase?: { poNo: string; poItem: string; vendorName?: string; description: string; quantity: number; grQuantity: number; unitPrice?: number | null;
     isDeleted?: boolean; isGrCancelled?: boolean;
     goodsReceipt?: { materialDoc: string; docYear: number; docItem: string; movementType: string; quantity: number; postingDate: string } };

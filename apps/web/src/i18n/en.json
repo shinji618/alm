@@ -214,7 +214,8 @@
       "usefulLife": "Useful life (years)",
       "valueAsOf": "Values as of",
       "tco": "TCO estimate",
-      "sapSyncedAt": "Last SAP sync",
+      "valueReceivedAt": "Values received",
+      "sapSyncedAt": "Master data updated",
       "notInSap": "Not in SAP yet",
       "noSapNote": "This company does not use SAP. Amounts are based on the purchase cost."
     },

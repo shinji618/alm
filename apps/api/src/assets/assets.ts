@@ -148,7 +148,9 @@ export async function getAsset(c: PoolClient, p: Principal, id: string) {
 export async function detail(c: PoolClient, p: Principal, id: string) {
   const r = (await c.query(
     `SELECT a.*, host(a.ip_address) AS ip, st.stage, co.company_code, co.sap_enabled, ac.class_code, ac.default_useful_life_years, m.manufacturer, m.model_name,
-            vl.fiscal_year, vl.period, vl.acquisition_value, vl.accum_depreciation, vl.net_book_value, vl.useful_life_years AS vl_life
+            vl.fiscal_year, vl.period, vl.acquisition_value, vl.accum_depreciation, vl.net_book_value, vl.useful_life_years AS vl_life,
+            (SELECT v.received_at FROM asset_value v WHERE v.asset_id = a.id AND v.dep_area = '01'
+              ORDER BY v.fiscal_year DESC, v.period DESC LIMIT 1) AS value_received_at
        FROM asset a JOIN company co ON co.id = a.company_id
        LEFT JOIN model m ON m.id = a.model_id
        LEFT JOIN asset_class ac ON ac.id = a.asset_class_id
@@ -185,6 +187,7 @@ export async function detail(c: PoolClient, p: Principal, id: string) {
       acquisitionValue: amount ? numOrNull(r.acquisition_value) : null, accumDepreciation: amount ? numOrNull(r.accum_depreciation) : null,
       netBookValue: amount ? numOrNull(r.net_book_value) : null, usefulLifeYears: r.vl_life ?? r.default_useful_life_years ?? undefined,
       valueAsOf: r.fiscal_year ? `${r.fiscal_year}/${String(r.period).padStart(3, '0')}` : undefined,
+      valueReceivedAt: iso(r.value_received_at),   // 최신 금액 행(IF-AA-02)을 SAP에서 마지막으로 받아 반영한 시각
       tcoEstimate: amount ? numOrNull(r.purchase_cost) : null, sapSyncedAt: iso(r.sap_synced_at),
       origins: origins.length ? origins.map((o) => clean({ sourceType: o.source_type, poNo: o.po_no || undefined, poItem: o.po_item || undefined,
         vendorCode: o.vendor_code ?? undefined, vendorName: o.vendor_name ?? undefined, poDate: day(o.po_date),
