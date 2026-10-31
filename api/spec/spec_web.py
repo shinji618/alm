@@ -1140,6 +1140,7 @@ W('실사','POST','/count-campaigns/{id}:close-counting','closeCounting','실사
 W('실사','POST','/count-items:resolve','resolveVariances',  '차이 처리',AM,'VarianceResolve','BulkResult','200, 207, 400','count_item, asset_request, asset, label_print_job','ALM-240',
   ['MASTER_CHANGE: 발견 룸으로 CHANGE 요청 생성. RECOUNT: PENDING으로 되돌림(REVIEW 중 재실사). RETIRE_REQUEST: RETIRE 요청 생성. MARK_MISSING: 자산 MISSING. REPAIR: 수리 입고. ACCEPT: 차이 수용.'], idem='Idempotency-Key')
 W('실사','GET','/count-campaigns/{id}/unregistered','listUnregistered','미등록 자산',AM,None,'UnregisteredRowList','200, 404','count_unregistered, attachment','ALM-240',[ '-'],params=CI+PG)
+W('실사','GET','/count-unregistered/{id}/attachments','listUnregisteredAttachments','미등록 자산 사진',AM,None,'AttachmentList','200, 404','attachment','ALM-240',[ '처리(자산으로 등록·자산 아님) 판단용. 파일은 GET /attachments/{id}:download?inline=true.'],params=CI)
 W('실사','POST','/count-unregistered/{id}:resolve','resolveUnregistered','미등록 처리',AM,'UnregisteredResolve','BulkItemResult','200, 400, 409','count_unregistered, asset','ALM-240',[ 'REGISTER는 POST /assets와 같은 규칙(자본화면 NEW_ASSET 요청).'],params=CI,idem='Idempotency-Key')
 W('실사','POST','/count-campaigns/{id}:post-results','postCountResults','실사 결과 전기',AC,None,'CampaignDetail','202, 409','count_campaign, sap_posting','ALM-240',
   ['처리 안 된 차이가 있으면 409 ALM-E317.', '실사한 자본화 자산마다 COUNT_RESULT 전기 건(IVDAT=기준일, INVZU=코드-결과) 생성 후 POSTING으로.'],params=CI,ok='202',idem='Idempotency-Key')

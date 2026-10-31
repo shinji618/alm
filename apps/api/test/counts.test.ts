@@ -255,6 +255,11 @@ test('PDA 미등록: 사진 필수(E110)·UNREG 채번·멱등', { skip }, async
   const list = await call('am', 'GET', `/count-campaigns/${ids.camp}/unregistered`);
   assert.equal(list.body.items[0].photoCount, 1);
   ids.unreg = list.body.items[0].id;
+  const ph2 = await call('am', 'GET', `/count-unregistered/${ids.unreg}/attachments`);
+  assert.equal(ph2.status, 200, JSON.stringify(ph2.body));
+  assert.equal(ph2.body.items.length, 1, '처리 판단용 사진 1장');
+  assert.equal(ph2.body.items[0].id, ph.body.attachmentId); assert.equal(ph2.body.items[0].kind, 'PHOTO');
+  assert.equal((await call('am', 'GET', `/count-unregistered/${randomUUID()}/attachments`)).status, 404);
 });
 
 test('차이 검토·전기·종료: 실사 종료 → 차이 처리(재실사 포함) → E317 → 전기(SAP COUNT_RESULT) → 종료', { skip }, async () => {

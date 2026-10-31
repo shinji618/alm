@@ -468,6 +468,7 @@
   "listCampaignTasks": "count.read",
   "listCountItems": "count.read",
   "listUnregistered": "count.read",
+  "listUnregisteredAttachments": "count.read",
   "createCampaign": "count.manage",
   "patchCampaign": "count.manage",
   "previewScope": "count.manage",

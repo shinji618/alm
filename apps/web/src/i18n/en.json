@@ -924,6 +924,8 @@
       "open": "Open",
       "REGISTER": "Register as asset",
       "NON_ASSET": "Not an asset",
+      "photos": "Reported photos",
+      "noPhotos": "No photos.",
       "registerTitle": "Register as a new asset",
       "model": "Model",
       "costCenter": "Cost center",

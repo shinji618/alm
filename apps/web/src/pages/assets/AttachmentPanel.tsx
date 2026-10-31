@@ -160,7 +160,7 @@ export function AttachmentPanel({ ownerType, ownerId, listPath, canWrite }: { ow
 }
 
 // 사진 미리보기: 짧은 URL(5분)을 받아 표시. 보안 검사 전(409)이면 '검사 중'
-function Thumb({ id, alt }: { id: string; alt: string }) {
+export function Thumb({ id, alt }: { id: string; alt: string }) {
   const { t } = useTranslation();
   const r = useAsync((sig) => api.get<{ url: string }>(`/attachments/${id}:download?inline=true`, sig), [id]);
   if (r.error) return <span className={s.thumbEmpty}>{r.error instanceof ApiError && r.error.status === 409 ? t('asset.att.scanning') : t('asset.att.unavailable')}</span>;

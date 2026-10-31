@@ -5764,6 +5764,47 @@ paths:
       security:
       - webAuth:
         - web
+  /count-unregistered/{id}/attachments:
+    get:
+      operationId: listUnregisteredAttachments
+      summary: 미등록 자산 사진
+      tags:
+      - WEB
+      description: 'ALM-240 · 테이블: attachment
+
+
+        - 처리(자산으로 등록·자산 아님) 판단용. 파일은 GET /attachments/{id}:download?inline=true.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentList'
+        '404':
+          $ref: '#/components/responses/E404'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: count.read
+      x-scope:
+        SYS_ADMIN: ALL
+        ASSET_MANAGER: ALL
+        ASSET_ACCOUNTANT: ALL
+        AUDITOR: ALL
+      security:
+      - webAuth:
+        - web
   /count-unregistered/{id}:resolve:
     post:
       operationId: resolveUnregistered

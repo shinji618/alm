@@ -102,6 +102,12 @@ export class CountsController {
     return this.db.withTx(txOf(ctx), (c) => cp.listUnregistered(c, id, q));
   }
 
+  @Get('count-unregistered/:id/attachments')
+  @Operation('listUnregisteredAttachments')
+  unregisteredAttachments(@Ctx() ctx: AlmContext, @Param('id') id: string) {
+    return this.db.withTx(txOf(ctx), (c) => cp.listUnregisteredAttachments(c, id));
+  }
+
   @Post('count-unregistered/:id\\:resolve')
   @HttpCode(200)
   @Operation('resolveUnregistered')

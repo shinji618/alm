@@ -140,7 +140,7 @@ OPS = {
     'listApprovalInbox': ['approval.decide', 'asset.write'], 'approve': ['approval.decide', 'asset.write'], 'reject': ['approval.decide', 'asset.write'],   # asset.write: 1단계 회사의 자산 관리자 대리
     # count
     'listCampaigns': 'count.read', 'getCampaign': 'count.read', 'listCampaignTasks': 'count.read', 'listCountItems': 'count.read',
-    'listUnregistered': 'count.read',
+    'listUnregistered': 'count.read', 'listUnregisteredAttachments': 'count.read',
     'createCampaign': 'count.manage', 'patchCampaign': 'count.manage', 'previewScope': 'count.manage', 'startCampaign': 'count.manage',
     'assignCountTask': 'count.manage', 'closeCounting': 'count.manage', 'resolveVariances': 'count.manage',
     'resolveUnregistered': 'count.manage', 'closeCampaign': 'count.manage', 'cancelCampaign': 'count.manage', 'postCountResults': 'count.post',

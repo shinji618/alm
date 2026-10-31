@@ -418,6 +418,17 @@ export async function listUnregistered(c: PoolClient, id: string, q: Record<stri
   };
 }
 
+// 미등록 자산 사진 목록(처리 판단용). 파일은 /attachments/{id}:download로 본다(count.read 권한)
+export async function listUnregisteredAttachments(c: PoolClient, id: string) {
+  if (!UUID.test(id)) throw E.notFound('미등록 자산을 찾을 수 없습니다');
+  if (!(await c.query('SELECT 1 FROM count_unregistered WHERE id = $1', [id])).rowCount) throw E.notFound('미등록 자산을 찾을 수 없습니다');
+  const rows = (await c.query(`SELECT f.id, f.file_name, f.content_type, f.size_bytes, f.kind, u.display_name, f.created_at
+      FROM attachment f LEFT JOIN app_user u ON u.id = f.created_by
+     WHERE f.owner_type = 'count_unregistered' AND f.owner_id = $1 AND f.linked_at IS NOT NULL ORDER BY f.created_at LIMIT 20`, [id])).rows;
+  return { items: rows.map((r) => ({ id: r.id, fileName: r.file_name, contentType: r.content_type, sizeBytes: Number(r.size_bytes),
+    kind: r.kind === 'PHOTO' ? 'PHOTO' : 'DOCUMENT', source: 'COUNT', uploadedBy: r.display_name ?? '', createdAt: iso(r.created_at) })) };
+}
+
 export async function resolveUnregistered(c: PoolClient, p: Principal, id: string, body: unknown) {
   if (!isUuid(id)) throw E.notFound('미등록 자산을 찾을 수 없습니다');
   const k = new Check(body);

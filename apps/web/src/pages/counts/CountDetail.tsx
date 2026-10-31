@@ -11,6 +11,7 @@ import { formatDate, formatDateTime } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
 import { useSession } from '@/lib/session';
 import type { Lookups, Page } from '../assets/types';
+import { Thumb, type AttachmentRow } from '../assets/AttachmentPanel';
 import { allowedActions, campaignTone, FLOW, resultTone, type BulkResult, type CampaignDetail, type CountItemRow, type RoomProgress, type UnregisteredRow,
   type VarianceAction } from './types';
 import s from '../assets/assets.module.css';
@@ -290,6 +291,38 @@ function Unregistered({ campaign, editable, onChanged }: { campaign: CampaignDet
   );
 }
 
+// 미등록 처리 판단용: PDA에서 찍어 올린 사진(작은 그림 → 누르면 큰 그림을 새 탭에서)
+function UnregisteredPhotos({ id }: { id: string }) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const r = useAsync((sig) => api.get<{ items: AttachmentRow[] }>(`/count-unregistered/${id}/attachments`, sig), [id]);
+  const photos = (r.data?.items ?? []).filter((x) => x.kind === 'PHOTO');
+  const open = async (x: AttachmentRow) => {
+    try {
+      const d = await api.get<{ url: string }>(`/attachments/${x.id}:download?inline=true`);
+      window.open(d.url, '_blank', 'noopener');
+    } catch (e) { toast.show(e instanceof Error ? e.message : String(e), 'error'); }
+  };
+  return (
+    <>
+      <h3>{t('count.unreg.photos')} <span className="muted small">({photos.length})</span></h3>
+      {r.error ? <div className={s.notice} role="alert">{t('common.error', { message: r.error.message })}</div>
+        : photos.length ? (
+          <div className={s.thumbs}>
+            {photos.map((x) => (
+              <figure key={x.id} className={s.thumb}>
+                <button type="button" className={s.thumbBtn} onClick={() => void open(x)} aria-label={t('asset.att.open', { name: x.fileName })}>
+                  <Thumb id={x.id} alt={x.fileName} />
+                </button>
+                <figcaption className="small">{x.uploadedBy} · {formatDateTime(x.createdAt)}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ) : r.loading ? null : <EmptyState message={t('count.unreg.noPhotos')} />}
+    </>
+  );
+}
+
 // 미등록 처리: 자산으로 등록(모델·코스트센터 필요 — POST /assets 규칙) 또는 자산 아님
 function ResolveUnregistered({ row, companyCode, onClose, onDone }: { row: UnregisteredRow; companyCode: string; onClose: () => void; onDone: () => void }) {
   const { t } = useTranslation();
@@ -326,6 +359,7 @@ function ResolveUnregistered({ row, companyCode, onClose, onDone }: { row: Unreg
         { label: t('count.unreg.reportedBy'), value: `${row.reportedByName} · ${formatDateTime(row.reportedAt)}` },
         { label: t('count.items.photos'), value: String(row.photoCount) },
       ]} />
+      <UnregisteredPhotos id={row.id} />
       <h3>{t('count.unreg.registerTitle')}</h3>
       <FormGrid onSubmit={() => void send('REGISTER')}>
         <TextField label={t('count.items.description')} required maxLength={50} value={f.description} error={errors.description} onChange={set('description')} />

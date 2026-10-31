@@ -924,6 +924,8 @@
       "open": "미처리",
       "REGISTER": "자산으로 등록",
       "NON_ASSET": "자산 아님",
+      "photos": "보고한 사진",
+      "noPhotos": "사진이 없습니다.",
       "registerTitle": "새 자산으로 등록",
       "model": "모델",
       "costCenter": "코스트센터",
