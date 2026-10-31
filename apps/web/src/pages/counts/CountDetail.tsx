@@ -328,7 +328,7 @@ function ResolveUnregistered({ row, companyCode, onClose, onDone }: { row: Unreg
   const { t } = useTranslation();
   const toast = useToast();
   const lk = useAsync((sig) => api.get<Lookups>('/lookups?types=categories,models,costCenters', sig), []);
-  const [f, setF] = useState({ categoryId: row.categoryId ?? '', modelId: '', costCenterId: '', description: row.description.slice(0, 50), note: '' });
+  const [f, setF] = useState({ categoryId: row.categoryId ?? '', modelName: '', costCenterId: '', description: row.description.slice(0, 50), note: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((v) => ({ ...v, [k]: e.target.value }));
@@ -337,14 +337,14 @@ function ResolveUnregistered({ row, companyCode, onClose, onDone }: { row: Unreg
   const send = async (action: 'REGISTER' | 'NON_ASSET') => {
     if (action === 'REGISTER') {
       const e: Record<string, string> = {};
-      for (const k of ['categoryId', 'modelId', 'costCenterId', 'description'] as const) if (!f[k]) e[k] = t('common.required');
+      for (const k of ['categoryId', 'costCenterId', 'description'] as const) if (!f[k]) e[k] = t('common.required');
       setErrors(e);
       if (Object.keys(e).length) return;
     }
     setBusy(true);
     try {
       await api.post(`/count-unregistered/${row.id}:resolve`, { action, note: f.note.trim() || undefined,
-        ...(action === 'REGISTER' ? { asset: { categoryId: f.categoryId, modelId: f.modelId, costCenterId: f.costCenterId, description: f.description.trim() } } : {}) });
+        ...(action === 'REGISTER' ? { asset: { categoryId: f.categoryId, costCenterId: f.costCenterId, description: f.description.trim(), ...(f.modelName.trim() ? { modelName: f.modelName.trim() } : {}) } } : {}) });
       toast.show(t(action === 'REGISTER' ? 'count.unreg.registered' : 'count.unreg.dismissed', { no: row.tempNo }), 'success');
       onDone();
     } catch (e) { toast.show(e instanceof Error ? e.message : String(e), 'error'); } finally { setBusy(false); }
@@ -363,10 +363,11 @@ function ResolveUnregistered({ row, companyCode, onClose, onDone }: { row: Unreg
       <h3>{t('count.unreg.registerTitle')}</h3>
       <FormGrid onSubmit={() => void send('REGISTER')}>
         <TextField label={t('count.items.description')} required maxLength={50} value={f.description} error={errors.description} onChange={set('description')} />
-        <SelectField label={t('count.unreg.category')} required value={f.categoryId} error={errors.categoryId} onChange={(e) => setF((v) => ({ ...v, categoryId: e.target.value, modelId: '' }))}
+        <SelectField label={t('count.unreg.category')} required value={f.categoryId} error={errors.categoryId} onChange={(e) => setF((v) => ({ ...v, categoryId: e.target.value }))}
           options={[{ value: '', label: '—' }, ...(lk.data?.categories ?? []).map((x) => ({ value: x.id, label: x.label }))]} />
-        <SelectField label={t('count.unreg.model')} required value={f.modelId} error={errors.modelId} onChange={set('modelId')}
-          options={[{ value: '', label: '—' }, ...models.map((x) => ({ value: x.id, label: x.label }))]} />
+        {/* 모델(선택): 직접 입력. 카테고리 모델은 제안 목록으로(맞으면 서버가 모델 마스터에 연결) */}
+        <TextField label={t('count.unreg.model')} maxLength={100} list="unreg-model-options" autoComplete="off" value={f.modelName} hint={t('asset.field.modelHint')} onChange={set('modelName')} />
+        <datalist id="unreg-model-options">{models.map((x) => <option key={x.id} value={x.label} />)}</datalist>
         <SelectField label={t('count.unreg.costCenter')} required value={f.costCenterId} error={errors.costCenterId} onChange={set('costCenterId')}
           options={[{ value: '', label: '—' }, ...ccs.map((x) => ({ value: x.id, label: `${x.code} · ${x.label}` }))]} />
         <TextField label={t('count.var.note')} maxLength={200} value={f.note} onChange={set('note')} />
