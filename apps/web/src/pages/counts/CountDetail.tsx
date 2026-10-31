@@ -327,13 +327,21 @@ function UnregisteredPhotos({ id }: { id: string }) {
 function ResolveUnregistered({ row, companyCode, onClose, onDone }: { row: UnregisteredRow; companyCode: string; onClose: () => void; onDone: () => void }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const lk = useAsync((sig) => api.get<Lookups>('/lookups?types=categories,models,costCenters', sig), []);
-  const [f, setF] = useState({ categoryId: row.categoryId ?? '', modelName: '', costCenterId: '', description: row.description.slice(0, 50), note: '' });
+  const lk = useAsync((sig) => api.get<Lookups>('/lookups?types=categories,models,costCenters,companies,assetClasses', sig), []);
+  const [f, setF] = useState({ categoryId: row.categoryId ?? '', modelName: '', companyId: '', assetClassId: '', costCenterId: '', description: row.description.slice(0, 50), note: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((v) => ({ ...v, [k]: e.target.value }));
   const models = (lk.data?.models ?? []).filter((m) => !f.categoryId || m.parentId === f.categoryId);
-  const ccs = (lk.data?.costCenters ?? []).filter((x) => x.extra?.companyCode === undefined || x.extra.companyCode === companyCode);
+  // 회사코드: 기본은 캠페인 회사, 바꾸면 그 회사로 등록(코스트센터는 그 회사 것만)
+  const company = (lk.data?.companies ?? []).find((c) => (f.companyId ? c.id === f.companyId : c.code === companyCode));
+  const coCode = company?.code ?? companyCode;
+  const ccs = (lk.data?.costCenters ?? []).filter((x) => x.extra?.companyCode === undefined || x.extra.companyCode === coCode);
+  // 자산클래스(선택): 비우면 카테고리 기본값. SAP 연계 회사는 SAP에서 받은 클래스만
+  const category = (lk.data?.categories ?? []).find((c) => c.id === f.categoryId);
+  const dflt = (lk.data?.assetClasses ?? []).find((c) => c.id === (category?.extra?.defaultAssetClassId as string | undefined));
+  const sapCompany = company?.extra?.sapEnabled !== false;
+  const classes = (lk.data?.assetClasses ?? []).filter((c) => !sapCompany || c.extra?.isManual !== true);
   const send = async (action: 'REGISTER' | 'NON_ASSET') => {
     if (action === 'REGISTER') {
       const e: Record<string, string> = {};
@@ -344,7 +352,7 @@ function ResolveUnregistered({ row, companyCode, onClose, onDone }: { row: Unreg
     setBusy(true);
     try {
       await api.post(`/count-unregistered/${row.id}:resolve`, { action, note: f.note.trim() || undefined,
-        ...(action === 'REGISTER' ? { asset: { categoryId: f.categoryId, costCenterId: f.costCenterId, description: f.description.trim(), ...(f.modelName.trim() ? { modelName: f.modelName.trim() } : {}) } } : {}) });
+        ...(action === 'REGISTER' ? { asset: { categoryId: f.categoryId, costCenterId: f.costCenterId, description: f.description.trim(), ...(company ? { companyId: company.id } : {}), ...(f.assetClassId ? { assetClassId: f.assetClassId } : {}), ...(f.modelName.trim() ? { modelName: f.modelName.trim() } : {}) } } : {}) });
       toast.show(t(action === 'REGISTER' ? 'count.unreg.registered' : 'count.unreg.dismissed', { no: row.tempNo }), 'success');
       onDone();
     } catch (e) { toast.show(e instanceof Error ? e.message : String(e), 'error'); } finally { setBusy(false); }
@@ -368,6 +376,10 @@ function ResolveUnregistered({ row, companyCode, onClose, onDone }: { row: Unreg
         {/* 모델(선택): 직접 입력. 카테고리 모델은 제안 목록으로(맞으면 서버가 모델 마스터에 연결) */}
         <TextField label={t('count.unreg.model')} maxLength={100} list="unreg-model-options" autoComplete="off" value={f.modelName} hint={t('asset.field.modelHint')} onChange={set('modelName')} />
         <datalist id="unreg-model-options">{models.map((x) => <option key={x.id} value={x.label} />)}</datalist>
+        <SelectField label={t('asset.field.company')} value={company?.id ?? ''} onChange={(e) => setF((v) => ({ ...v, companyId: e.target.value, costCenterId: '' }))}
+          options={(lk.data?.companies ?? []).map((x) => ({ value: x.id, label: `${x.code} · ${x.label}` }))} />
+        <SelectField label={t('asset.field.assetClass')} value={f.assetClassId} onChange={set('assetClassId')}
+          options={[{ value: '', label: dflt ? `${dflt.code} · ${dflt.label}` : '—' }, ...classes.map((x) => ({ value: x.id, label: `${x.code} · ${x.label}` }))]} />
         <SelectField label={t('count.unreg.costCenter')} required value={f.costCenterId} error={errors.costCenterId} onChange={set('costCenterId')}
           options={[{ value: '', label: '—' }, ...ccs.map((x) => ({ value: x.id, label: `${x.code} · ${x.label}` }))]} />
         <TextField label={t('count.var.note')} maxLength={200} value={f.note} onChange={set('note')} />
