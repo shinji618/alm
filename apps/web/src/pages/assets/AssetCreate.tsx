@@ -62,7 +62,7 @@ export function AssetCreate() {
     for (const k of ['categoryId', 'description', 'companyId', 'roomId', 'costCenterId'] as const) if (!f[k].trim()) e[k] = req;
     if (f.status === 'IN_USE' && !f.assignedUserId) e.assignedUserId = req;
     if (f.registerInSap) {
-      if (f.purchaseCost ? !(Number(f.purchaseCost) > 0) : !costFromComponents) e.purchaseCost = req;
+      if (f.purchaseCost && !(Number(f.purchaseCost) > 0)) e.purchaseCost = req;
       if (!classId) e.assetClassId = req;
     }
     return e;
@@ -127,7 +127,7 @@ export function AssetCreate() {
           <SelectField label={t('asset.field.assetClass')} value={f.assetClassId} error={fe('assetClassId')}
             options={[{ value: '', label: cls && !f.assetClassId ? `${cls.code} · ${cls.label}` : '—' },
               ...opt((L.assetClasses ?? []).filter((c) => !sapCompany || c.extra?.isManual !== true), false)]} onChange={(e) => set('assetClassId', e.target.value)} />
-          <TextField label={t('asset.field.purchaseCost')} required={f.registerInSap && !costFromComponents} type="number" min="0" step="0.01" inputMode="decimal" value={f.purchaseCost}
+          <TextField label={t('asset.field.purchaseCost')} type="number" min="0" step="0.01" inputMode="decimal" value={f.purchaseCost}
             error={fe('purchaseCost')} hint={costFromComponents ? t('asset.bundle.costHint') : undefined} onChange={(e) => set('purchaseCost', e.target.value)} />
           <TextField label={t('asset.field.purchaseDate')} type="date" value={f.purchaseDate} error={fe('purchaseDate')} onChange={(e) => set('purchaseDate', e.target.value)} />
           <TextField label={t('asset.field.warrantyEndDate')} type="date" value={f.warrantyEndDate} error={fe('warrantyEndDate')} onChange={(e) => set('warrantyEndDate', e.target.value)} />

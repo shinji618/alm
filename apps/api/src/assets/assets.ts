@@ -225,9 +225,9 @@ export async function createAsset(c: PoolClient, p: Principal, body: unknown, op
   // Bundle: 구성품(SAP에 없는 ALM 자산)을 함께 넣을 수 있다. SAP 등록 취득가가 없으면 구성품 구매가 합
   const componentIds = [...new Set(k.arr(b, 'componentIds', { max: 200 }).map((x, i) => { const s = typeof x === 'string' ? x : ''; if (!UUID.test(s)) k.fail(`componentIds[${i}]`, 'uuid'); return s; }))];
   if (componentIds.length && !v.isBundle) k.fail('componentIds', 'Bundle(isBundle)일 때만 지정합니다');
+  // 취득가는 선택(SAP 전기에 담기지 않는다. 금액은 SAP 입고 뒤 IF-AA-02로 온다). 넣었다면 0보다 커야 한다
   const costFromComponents = v.isBundle && v.registerInSap && v.purchaseCost === undefined && componentIds.length > 0;
-  if (v.registerInSap && v.purchaseCost === undefined && !costFromComponents) k.errors.push({ field: 'purchaseCost', code: 'ALM-E101', message: 'SAP 등록이면 필수입니다' });
-  else if (v.registerInSap && v.purchaseCost !== undefined && v.purchaseCost <= 0) k.fail('purchaseCost', 'SAP 등록이면 0보다 커야 합니다');
+  if (v.registerInSap && v.purchaseCost !== undefined && v.purchaseCost <= 0) k.fail('purchaseCost', 'SAP 등록이면 0보다 커야 합니다');
   if (v.status === 'IN_USE' && !v.assignedUserId) k.errors.push({ field: 'assignedUserId', code: 'ALM-E101', message: 'IN_USE면 필수입니다' });
   if (v.status !== 'IN_USE' && v.assignedUserId) k.fail('assignedUserId', 'IN_USE일 때만 지정합니다');
   k.done();
@@ -269,16 +269,13 @@ export async function createAsset(c: PoolClient, p: Principal, body: unknown, op
     await c.query('UPDATE asset SET is_bundle = true WHERE id = $1', [id]);
     if (componentIds.length) await attachComponents(c, p, { id, asset_tag: tag, company_id: v.companyId }, { ids: componentIds, tags: [] });
   }
-  let value = v.purchaseCost;
+  let value: number | undefined = v.purchaseCost;
   if (costFromComponents) {
-    value = await componentCost(c, id);
-    if (!(value > 0)) {
-      throw new AlmError(400, 'ALM-E101', '입력 값을 확인하세요: purchaseCost 구성품 구매가 합이 0입니다(SAP 등록 취득가를 입력하세요)',
-        { errors: [{ field: 'purchaseCost', code: 'ALM-E101', message: 'SAP 등록이면 필수입니다' }] });
-    }
+    const sum = await componentCost(c, id);
+    value = sum > 0 ? sum : undefined;   // 구성품 구매가 합이 0이면 취득가 없이 요청한다
   }
   const createdRequest = v.registerInSap && cls
-    ? await newAssetRequest(c, p, { assetId: id, classId: cls.id, value: value!, costCenterId: v.costCenterId!, roomId: v.roomId! })
+    ? await newAssetRequest(c, p, { assetId: id, classId: cls.id, value, costCenterId: v.costCenterId!, roomId: v.roomId! })
     : undefined;
   let labelJobId: string | undefined;
   if (v.printLabel) {
@@ -328,13 +325,13 @@ async function refs(c: PoolClient, v: { categoryId?: string; modelId?: string; c
 }
 
 // 신규 자산 요청(NEW_ASSET): 제출 상태 + 승인 2단계(부서 관리자 → 자산회계, 09 2장 S-14). 승인 처리는 4.3
-async function newAssetRequest(c: PoolClient, p: Principal, o: { assetId: string; classId: string; value: number; costCenterId: string; roomId: string }) {
+async function newAssetRequest(c: PoolClient, p: Principal, o: { assetId: string; classId: string; value?: number; costCenterId: string; roomId: string }) {
   const id = randomUUID();
   const [no] = await nextNumbers(c, p.tenantId, 'asset_request');
   await c.query(`INSERT INTO asset_request (id, tenant_id, request_no, request_type, status, source, asset_id, requester_id, submitted_at, reason,
       asset_class_id, acquisition_value, target_cost_center_id, target_room_id, created_by, updated_by)
     VALUES ($1, $2, $3, 'NEW_ASSET', 'SUBMITTED', 'USER', $4, $5, now(), 'ALM-112 자산 등록(SAP 등록 체크)', $6, $7, $8, $9, $5, $5)`,
-  [id, p.tenantId, no, o.assetId, p.userId, o.classId, o.value, o.costCenterId, o.roomId]);
+  [id, p.tenantId, no, o.assetId, p.userId, o.classId, o.value ?? null, o.costCenterId, o.roomId]);
   await startDefaultFlow(c, p, id);
   return { id, requestNo: no, requestType: 'NEW_ASSET', status: 'SUBMITTED' };
 }

@@ -213,7 +213,7 @@ test('반려(의견 필수) → 요청자 메일, 자산 그대로. ALM 전용 �
 
 test('신규 SAP 등록(NEW_ASSET) payload, CHANGE 룸 변경 취소, 전기 중 취소 409, 목록 필터', { skip }, async () => {
   const n = await call('mgr', 'POST', '/asset-requests', { requestType: 'NEW_ASSET', assetId: ids.localB, reason: 'SAP 등록', assetClassId: ids.cls,
-    targetCostCenterId: ids.cc100, acquisitionValue: 1800, effectiveDate: '2026-10-15', submit: true });
+    targetCostCenterId: ids.cc100, effectiveDate: '2026-10-15', submit: true });   // 취득가 없이(선택, 전기 payload에도 없다)
   assert.equal(n.status, 201);
   await call('dept1', 'POST', `/approvals/${await step(n.body.id, 1)}:approve`, {});
   await call('acct', 'POST', `/approvals/${await step(n.body.id, 2)}:approve`, {});

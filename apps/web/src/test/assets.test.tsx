@@ -69,7 +69,7 @@ describe('asset screens', () => {
     expect(screen.getByRole('button', { name: 'Register asset' })).toBeInTheDocument();
   });
 
-  it('register: suggests SAP registration for a capitalized class and then requires purchase cost', async () => {
+  it('register: suggests SAP registration for a capitalized class; purchase cost is optional but must be positive', async () => {
     window.history.pushState({}, '', '/assets/new');
     const posted: unknown[] = [];
     mockFetch((url, init) => {
@@ -87,9 +87,12 @@ describe('asset screens', () => {
     await user.selectOptions(screen.getByLabelText(/^Room/), 'room');
     const sap = screen.getByLabelText('Register in SAP (fixed asset)') as HTMLInputElement;
     expect(sap.checked).toBe(true);
+    expect(screen.getByLabelText(/^Purchase cost/)).not.toBeRequired();   // 취득가는 선택(SAP 전기에 담기지 않는다)
+    await user.type(screen.getByLabelText(/^Purchase cost/), '0');
     await user.click(screen.getByRole('button', { name: 'Register' }));
-    expect(await screen.findByText('Required')).toBeInTheDocument();
+    expect(await screen.findByText('Required')).toBeInTheDocument();   // 넣었다면 0보다 커야 한다
     expect(posted).toHaveLength(0);
+    await user.clear(screen.getByLabelText(/^Purchase cost/));
     await user.type(screen.getByLabelText(/^Purchase cost/), '1500');
     await user.click(screen.getByRole('button', { name: 'Register' }));
     await waitFor(() => expect(posted).toHaveLength(1));

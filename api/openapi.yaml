@@ -4660,7 +4660,7 @@ paths:
       description: 'ALM-230 · 테이블: asset_request, approval, number_sequence
 
 
-        - 유형별 필수: NEW_ASSET(자산클래스, 코스트센터, 취득가) · CHANGE(changes 또는 룸) · TRANSFER(코스트센터, 이관일) · RETIRE(폐기 유형, 폐기일) · SALE(매각금액, 매입처).
+        - 유형별 필수: NEW_ASSET(자산클래스, 코스트센터; 취득가는 선택) · CHANGE(changes 또는 룸) · TRANSFER(코스트센터, 이관일) · RETIRE(폐기 유형, 폐기일) · SALE(매각금액, 매입처).
 
         - NEW_ASSET은 SAP 자산번호가 없는 ALM 자산(assetId)을 SAP에 등록하는 요청이다. 자본화 클래스만. changes는 description·serialNo만(룸은 targetRoomId).
 
@@ -14226,7 +14226,7 @@ components:
           description: 구매일
         purchaseCost:
           type: number
-          description: 구매가(예상 취득가로도 사용). registerInSap이면 필수(0보다 큼). Bundle이고 비우면 구성품 구매가 합
+          description: 구매가(예상 취득가로도 사용). 선택 — SAP 전기에는 담기지 않는다. 넣으면 0보다 큼. Bundle이고 SAP 등록이며 비우면 구성품 구매가 합(0이면 없음)
         warrantyEndDate:
           type: string
           format: date
@@ -16189,7 +16189,7 @@ components:
           description: NEW_ASSET
         acquisitionValue:
           type: number
-          description: NEW_ASSET 예상 취득가
+          description: NEW_ASSET 예상 취득가(선택, SAP 전기에 담기지 않음. 넣으면 0보다 큼)
         poItemId:
           type: string
           format: uuid

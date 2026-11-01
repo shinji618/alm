@@ -96,8 +96,6 @@ test('등록: 권한·검증·범위, 태그 채번, IN_USE 할당, SAP 등록 �
   assert.equal(cat.status, 400); assert.equal(cat.body.errors[0].field, 'modelId', '카테고리에 속하지 않은 모델');
   assert.equal((await call('mgrw', 'POST', '/assets', nb())).status, 403, 'West 관리자는 Atlanta 룸에 등록 못함');
 
-  const noCost = await call('mgr', 'POST', '/assets', nb({ registerInSap: true, purchaseCost: undefined }));
-  assert.equal(noCost.status, 400); assert.deepEqual(noCost.body.errors.map((e: { field: string; code: string }) => [e.field, e.code]), [['purchaseCost', 'ALM-E101']]);
   assert.equal((await call('mgr', 'POST', '/assets', nb({ registerInSap: true, purchaseCost: 0 }))).status, 400, '금액 0');
   const noCls = await call('mgr', 'POST', '/assets', nb({ registerInSap: true, categoryId: ids.catMon, modelId: ids.modelMon }));
   assert.equal(noCls.status, 400); assert.equal(noCls.body.errors[0].field, 'assetClassId', '클래스 없는 카테고리');
@@ -275,4 +273,13 @@ test('할당·반납·수리: 상태 전이, 코스트센터 변경(SAP 자산�
   assert.equal((await rep(ids.a1, { direction: 'OUT' })).body.asset.status, 'IN_USE', '할당 중이던 자산은 IN_USE로');
   const ev = (await q(`SELECT event_type FROM asset_event WHERE asset_id = $1 ORDER BY occurred_at, created_at`, [ids.a3])).map((x) => x.event_type);
   assert.deepEqual(ev.slice(-4), ['ASSIGNED', 'RETURNED', 'REPAIR_IN', 'REPAIR_OUT']);
+});
+
+// 마지막에 둔다(자산 번호·요청 번호를 세는 앞 시험에 영향 없게)
+test('SAP 등록 취득가는 선택: 비워도 신규 자산 요청이 만들어지고(취득가 없음), 넣으면 0보다 커야 한다', { skip }, async () => {
+  const r = await call('mgr', 'POST', '/assets', nb({ registerInSap: true, purchaseCost: undefined, serialNo: 'SN-NOCOST' }));
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.createdRequest.requestType, 'NEW_ASSET');
+  assert.equal((await q(`SELECT acquisition_value FROM asset_request WHERE request_no = $1`, [r.body.createdRequest.requestNo]))[0].acquisition_value, null, '취득가 없이 요청');
+  assert.equal((await call('mgr', 'POST', '/assets', nb({ registerInSap: true, purchaseCost: 0 }))).status, 400, '넣었다면 0보다 커야 함');
 });

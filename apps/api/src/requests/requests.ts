@@ -361,7 +361,7 @@ function read(body: unknown): Input {
   switch (v.requestType) {
     case 'NEW_ASSET':
       req('assetId', !!v.assetId); req('assetClassId', !!v.assetClassId); req('targetCostCenterId', !!v.targetCostCenterId);
-      req('acquisitionValue', v.acquisitionValue !== undefined);
+      // 취득가는 선택(SAP 전기에 담기지 않는다). 넣었다면 0보다 커야 한다
       if (v.acquisitionValue !== undefined && v.acquisitionValue <= 0) k.fail('acquisitionValue', '0보다 커야 합니다');
       break;
     case 'CHANGE':

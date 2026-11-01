@@ -362,7 +362,7 @@ assetClassId | uuid | N | 자산클래스(비면 카테고리 기본값). regist
 status | enum(ON_ORDER,IN_STOCK,IN_USE) | N | 기본 IN_STOCK
 assignedUserId | uuid | N | IN_USE면 필수
 purchaseDate | date | N | 구매일
-purchaseCost | number | N | 구매가(예상 취득가로도 사용). registerInSap이면 필수(0보다 큼). Bundle이고 비우면 구성품 구매가 합
+purchaseCost | number | N | 구매가(예상 취득가로도 사용). 선택 — SAP 전기에는 담기지 않는다. 넣으면 0보다 큼. Bundle이고 SAP 등록이며 비우면 구성품 구매가 합(0이면 없음)
 warrantyEndDate | date | N | 보증 종료
 hostname | string(63) | N | 호스트명
 notes | string | N | 메모
@@ -893,7 +893,7 @@ requestType | enum(NEW_ASSET,CHANGE,TRANSFER,RETIRE,SALE) | Y | 유형
 assetId | uuid | N | 대상 자산(NEW_ASSET 제외 필수)
 reason | string(200) | Y | 사유
 assetClassId | uuid | N | NEW_ASSET
-acquisitionValue | number | N | NEW_ASSET 예상 취득가
+acquisitionValue | number | N | NEW_ASSET 예상 취득가(선택, SAP 전기에 담기지 않음. 넣으면 0보다 큼)
 poItemId | uuid | N | NEW_ASSET 참조 PO
 targetCostCenterId | uuid | N | NEW_ASSET·TRANSFER
 targetRoomId | uuid | N | CHANGE
@@ -988,7 +988,7 @@ comment | string(500) | N | 의견(반려는 필수)
 RQ = [('type','query','string','N','유형'),('status','query','string','N','상태'),('mine','query','bool','N','내 요청'),('assetId','query','uuid','N','자산'),('q','query','string','N','번호·자산태그')]+PG
 W('요청·승인','GET','/asset-requests','listAssetRequests','자산 요청 목록','로그인 사용자(범위)',None,'AssetRequestSummaryList','200','asset_request, approval','ALM-230',[ 'EMPLOYEE는 본인 요청.'],params=RQ)
 W('요청·승인','POST','/asset-requests','createAssetRequest','자산 요청 작성','로그인 사용자','AssetRequestInput','AssetRequestDetail','201, 400, 409, 422','asset_request, approval, number_sequence','ALM-230',
-  ['유형별 필수: NEW_ASSET(자산클래스, 코스트센터, 취득가) · CHANGE(changes 또는 룸) · TRANSFER(코스트센터, 이관일) · RETIRE(폐기 유형, 폐기일) · SALE(매각금액, 매입처).',
+  ['유형별 필수: NEW_ASSET(자산클래스, 코스트센터; 취득가는 선택) · CHANGE(changes 또는 룸) · TRANSFER(코스트센터, 이관일) · RETIRE(폐기 유형, 폐기일) · SALE(매각금액, 매입처).',
    'NEW_ASSET은 SAP 자산번호가 없는 ALM 자산(assetId)을 SAP에 등록하는 요청이다. 자본화 클래스만. changes는 description·serialNo만(룸은 targetRoomId).',
    '대상 자산은 요청자의 asset.read 범위 안. RETIRED·DISPOSED는 409 ALM-E322. 유형에 없는 값은 버린다. submit=true면 저장과 함께 제출, 아니면 DRAFT.',
    '같은 자산에 진행 중인 요청이 있으면 409 ALM-E315.', 'TRANSFER는 코스트센터의 손익센터·세그먼트를 비교해 is_profit_center_change를 서버가 정한다.', 'Retired·Disposed는 이 요청으로만 바뀐다.'],

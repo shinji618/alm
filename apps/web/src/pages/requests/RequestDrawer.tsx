@@ -53,7 +53,7 @@ export function RequestDrawer({ d, L, onClose, onDone }: { d: AssetDetail; L: Lo
     if (f.type === 'NEW_ASSET') {
       if (!b.assetClassId) e.assetClassId = req;
       if (!b.targetCostCenterId) e.targetCostCenterId = req;
-      if (!(Number(b.acquisitionValue) > 0)) e.acquisitionValue = req;
+      if (b.acquisitionValue !== undefined && !(b.acquisitionValue > 0)) e.acquisitionValue = req;
     }
     if (f.type === 'TRANSFER') {
       if (!b.targetCostCenterId) e.targetCostCenterId = req;
@@ -99,7 +99,7 @@ export function RequestDrawer({ d, L, onClose, onDone }: { d: AssetDetail; L: Lo
             <SelectField label={t('request.field.assetClass')} required value={f.assetClassId} error={e.assetClassId} options={opts(classes)} onChange={(x) => set('assetClassId', x.target.value)} />
             <SelectField label={t('request.field.costCenter')} required value={f.targetCostCenterId || d.costCenterId || ''} error={e.targetCostCenterId} options={opts(ccs)}
               onChange={(x) => set('targetCostCenterId', x.target.value)} />
-            <TextField label={t('request.field.acquisitionValue')} required type="number" min="0" step="0.01" inputMode="decimal" value={f.acquisitionValue}
+            <TextField label={t('request.field.acquisitionValue')} type="number" min="0" step="0.01" inputMode="decimal" value={f.acquisitionValue}
               error={e.acquisitionValue} onChange={(x) => set('acquisitionValue', x.target.value)} />
             <TextField label={t('request.field.capDate')} type="date" value={f.effectiveDate} error={e.effectiveDate} onChange={(x) => set('effectiveDate', x.target.value)} />
           </>
