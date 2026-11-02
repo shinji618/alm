@@ -100,6 +100,7 @@ export function TopBar({ userName, userRole, onMenu, onSearch, onSignOut }: TopB
               >
                 <option value="green">{t('app.paletteGreen')}</option>
                 <option value="blue">{t('app.paletteBlue')}</option>
+                <option value="black">{t('app.paletteBlack')}</option>
               </select>
             </label>
             {onSignOut && (

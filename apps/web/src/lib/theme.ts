@@ -23,13 +23,14 @@ export function applyTheme(pref: ThemePref): void {
   }
 }
 
-/** 컬러 팔레트: 'green'(기본)은 data-palette 속성을 지우고, 'blue'만 속성을 붙인다. 라이트·다크(data-theme)와는 별개. 선택은 이 브라우저에만 저장. */
-export type PalettePref = 'green' | 'blue';
+/** 컬러 팔레트: 'green'(기본)은 data-palette 속성을 지우고, 'blue'·'black'만 속성을 붙인다. 라이트·다크(data-theme)와는 별개. 선택은 이 브라우저에만 저장. */
+export type PalettePref = 'green' | 'blue' | 'black';
 const PALETTE_KEY = 'alm.palette';
 
 export function getPalettePref(): PalettePref {
   try {
-    return localStorage.getItem(PALETTE_KEY) === 'blue' ? 'blue' : 'green';
+    const v = localStorage.getItem(PALETTE_KEY);
+    return v === 'blue' || v === 'black' ? v : 'green';
   } catch {
     return 'green';
   }
@@ -37,11 +38,11 @@ export function getPalettePref(): PalettePref {
 
 export function applyPalette(pref: PalettePref): void {
   const root = document.documentElement;
-  if (pref === 'blue') root.setAttribute('data-palette', 'blue');
-  else root.removeAttribute('data-palette');
+  if (pref === 'green') root.removeAttribute('data-palette');
+  else root.setAttribute('data-palette', pref);
   try {
-    if (pref === 'blue') localStorage.setItem(PALETTE_KEY, 'blue');
-    else localStorage.removeItem(PALETTE_KEY);
+    if (pref === 'green') localStorage.removeItem(PALETTE_KEY);
+    else localStorage.setItem(PALETTE_KEY, pref);
   } catch {
     /* storage unavailable: palette still applies for this session */
   }

@@ -281,3 +281,21 @@
   :global(:root[data-palette='blue']) .top { padding: 10px 16px; }
   :global(:root[data-palette='blue']) .view { padding: 16px 16px 40px; }
 }
+
+/* ───────── Black palette: 형태 (data-palette="black") — Green·Blue에는 영향 없음 ───────── */
+:global(:root[data-palette='black']) .rail { border-right: 1px solid var(--line); gap: 2px; }
+:global(:root[data-palette='black']) .brand { border-bottom: 1px solid var(--line); margin-bottom: 10px; padding-bottom: 14px; font-weight: 700; }
+:global(:root[data-palette='black']) .mark { width: 36px; height: 36px; border-radius: 0; background: transparent url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Cdefs%3E%3ClinearGradient%20id='a'%20x1='0'%20y1='0'%20x2='1'%20y2='.3'%3E%3Cstop%20offset='0'%20stop-color='%232b8cf0'/%3E%3Cstop%20offset='1'%20stop-color='%233be2ff'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='b'%20x1='0'%20y1='0'%20x2='1'%20y2='.3'%3E%3Cstop%20offset='0'%20stop-color='%236a3fc8'/%3E%3Cstop%20offset='1'%20stop-color='%239b7cf0'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='c'%20x1='0'%20y1='0'%20x2='1'%20y2='.3'%3E%3Cstop%20offset='0'%20stop-color='%23232a78'/%3E%3Cstop%20offset='1'%20stop-color='%2346509e'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpolygon%20points='2,44%2032,58%2032,63%202,49'%20fill='%231a1f5e'/%3E%3Cpolygon%20points='32,58%2062,44%2062,49%2032,63'%20fill='%2310143f'/%3E%3Cpolygon%20points='32,30%2062,44%2032,58%202,44'%20fill='url(%23c)'/%3E%3Cg%20transform='translate(0,-10)'%3E%3Cpolygon%20points='2,44%2032,58%2032,63%202,49'%20fill='%234c2ba0'/%3E%3Cpolygon%20points='32,58%2062,44%2062,49%2032,63'%20fill='%233b2184'/%3E%3C/g%3E%3Cpolygon%20points='32,20%2062,34%2032,48%202,34'%20fill='url(%23b)'/%3E%3Cg%20transform='translate(0,-20)'%3E%3Cpolygon%20points='2,44%2032,58%2032,63%202,49'%20fill='%231f6fcf'/%3E%3Cpolygon%20points='32,58%2062,44%2062,49%2032,63'%20fill='%232a9ad8'/%3E%3C/g%3E%3Cpolygon%20points='32,4%2062,18%2032,32%202,18'%20fill='url(%23a)'/%3E%3C/svg%3E") center / contain no-repeat; color: transparent; font-size: 0; }
+:global(:root[data-palette='black']) .group { color: var(--faint); }
+:global(:root[data-palette='black']) .link { border-radius: 6px; }
+:global(:root[data-palette='black']) .link:hover { background: var(--nav-hover); color: var(--rail-hi); }
+:global(:root[data-palette='black']) .active { background: var(--nav-active); color: var(--rail-hi); box-shadow: inset 3px 0 0 var(--nav-bar); }
+:global(:root[data-palette='black']) .count { background: var(--nav-active); color: var(--rail-ink); }
+:global(:root[data-palette='black']) .countAlert { background: var(--bad); color: #fff; }
+:global(:root[data-palette='black']) .railFoot { color: var(--faint); }
+:global(:root[data-palette='black']) .top { background: var(--bg); }
+:global(:root[data-palette='black']) .search input { background: var(--sunk); border-radius: 6px; }
+:global(:root[data-palette='black']) .search input:focus { border-color: var(--accent); background: var(--bg); }
+:global(:root[data-palette='black']) .avatar { background: var(--nav-active); color: var(--ink); border: 1px solid var(--line); }
+:global(:root[data-palette='black']) .menu { border-radius: 8px; }
+:global(:root[data-palette='black']) .h1 { font-weight: 600; font-size: 22px; }

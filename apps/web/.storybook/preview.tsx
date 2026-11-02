@@ -29,7 +29,7 @@ const preview: Preview = {
     },
     palette: {
       description: 'Color palette',
-      toolbar: { icon: 'paintbrush', items: [{ value: 'green', title: 'Green' }, { value: 'blue', title: 'Blue' }], dynamicTitle: true },
+      toolbar: { icon: 'paintbrush', items: [{ value: 'green', title: 'Green' }, { value: 'blue', title: 'Blue' }, { value: 'black', title: 'Black' }], dynamicTitle: true },
     },
   },
   initialGlobals: { locale: 'en', palette: 'green' },
@@ -42,8 +42,8 @@ const preview: Preview = {
         void i18n.changeLanguage(locale);
       }, [locale]);
       useEffect(() => {
-        if (palette === 'blue') document.documentElement.setAttribute('data-palette', 'blue');
-        else document.documentElement.removeAttribute('data-palette');
+        if (palette === 'green') document.documentElement.removeAttribute('data-palette');
+        else document.documentElement.setAttribute('data-palette', palette);
       }, [palette]);
       return (
         <ToastProvider>

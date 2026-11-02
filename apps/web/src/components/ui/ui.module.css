@@ -619,3 +619,24 @@ textarea.input {
 :global(:root[data-palette='blue']) .bar > span[style*='var(--accent)'] { background: var(--grad) !important; }
 :global(:root[data-palette='blue']) .timeline { border-left-width: 2px; }
 :global(:root[data-palette='blue']) .event::before { background: var(--grad); border-color: var(--surface); }
+
+/* ───────── Black palette: 형태 (data-palette="black") — Green·Blue에는 영향 없음 ───────── */
+:global(:root[data-palette='black']) .btn { background: var(--sunk); border-color: var(--line); border-radius: 6px; }
+:global(:root[data-palette='black']) .btn:hover:not(:disabled) { border-color: var(--faint); background: var(--nav-active); }
+:global(:root[data-palette='black']) .btnPrimary { background: var(--btn-primary); border-color: rgba(240, 246, 252, 0.1); color: #fff; }
+:global(:root[data-palette='black']) .btnPrimary:hover:not(:disabled) { background: var(--btn-primary); border-color: rgba(240, 246, 252, 0.1); filter: brightness(1.12); }
+:global(:root[data-palette='black']) .pill { border-radius: 999px; padding: 2px 9px; font-size: 12px; }
+:global(:root[data-palette='black']) .tag { border-radius: 6px; padding: 1px 7px; }
+:global(:root[data-palette='black']) .panel { border-radius: 6px; box-shadow: none; }
+:global(:root[data-palette='black']) .panelHead { background: var(--sunk); border-radius: 6px 6px 0 0; }
+:global(:root[data-palette='black']) .panelTitle { font-weight: 600; }
+:global(:root[data-palette='black']) .kpi { border-radius: 6px; padding: 14px 16px; }
+:global(:root[data-palette='black']) button.kpi:hover { border-color: var(--faint); background: var(--sunk); }
+:global(:root[data-palette='black']) .kpiValue { font-weight: 700; }
+:global(:root[data-palette='black']) .chip { border-radius: 999px; background: var(--sunk); }
+:global(:root[data-palette='black']) .tabOn { color: var(--ink); border-color: var(--nav-bar); }
+:global(:root[data-palette='black']) .control, :global(:root[data-palette='black']) .input { border-radius: 6px; background: var(--bg); }
+:global(:root[data-palette='black']) .drawer { border-left: 1px solid var(--line); }
+:global(:root[data-palette='black']) .drawerHead { background: var(--sunk); }
+:global(:root[data-palette='black']) .dialog { border-radius: 8px; }
+:global(:root[data-palette='black']) .bar { border-radius: 4px; }

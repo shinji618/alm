@@ -12,6 +12,7 @@
     "palette": "Color theme",
     "paletteGreen": "Green",
     "paletteBlue": "Blue",
+    "paletteBlack": "Black",
     "signOut": "Sign out",
     "loadingSession": "Checking your sign-in…",
     "sessionError": "Could not load your session: {{message}}"
