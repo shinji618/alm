@@ -22,16 +22,14 @@ export const NAV: NavGroup[] = [
     labelKey: 'nav.inventory',
     items: [
       { path: '/assets', labelKey: 'nav.assets', screenId: 'ALM-110', wbs: '4.2', children: 'categories' },
-      { path: '/discovery', labelKey: 'nav.discovery', screenId: 'ALM-120', wbs: '5.1' },
-      { path: '/cmdb', labelKey: 'nav.cmdb', screenId: 'ALM-130', wbs: '5.2' },
-      { path: '/software', labelKey: 'nav.software', screenId: 'ALM-140', wbs: '5.3' },
+      // Discovery(ALM-120)·CMDB(ALM-130)·소프트웨어 라이선스(ALM-140)는 숨김(2026-11-01 결정): WBS 5.1~5.3 취소
     ],
   },
   {
     labelKey: 'nav.lifecycle',
     items: [
-      // 구매(ALM-210)는 숨김(2026-10-25 결정): 구매·PO 정보는 SAP에서 자산 가액이 생길 때 IF-AA-02 origins로 들어와 자산 상세에 표시된다
-      { path: '/contracts', labelKey: 'nav.contracts', screenId: 'ALM-220', wbs: '5.4' },
+      // 구매(ALM-210)는 숨김(2026-10-25 결정, WBS 5.5는 2026-11-01 취소): 구매·PO 정보는 SAP에서 자산 가액이 생길 때 IF-AA-02 origins로 들어와 자산 상세에 표시된다
+      // 계약·보증(ALM-220)은 숨김(2026-11-01 결정): WBS 5.4 취소
       { path: '/requests', labelKey: 'nav.requests', screenId: 'ALM-230', wbs: '4.3' },
       { path: '/counts', labelKey: 'nav.inventoryCount', screenId: 'ALM-240', wbs: '4.4', perm: 'count.read' },
       { path: '/labels', labelKey: 'nav.labels', screenId: 'ALM-250', wbs: '4.5', perm: 'label.read' },
