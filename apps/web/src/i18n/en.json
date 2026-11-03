@@ -1,7 +1,7 @@
 {
   "app": {
     "name": "Asset Lifecycle",
-    "tenant": "BSG America",
+    "tenant": "PAS Application",
     "searchPlaceholder": "Search asset tag, serial, SAP asset no., owner…",
     "openMenu": "Open menu",
     "language": "Language",

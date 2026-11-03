@@ -1,7 +1,7 @@
 {
   "app": {
     "name": "자산 라이프사이클",
-    "tenant": "BSG America",
+    "tenant": "PAS Application",
     "searchPlaceholder": "자산태그, 시리얼, SAP 자산번호, 사용자 검색…",
     "openMenu": "메뉴 열기",
     "language": "언어",
