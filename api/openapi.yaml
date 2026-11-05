@@ -1184,6 +1184,319 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ReconRequest'
+  /portal/manifest:
+    get:
+      operationId: portalGetManifest
+      summary: 앱 매니페스트
+      tags:
+      - PORTAL
+      description: '09 §2 · 테이블: -
+
+
+        - Portal이 앱을 등록·갱신할 때 부른다. tenantId·userSub 없이 머신 토큰만 확인한다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalManifest'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: portal.feed
+      security:
+      - portalAuth:
+        - portal.feed
+  /portal/inbox:
+    get:
+      operationId: portalGetInbox
+      summary: 결재 대기 피드(Portal 통합 결재함·홈)
+      tags:
+      - PORTAL
+      description: '09 §4 · 테이블: approval, workflow_step
+
+
+        - userSub 본인이 지금 결정할 수 있는 요청만(웹 승인함과 같은 기준). 다른 사람 몫을 합쳐 주지 않는다.
+
+        - total은 limit로 잘려도 전체 건수. 승인·반려는 이 API로 하지 않는다 — deepLink로 ALM 화면에서 한다(07 §11).
+
+        - 테넌트에 없거나 비활성인 사용자는 403(Portal 쪽은 이 앱만 "응답 없음").'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: tenantId
+        in: query
+        required: true
+        description: 테넌트 ID(중앙 ID와 같은 값)
+        schema:
+          type: string
+          format: uuid
+      - name: userSub
+        in: query
+        required: true
+        description: 대상 사용자 ID(중앙 ID 사용자 ID)
+        schema:
+          type: string
+          format: uuid
+      - name: limit
+        in: query
+        required: false
+        description: 최대 건수(기본 50, 최대 200)
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalInboxFeed'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: portal.feed
+      security:
+      - portalAuth:
+        - portal.feed
+  /portal/badges:
+    get:
+      operationId: portalGetBadges
+      summary: 메뉴 배지(Portal 좌측 메뉴 숫자)
+      tags:
+      - PORTAL
+      description: '09 §4 · 테이블: approval, workflow_step
+
+
+        - requests = 내 결재 대기 건수(portalGetInbox.total과 같다).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: tenantId
+        in: query
+        required: true
+        description: 테넌트 ID(중앙 ID와 같은 값)
+        schema:
+          type: string
+          format: uuid
+      - name: userSub
+        in: query
+        required: true
+        description: 대상 사용자 ID(중앙 ID 사용자 ID)
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalBadges'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: portal.feed
+      security:
+      - portalAuth:
+        - portal.feed
+  /portal/calendar-feed:
+    get:
+      operationId: portalGetCalendarFeed
+      summary: 일정 피드(보증·계약 만료, 실사 마감)
+      tags:
+      - PORTAL
+      description: '09 §4 · 테이블: asset, contract, count_campaign
+
+
+        - userSub 본인의 권한 범위만: 보증 만료(자산 범위), 계약 만료(contract.read), 실사 마감(count.read). 금액은 담지 않는다.
+
+        - from·to는 UTC ISO 8601, 기간은 최대 100일. 날짜만 있는 일정은 allDay=true로 그날 00:00~24:00(UTC).'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: tenantId
+        in: query
+        required: true
+        description: 테넌트 ID(중앙 ID와 같은 값)
+        schema:
+          type: string
+          format: uuid
+      - name: userSub
+        in: query
+        required: true
+        description: 대상 사용자 ID(중앙 ID 사용자 ID)
+        schema:
+          type: string
+          format: uuid
+      - name: from
+        in: query
+        required: true
+        description: 시작(포함)
+        schema:
+          type: string
+          format: date-time
+      - name: to
+        in: query
+        required: true
+        description: 끝(날짜 단위로 그 날짜까지 포함)
+        schema:
+          type: string
+          format: date-time
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalCalendarFeed'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: portal.feed
+      security:
+      - portalAuth:
+        - portal.feed
+  /portal/tenant-export:
+    post:
+      operationId: portalTenantExport
+      summary: 테넌트 데이터 내보내기(공유→전용 이전)
+      tags:
+      - PORTAL
+      description: '09 §9 · 테이블: -
+
+
+        - R3 구현 예정. 지금은 501 ALM-E501. tenantId·userSub 없이 클라이언트만 확인한다.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '501':
+          $ref: '#/components/responses/E501'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: portal.feed
+      security:
+      - portalAuth:
+        - portal.feed
+  /portal/tenant-import:
+    post:
+      operationId: portalTenantImport
+      summary: 테넌트 데이터 가져오기(전용 스택)
+      tags:
+      - PORTAL
+      description: '09 §9 · 테이블: -
+
+
+        - R3 구현 예정. 지금은 501 ALM-E501.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '501':
+          $ref: '#/components/responses/E501'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: portal.feed
+      security:
+      - portalAuth:
+        - portal.feed
+  /portal/erase:
+    post:
+      operationId: portalErase
+      summary: 개인정보 익명화(GDPR)
+      tags:
+      - PORTAL
+      description: '09 §9 · 테이블: -
+
+
+        - R4 구현 예정. 지금은 501 ALM-E501.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '501':
+          $ref: '#/components/responses/E501'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: portal.feed
+      security:
+      - portalAuth:
+        - portal.feed
+  /portal/jobs/{id}:
+    get:
+      operationId: portalGetJob
+      summary: 수명주기 작업 상태
+      tags:
+      - PORTAL
+      description: '09 §9 · 테이블: -
+
+
+        - R3 구현 예정. 지금은 501 ALM-E501.'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - name: id
+        in: path
+        required: true
+        description: 작업 ID
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '501':
+          $ref: '#/components/responses/E501'
+        '429':
+          $ref: '#/components/responses/E429'
+        '500':
+          $ref: '#/components/responses/E500'
+      x-permission: portal.feed
+      security:
+      - portalAuth:
+        - portal.feed
   /me:
     get:
       operationId: getMe
@@ -10595,6 +10908,15 @@ components:
           tokenUrl: /oauth/token
           scopes:
             sap.api: SAP 연계
+    portalAuth:
+      type: oauth2
+      description: PAS Portal 머신 클라이언트(portal-backend)의 Cognito Client Credentials 토큰. 클라이언트 ID가 PORTAL_CLIENT_IDS와 같아야 하고, 설정하면 PORTAL_FEED_SCOPE 범위가 있어야 한다. 사용자는 쿼리의 tenantId·userSub로 가리킨다(읽기 전용 피드에만
+        허용)
+      flows:
+        clientCredentials:
+          tokenUrl: https://auth.{domain}/oauth2/token
+          scopes:
+            portal.feed: Portal 읽기 피드
   parameters:
     SapSystem:
       name: X-SAP-System
@@ -10704,6 +11026,171 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    PortalManifest:
+      type: object
+      description: Portal이 읽는 앱 매니페스트(contractVersion 1)
+      properties:
+        contractVersion:
+          type: integer
+          description: 계약 버전
+        appId:
+          type: string
+          description: 앱 코드(alm)
+        nameKey:
+          type: string
+          description: 앱 이름 번역 키
+        icon:
+          type: string
+          description: 아이콘 이름
+        moduleCode:
+          type: string
+          description: 모듈 코드
+        centralProductCode:
+          type: string
+          description: 중앙 ID 제품 코드
+        launchUrl:
+          type: string
+          description: 앱 주소(새 창으로 연다)
+        apiBase:
+          type: string
+          description: 이 계약 API의 기준 주소
+        menu:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: 앱 메뉴(key·labelKey·path)
+        feeds:
+          type: object
+          additionalProperties: true
+          description: 피드 경로(approvalInbox, badges)
+        notifications:
+          type: object
+          additionalProperties: true
+          description: 알림 선언
+        header:
+          type: object
+          additionalProperties: true
+          description: 공통 헤더 사용 여부
+      required:
+      - contractVersion
+      - appId
+      - nameKey
+      - centralProductCode
+      - launchUrl
+      - apiBase
+      - feeds
+    PortalInboxItem:
+      type: object
+      description: 결재 대기 1건
+      properties:
+        id:
+          type: string
+          description: 승인 단계 ID(approvalId)
+        title:
+          type: string
+          maxLength: 200
+          description: '[요청번호] 요약'
+        kind:
+          type: string
+          description: ASSET_REQUEST
+        requesterName:
+          type: string
+          description: 요청자
+        stepLabel:
+          type: string
+          description: 내가 결정할 단계(역할 이름)
+        arrivedAt:
+          type: string
+          format: date-time
+          description: 내 차례가 된 시각
+        deepLink:
+          type: string
+          description: 앱 안의 상대 경로(/requests/{id})
+      required:
+      - id
+      - title
+      - arrivedAt
+      - deepLink
+    PortalInboxFeed:
+      type: object
+      description: 결재 대기 피드
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PortalInboxItem'
+          description: limit까지 자른 목록
+        total:
+          type: integer
+          description: 자르기 전 전체 건수(배지·합계는 이 값)
+        asOf:
+          type: string
+          format: date-time
+          description: 기준 시각
+      required:
+      - items
+      - total
+    PortalCalendarEvent:
+      type: object
+      description: Portal 일정 이벤트
+      properties:
+        id:
+          type: string
+          description: '안정적인 이벤트 ID(예: warranty:<자산 id>)'
+        title:
+          type: string
+          description: 제목
+        startsAt:
+          type: string
+          format: date-time
+          description: 시작(UTC)
+        endsAt:
+          type: string
+          format: date-time
+          description: 끝(UTC)
+        allDay:
+          type: boolean
+          description: 종일 여부(날짜만 있는 일정은 true)
+        kind:
+          type: string
+          description: WARRANTY_END · CONTRACT_END · COUNT_DUE
+        deepLink:
+          type: string
+          description: 앱 안 상대 경로
+      required:
+      - id
+      - title
+      - startsAt
+      - endsAt
+    PortalCalendarFeed:
+      type: object
+      description: 일정 피드
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PortalCalendarEvent'
+          description: 기간 안 이벤트(최대 500건)
+        partial:
+          type: boolean
+          description: 잘렸으면 true
+        asOf:
+          type: string
+          format: date-time
+          description: 기준 시각
+      required:
+      - items
+    PortalBadges:
+      type: object
+      description: 앱 메뉴 배지
+      properties:
+        badges:
+          type: object
+          additionalProperties: true
+          description: 메뉴 key → 숫자(requests = 내 결재 대기)
+      required:
+      - badges
     Problem:
       type: object
       description: 오류 응답 (RFC 9457 application/problem+json)

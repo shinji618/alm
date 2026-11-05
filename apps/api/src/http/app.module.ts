@@ -24,6 +24,7 @@ import { CountsController } from './counts.controller';
 import { TaxController } from './tax.controller';
 import { LabelsController } from './labels.controller';
 import { DashboardController } from './dashboard.controller';
+import { PortalController } from './portal.controller';
 import type { FileStore } from '../files/files';
 import type { Central } from '../auth/central';
 
@@ -32,7 +33,7 @@ export class AppModule {
   static create(deps: { cfg: Config; db: Db; cognito: Cognito; principals?: PrincipalCache; limiter?: SharedLimiter; files?: FileStore; mailer?: Mailer; central?: Central }): DynamicModule {
     return {
       module: AppModule,
-      controllers: [HealthController, AuthController, MeController, AdminController, PdaController, SapController, FilesController, AssetsController, RequestsController, SapWebController, CountsController, TaxController, LabelsController, DashboardController],
+      controllers: [HealthController, AuthController, MeController, AdminController, PdaController, SapController, FilesController, AssetsController, RequestsController, SapWebController, CountsController, TaxController, LabelsController, DashboardController, PortalController],
       providers: [
         { provide: CONFIG, useValue: deps.cfg },
         { provide: DB, useValue: deps.db },

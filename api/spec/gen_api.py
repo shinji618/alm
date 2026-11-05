@@ -60,7 +60,7 @@ def build_openapi():
             op['x-permission'] = e['perm']
             if isinstance(e['perm'], list):
                 op['x-scope'] = {p: {r: perm.scope_of(r, p) for r in perm.roles_with(p)} for p in e['perm']}
-            elif e['perm'] not in ('auth', 'sap.api'):
+            elif e['perm'] not in ('auth', 'sap.api', 'portal.feed'):
                 op['x-scope'] = {r: perm.scope_of(r, e['perm']) for r in perm.roles_with(e['perm'])}
             for (o2, cond), p2 in perm.PARAM_PERMS.items():
                 if o2 == e['op']:
@@ -78,7 +78,7 @@ def build_openapi():
                 'properties': {'grant_type': {'type': 'string', 'enum': ['client_credentials']}, 'client_id': {'type': 'string'},
                                'client_secret': {'type': 'string'}, 'scope': {'type': 'string', 'default': 'sap.api'}}}}}}
         else:
-            op['security'] = {'pda': [{'pdaAuth': ['pda']}], 'sap': [{'sapAuth': ['sap.api']}], 'web': [{'webAuth': ['web']}]}[e['group']]
+            op['security'] = {'pda': [{'pdaAuth': ['pda']}], 'sap': [{'sapAuth': ['sap.api']}], 'portal': [{'portalAuth': ['portal.feed']}], 'web': [{'webAuth': ['web']}]}[e['group']]
             if e['req']:
                 op['requestBody'] = {'required': True, 'content': {'application/json': {'schema': {'$ref': f"#/components/schemas/{e['req']}"}}}}
         codes = [c.strip() for c in e['codes'].split(',')] + ['429', '500']
@@ -116,7 +116,9 @@ def build_openapi():
                             'flows': {'authorizationCode': {'authorizationUrl': 'https://auth.{domain}/oauth2/authorize',
                                                             'tokenUrl': 'https://auth.{domain}/oauth2/token', 'scopes': {'pda': 'PDA 실사'}}}},
                 'sapAuth': {'type': 'oauth2', 'description': 'Client Credentials. 토큰 60분',
-                            'flows': {'clientCredentials': {'tokenUrl': '/oauth/token', 'scopes': {'sap.api': 'SAP 연계'}}}}},
+                            'flows': {'clientCredentials': {'tokenUrl': '/oauth/token', 'scopes': {'sap.api': 'SAP 연계'}}}},
+                'portalAuth': {'type': 'oauth2', 'description': 'PAS Portal 머신 클라이언트(portal-backend)의 Cognito Client Credentials 토큰. 클라이언트 ID가 PORTAL_CLIENT_IDS와 같아야 하고, 설정하면 PORTAL_FEED_SCOPE 범위가 있어야 한다. 사용자는 쿼리의 tenantId·userSub로 가리킨다(읽기 전용 피드에만 허용)',
+                               'flows': {'clientCredentials': {'tokenUrl': 'https://auth.{domain}/oauth2/token', 'scopes': {'portal.feed': 'Portal 읽기 피드'}}}}},
             'parameters': {
                 'SapSystem': {'name': 'X-SAP-System', 'in': 'header', 'required': False, 'schema': {'type': 'string', 'maxLength': 10},
                               'description': 'SAP 시스템ID-클라이언트 (예: PRD-100). 로그 기록용. sap_connection과 다르면 403'},

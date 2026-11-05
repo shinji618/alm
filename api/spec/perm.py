@@ -60,6 +60,7 @@ PERMS = {
     'admin.config':    ('관리', '공통 코드·설정'),
     'audit.read':      ('관리', '감사 로그·보안 이벤트 조회'),
     'sap.api':         ('SAP 머신', 'SAP 배치 잡 전용(Client Credentials). 사람 역할에는 없음'),
+    'portal.feed':     ('Portal 연동', 'Portal 머신(portal-backend) 전용 읽기 피드(Client Credentials). 사람 역할에는 없음'),
 }
 
 R_ALL = ['dashboard.read', 'asset.read', 'amount.read', 'discovery.read', 'cmdb.read', 'license.read', 'contract.read',
@@ -211,6 +212,8 @@ def apply(E):
             p = 'count.scan'
         elif e['group'] == 'sap':
             p = None if e['op'] == 'sapToken' else 'sap.api'
+        elif e['group'] == 'portal':
+            p = 'portal.feed'
         else:
             if e['op'] not in OPS:
                 probs.append('no mapping: ' + e['op']); continue
@@ -222,6 +225,8 @@ def apply(E):
             e['auth'] = '`auth` (로그인 사용자)'
         elif p == 'sap.api':
             e['auth'] = '`sap.api` (SAP 머신 클라이언트)'
+        elif p == 'portal.feed':
+            e['auth'] = '`portal.feed` (Portal 머신 클라이언트)'
         elif p == 'count.scan':
             e['auth'] = '`count.scan` (COUNTER, 배정 작업)'
         else:
@@ -237,14 +242,14 @@ def apply(E):
         for p in g:
             if p not in PERMS: probs.append(f'unknown perm {p} in {r}')
     for p in PERMS:
-        if p not in ('auth', 'sap.api') and not any(p in g for g in GRANTS.values()):
+        if p not in ('auth', 'sap.api', 'portal.feed') and not any(p in g for g in GRANTS.values()):
             probs.append('perm granted to nobody: ' + p)
     return probs
 
 def catalog(E=()):
-    """Machine-readable catalog for backend/frontend (packages/shared). PDA·SAP 작업도 operations에 넣는다(백엔드 가드가 같은 표로 판정)."""
+    """Machine-readable catalog for backend/frontend (packages/shared). PDA·SAP·Portal 작업도 operations에 넣는다(백엔드 가드가 같은 표로 판정)."""
     ops = dict(OPS)
-    ops.update({e['op']: e['perm'] for e in E if e['group'] in ('pda', 'sap')})
+    ops.update({e['op']: e['perm'] for e in E if e['group'] in ('pda', 'sap', 'portal')})
     return {'roles': [{'code': r, 'name': n, 'summary': d, **ROLE_RULES.get(r, {})} for r, n, d in ROLES],
             'permissions': [{'key': k, 'area': a, 'description': d} for k, (a, d) in PERMS.items()],
             'grants': GRANTS, 'operations': ops,

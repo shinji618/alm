@@ -18,11 +18,15 @@ import type { Central } from '../auth/central';
 import { centralLogin } from '../auth/centralLogin';
 import type { Response } from 'express';
 
-export type Channel = 'WEB' | 'PDA' | 'SAP';
+export type Channel = 'WEB' | 'PDA' | 'SAP' | 'PORTAL';
 export const channelOfPath = (path: string): Channel =>
-  path.startsWith('/api/v1/pda/') ? 'PDA' : path.startsWith('/api/v1/sap/') ? 'SAP' : 'WEB';
+  path.startsWith('/api/v1/pda/') ? 'PDA' : path.startsWith('/api/v1/sap/') ? 'SAP' : path.startsWith('/api/v1/portal/') ? 'PORTAL' : 'WEB';
 
 const DEVICE = /^[A-Za-z0-9._:-]{1,40}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// 사용자 문맥 없이 클라이언트만 확인하는 Portal 작업(매니페스트는 별도). 수명주기 훅은 R1에서 501만 돌려준다
+export const PORTAL_APP_LEVEL = new Set(['portalTenantExport', 'portalTenantImport', 'portalErase', 'portalGetJob']);
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -48,6 +52,7 @@ export class AuthGuard implements CanActivate {
     req.alm.channel = channel;
 
     if (channel === 'SAP') return this.sap(req, claims, String(perm), ctx.switchToHttp().getResponse<Response>());
+    if (channel === 'PORTAL') return this.portal(req, claims, op, String(perm), ctx.switchToHttp().getResponse<Response>());
 
     // 웹 → alm-web, /pda/* → alm-pda (ST03: PDA 토큰으로 웹 API 403 ALM-E407)
     const expected = channel === 'PDA' ? this.cfg.cognito.pdaClientId : this.cfg.cognito.webClientId;
@@ -129,6 +134,26 @@ export class AuthGuard implements CanActivate {
     if (cc && cc !== conn.companyCode) await deny('COMPANY_MISMATCH', '이 연결에 허용되지 않은 회사코드입니다');
     if (perm !== 'sap.api') throw E.forbidden();
     await this.limit(res, [[`sap:${conn.clientId}`, LIMITS.sapClient], [`t:${conn.tenantId}`, LIMITS.tenant]]);
+    return true;
+  }
+
+  // 09 앱 연동 계약 §3: Portal 머신 클라이언트(portal-backend)만. 토큰은 사용자를 대표하지 않으므로 tenantId·userSub를 쿼리로 받아
+  // "그 테넌트의 활성 사용자인가"를 확인하고, 그 사용자의 권한으로 읽기만 한다(쓰기 API는 이 채널에 없다).
+  private async portal(req: AlmRequest, claims: AccessClaims, op: string, perm: string, res: Response): Promise<boolean> {
+    const pc = this.cfg.portal;
+    if (perm !== 'portal.feed' || !pc || !pc.clientIds.includes(claims.client_id)) throw E.channel('Portal 클라이언트가 아닙니다');
+    if (pc.scope && !(claims.scope ?? '').split(' ').includes(pc.scope)) throw E.channel('Portal 피드 범위가 토큰에 없습니다');
+    if (op === 'portalGetManifest' || PORTAL_APP_LEVEL.has(op)) return true;                       // 앱 수준 정보 — 사용자 문맥 없음
+    const tenantId = String(req.query.tenantId ?? ''), userSub = String(req.query.userSub ?? '');
+    if (!UUID_RE.test(tenantId) || !UUID_RE.test(userSub)) throw E.badRequest('tenantId와 userSub(uuid)가 필요합니다');
+    const principal = await this.cache.get(`portal:${tenantId}:${userSub}`, () => this.db.withTx(
+      { tenantId, userId: userSub, actorType: 'USER', correlationId: req.alm.correlationId, clientIp: req.alm.ip }, (c) => loadPrincipal(c, userSub)));
+    if (!principal) {
+      log.warn('portal feed denied', { reason: 'USER_NOT_IN_TENANT', clientId: claims.client_id, correlationId: req.alm.correlationId });
+      throw new AlmError(403, 'ALM-E401', '이 테넌트의 활성 사용자가 아닙니다', { reason: 'USER_NOT_IN_TENANT' });
+    }
+    req.alm.principal = principal;
+    await this.limit(res, [[`portal:${tenantId}`, LIMITS.tenant]]);
     return true;
   }
 

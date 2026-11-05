@@ -9,7 +9,7 @@ import type { SapConn } from '../auth/sap';
 
 export interface AlmContext {
   correlationId: string; ip?: string; userAgent?: string; claims?: AccessClaims; principal?: Principal;
-  channel?: 'WEB' | 'PDA' | 'SAP';
+  channel?: 'WEB' | 'PDA' | 'SAP' | 'PORTAL';
   sap?: SapConn;                                      // SAP 채널: 연결(테넌트·회사코드)
   device?: { id?: string; serial: string };           // PDA 채널: X-Device-Id
   loginRecorded?: boolean;                            // 이 요청에서 이미 LOGIN을 남김(PDA 첫 로그인)

@@ -17,6 +17,7 @@ import { maintainPartitions, archiveAll, s3Store } from './ops/archive';
 import { connectCounterStore, MemoryCounterStore, SharedLimiter } from './common/shared';
 import { s3FileStore } from './files/files';
 import { Mailer, MailSender, parseSesEvent } from './notify/mail';
+import { PortalNotifier } from './notify/portal';
 import { CentralClient } from './auth/central';
 import { identityEventHandlers, migrateToCentral } from './admin/identitySync';
 
@@ -56,7 +57,7 @@ async function main(role: string) {
       const db = new Db(createPool(cfg, { max: 5 }));
       const { SESv2Client } = await import('@aws-sdk/client-sesv2');
       const mail = cfg.mail ? new MailSender(new SESv2Client({ region: cfg.region }), db, { ...cfg.mail, env: cfg.env, appOrigin: cfg.appOrigin }) : undefined;
-      const workers = [new Worker(sqs, cfg.jobsQueueUrl, { ...mail?.handlers() })];
+      const workers = [new Worker(sqs, cfg.jobsQueueUrl, { ...mail?.handlers(), ...(cfg.portalNotify ? new PortalNotifier(cfg.portalNotify).handlers() : {}) })];
       // SES 반송·수신 거부 이벤트 큐(같은 작업이 함께 읽는다)
       if (mail && cfg.mail?.eventsQueueUrl) workers.push(new Worker(sqs, cfg.mail.eventsQueueUrl, { 'ses-event': (j) => mail.onEvent(j) }, parseSesEvent));
       // 중앙 ID 변경 이벤트(3.13): 사용자·역할 미러 갱신
