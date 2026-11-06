@@ -52,7 +52,12 @@ export class PortalNotifier {
     if (r.status === 401) this.token = undefined;                       // 토큰 만료·폐기 → 다음 시도에서 새로 받는다
     if (r.ok) return;
     // 다시 보내도 같은 결과인 거절(사건 미선언·앱 미사용·사용자 없음·형식 오류)은 버린다. 그 밖(401·429·5xx)은 던져서 재시도한다
-    if ([400, 403, 404, 422].includes(r.status)) { log.warn('portal notify dropped', { status: r.status, eventCode: j.eventCode }); return; }
+    if ([400, 403, 404, 422].includes(r.status)) {
+      // 거절 사유(Portal 오류 코드)와 대상 ID를 남긴다 — 앱 미사용·사용자 불일치 등을 구분하려면 필요하다(ID는 UUID이며 비밀이 아니다)
+      const body = await r.text().then((t) => t.slice(0, 300), () => '');
+      log.warn('portal notify dropped', { status: r.status, eventCode: j.eventCode, tenantId: j.tenantId, userSub: j.userSub, body });
+      return;
+    }
     throw new Error(`Portal 알림 전송 실패(${r.status})`);
   }
 }
