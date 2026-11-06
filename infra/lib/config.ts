@@ -50,6 +50,9 @@ export interface EnvConfig {
   // 중앙 ID 서비스 사용(WBS 3.13). 있으면 사용자 로그인은 중앙 풀(alm-web·alm-pda 클라이언트), 사용자·역할 원본은 중앙, ALM DB는 미러.
   // SAP 연결 클라이언트는 ALM 풀에 남긴다. 클라이언트 ID·비밀은 비밀 alm/<env>/central-id(scripts/central-link.sh가 채움)
   centralId?: { url: string; tokenUrl: string; userPoolId: string; domain: string; eventsTopicArn: string };
+  // Portal 연동(09 앱 연동 계약). 있으면 Portal→ALM 피드 검증(PORTAL_CLIENT_IDS·PORTAL_FEED_SCOPE)과 ALM→Portal 알림 송신(PORTAL_API_URL 등)을 켠다.
+  // 알림 송신 클라이언트는 중앙 ID 비밀(alm/<env>/central-id)의 backendClientId·backendClientSecret(alm-backend)을 그대로 쓴다.
+  portal?: { apiUrl: string; clientIds: string; feedScope: string; notifyScope: string };
 }
 
 export const ORG: OrgConfig = {
@@ -97,6 +100,8 @@ export const ENVS: Record<EnvName, EnvConfig> = {
     // 2026-10-28 중앙 ID 전환(3.13): identity-dev(718468742633) 풀·API
     centralId: { url: 'https://id-dev.pasapps.com', tokenUrl: 'https://auth.id-dev.pasapps.com/oauth2/token', userPoolId: 'us-east-1_fNEfzWpwd',
       domain: 'auth.id-dev.pasapps.com', eventsTopicArn: 'arn:aws:sns:us-east-1:718468742633:id-dev-events' },
+    // 2026-11-06 Portal 연동: portal-backend(피드 호출 주체, 스코프 portal/feed), alm-backend(알림 송신, 스코프 portal/notify)
+    portal: { apiUrl: 'https://portal-dev.pasapps.com/api', clientIds: '7acekjs8qoiqdbmotqbuq4s01u', feedScope: 'portal/feed', notifyScope: 'portal/notify' },
   },
   qa: {
     ...common, name: 'qa', account: ORG.accounts.qa, zoneName: 'alm-qa.pasapps.com',

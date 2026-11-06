@@ -179,6 +179,8 @@ export class AppStack extends Stack {
       FILES_BUCKET: filesBucket.bucketName, EXPORTS_BUCKET: exportsBucket.bucketName,
       CACHE_ENDPOINT: cache.attrEndpointAddress, CACHE_USER: appUserId, CACHE_NAME: cacheName, SES_CONFIG_SET: configSet.configurationSetName,
       MAIL_FROM: `no-reply@${mailDomain}`, COGNITO_ADMIN_FUNCTION: cognitoAdmin.functionName,
+      ...(cfg.portal && central ? { PORTAL_CLIENT_IDS: cfg.portal.clientIds, PORTAL_FEED_SCOPE: cfg.portal.feedScope,
+        PORTAL_API_URL: cfg.portal.apiUrl, PORTAL_TOKEN_URL: central.tokenUrl, PORTAL_NOTIFY_SCOPE: cfg.portal.notifyScope } : {}),
     };
     const dbUserArn = (user: string) => `arn:aws:rds-db:${this.region}:${this.account}:dbuser:${props.db.instanceResourceId}/${user}`;
     const cacheConnect = new iam.PolicyStatement({ actions: ['elasticache:Connect'],
@@ -219,6 +221,10 @@ export class AppStack extends Stack {
       }
       c.addSecret('CENTRAL_ID_CLIENT_ID', ecs.Secret.fromSecretsManager(centralSecret, 'backendClientId'));
       c.addSecret('CENTRAL_ID_CLIENT_SECRET', ecs.Secret.fromSecretsManager(centralSecret, 'backendClientSecret'));
+      if (cfg.portal) {   // Portal 알림 송신(portal-notify 작업은 worker): 같은 alm-backend 클라이언트
+        c.addSecret('PORTAL_NOTIFY_CLIENT_ID', ecs.Secret.fromSecretsManager(centralSecret, 'backendClientId'));
+        c.addSecret('PORTAL_NOTIFY_CLIENT_SECRET', ecs.Secret.fromSecretsManager(centralSecret, 'backendClientSecret'));
+      }
     };
     api.c.addSecret('COGNITO_WEB_CLIENT_SECRET', centralSecret ? ecs.Secret.fromSecretsManager(centralSecret, 'webClientSecret')
       : ecs.Secret.fromSecretsManager(props.webClientSecret, 'clientSecret'));
