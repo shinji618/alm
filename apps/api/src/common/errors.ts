@@ -12,5 +12,6 @@ export const E = {
   sod: (m: string) => new AlmError(403, 'ALM-E403', m),
   lastAdmin: () => new AlmError(409, 'ALM-E319', '마지막 시스템 관리자는 역할을 빼거나 비활성화할 수 없습니다'),
   duplicate: (m: string) => new AlmError(409, 'ALM-E321', m),
+  notImplemented: (m = '아직 지원하지 않는 기능입니다') => new AlmError(501, 'ALM-E501', m),
   notFound: (m = '찾을 수 없습니다') => new AlmError(404, 'ALM-E404', m),
 };

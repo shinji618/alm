@@ -41,7 +41,7 @@ test('권한: 암묵 EMPLOYEE·감사인 배타·ALL 우선', () => {
   assert.equal(permissionFor('getMe', cat), 'auth');
   assert.equal(permissionFor('authLogin', cat), null);
   assert.equal(permissionFor('nope', cat), undefined);
-  assert.equal(cat.permissions.length, 41);
+  assert.equal(cat.permissions.length, 42);
 });
 
 test('권한 카탈로그가 openapi의 모든 operationId(웹·PDA·SAP)를 덮는다', () => {
@@ -59,6 +59,7 @@ test('returnTo·이메일 도메인·채널', () => {
   assert.equal(domainOf('no-at'), undefined);
   assert.equal(channelOfPath('/api/v1/pda/me'), 'PDA');
   assert.equal(channelOfPath('/api/v1/sap/postings'), 'SAP');
+  assert.equal(channelOfPath('/api/v1/portal/inbox'), 'PORTAL');
   assert.equal(channelOfPath('/api/v1/me'), 'WEB');
 });
 

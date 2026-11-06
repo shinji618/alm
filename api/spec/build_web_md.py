@@ -31,7 +31,7 @@ SCOPE_TXT = {'ALL': '●', 'CC': 'CC', 'OWN': '본인', 'TASK': '배정', '-': '
 matrix = ['| 권한 키 | 내용 | ' + ' | '.join(ROLE_SHORT[r] for r, _, _ in perm.ROLES) + ' |',
           '| --- | --- | ' + ' | '.join('---' for _ in perm.ROLES) + ' |']
 for k, (a, d) in perm.PERMS.items():
-    if k in ('auth', 'sap.api'): continue
+    if k in ('auth', 'sap.api', 'portal.feed'): continue
     matrix.append(f'| `{k}` | {d} | ' + ' | '.join(SCOPE_TXT.get(perm.scope_of(r, k), '') or '' for r, _, _ in perm.ROLES) + ' |')
 matrix = '\n'.join(matrix)
 
@@ -153,7 +153,7 @@ readme = f'''# api — ALM API 명세 (WBS 2.6, 권한 2.8)
 
 > 이 파일은 `spec/build_web_md.py`가 만든다. 수량을 손으로 고치지 말고 생성기를 다시 돌린다.
 
-엔드포인트 = HTTP 메서드 + 경로 1개(OpenAPI operation 1개). 전체 **{len(E)}개**: 웹 {cnt['web']} · PDA {cnt['pda']} · SAP {cnt['sap']}.
+엔드포인트 = HTTP 메서드 + 경로 1개(OpenAPI operation 1개). 전체 **{len(E)}개**: 웹 {cnt['web']} · PDA {cnt['pda']} · SAP {cnt['sap']} · Portal {cnt['portal']}.
 
 | 파일 | 내용 |
 | --- | --- |

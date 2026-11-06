@@ -6,6 +6,54 @@ S = {}  # schema name -> (description, [fields])
 def schema(name, desc, fields):
     S[name] = (desc, [tuple(x.strip() for x in l.split('|')) for l in fields.strip().split('\n') if l.strip()])
 
+
+# ---------------- Portal 연동 (PAS Portal 앱 연동 계약 v1, 09 앱 연동 계약서) ----------------
+schema('PortalManifest', 'Portal이 읽는 앱 매니페스트(contractVersion 1)', '''
+contractVersion | int | Y | 계약 버전
+appId | string | Y | 앱 코드(alm)
+nameKey | string | Y | 앱 이름 번역 키
+icon | string | N | 아이콘 이름
+moduleCode | string | N | 모듈 코드
+centralProductCode | string | Y | 중앙 ID 제품 코드
+launchUrl | string | Y | 앱 주소(새 창으로 연다)
+apiBase | string | Y | 이 계약 API의 기준 주소
+menu | [object] | N | 앱 메뉴(key·labelKey·path)
+feeds | object | Y | 피드 경로(approvalInbox, badges)
+notifications | object | N | 알림 선언
+header | object | N | 공통 헤더 사용 여부
+''')
+schema('PortalInboxItem', '결재 대기 1건', '''
+id | string | Y | 승인 단계 ID(approvalId)
+title | string(200) | Y | [요청번호] 요약
+kind | string | N | ASSET_REQUEST
+requesterName | string | N | 요청자
+stepLabel | string | N | 내가 결정할 단계(역할 이름)
+arrivedAt | datetime | Y | 내 차례가 된 시각
+deepLink | string | Y | 앱 안의 상대 경로(/requests/{id})
+''')
+schema('PortalInboxFeed', '결재 대기 피드', '''
+items | [PortalInboxItem] | Y | limit까지 자른 목록
+total | int | Y | 자르기 전 전체 건수(배지·합계는 이 값)
+asOf | datetime | N | 기준 시각
+''')
+schema('PortalCalendarEvent', 'Portal 일정 이벤트', '''
+id | string | Y | 안정적인 이벤트 ID(예: warranty:<자산 id>)
+title | string | Y | 제목
+startsAt | datetime | Y | 시작(UTC)
+endsAt | datetime | Y | 끝(UTC)
+allDay | bool | N | 종일 여부(날짜만 있는 일정은 true)
+kind | string | N | WARRANTY_END · CONTRACT_END · COUNT_DUE
+deepLink | string | N | 앱 안 상대 경로
+''')
+schema('PortalCalendarFeed', '일정 피드', '''
+items | [PortalCalendarEvent] | Y | 기간 안 이벤트(최대 500건)
+partial | bool | N | 잘렸으면 true
+asOf | datetime | N | 기준 시각
+''')
+schema('PortalBadges', '앱 메뉴 배지', '''
+badges | object | Y | 메뉴 key → 숫자(requests = 내 결재 대기)
+''')
+
 # ---------------- common ----------------
 schema('Problem', '오류 응답 (RFC 9457 application/problem+json)', '''
 type | string | Y | 오류 유형 URI (예: https://alm.bsg/errors/validation)
@@ -663,7 +711,28 @@ ERRORS = [
  ('ALM-E405','403','로그인 불가','모르는 이메일 도메인, 미등록·비활성 사용자, 유효한 역할 없음'),
  ('ALM-E406','403','차단된 기기','비활성화된 PDA 기기(pda_device.is_active = false)'),
  ('ALM-E407','403','채널 불일치','토큰의 앱 클라이언트가 이 API 그룹(웹·PDA·SAP)에 허용되지 않음'),
+ ('ALM-E501','501','미구현','Portal 수명주기 훅(R3·R4 구현 예정). Portal은 "미지원"으로 기록한다'),
  ('ALM-E429','429','호출 제한','잠시 뒤 재시도(Retry-After)'),
  ('ALM-E500','500','서버 오류','correlationId로 문의'),
  ('ALM-E320','409','출력 상태 아님','출력할 수 없는 상태의 작업(PRINTED·CANCELLED)이거나, RENDERED가 아닌 작업에 결과 회신'),
 ]
+
+R = 'portal'
+_TQ = [('tenantId','query','uuid','Y','테넌트 ID(중앙 ID와 같은 값)'), ('userSub','query','uuid','Y','대상 사용자 ID(중앙 ID 사용자 ID)')]
+ep(R,'GET','/portal/manifest','portalGetManifest','앱 매니페스트','Portal 머신',None,'PortalManifest','200, 401, 403','-','09 §2',
+   ['Portal이 앱을 등록·갱신할 때 부른다. tenantId·userSub 없이 머신 토큰만 확인한다.'])
+ep(R,'GET','/portal/inbox','portalGetInbox','결재 대기 피드(Portal 통합 결재함·홈)','Portal 머신',None,'PortalInboxFeed','200, 400, 401, 403','approval, workflow_step','09 §4',
+   ['userSub 본인이 지금 결정할 수 있는 요청만(웹 승인함과 같은 기준). 다른 사람 몫을 합쳐 주지 않는다.',
+    'total은 limit로 잘려도 전체 건수. 승인·반려는 이 API로 하지 않는다 — deepLink로 ALM 화면에서 한다(07 §11).',
+    '테넌트에 없거나 비활성인 사용자는 403(Portal 쪽은 이 앱만 "응답 없음").'], params=_TQ+[('limit','query','int','N','최대 건수(기본 50, 최대 200)')])
+ep(R,'GET','/portal/badges','portalGetBadges','메뉴 배지(Portal 좌측 메뉴 숫자)','Portal 머신',None,'PortalBadges','200, 400, 401, 403','approval, workflow_step','09 §4',
+   ['requests = 내 결재 대기 건수(portalGetInbox.total과 같다).'], params=_TQ)
+ep(R,'GET','/portal/calendar-feed','portalGetCalendarFeed','일정 피드(보증·계약 만료, 실사 마감)','Portal 머신',None,'PortalCalendarFeed','200, 400, 401, 403','asset, contract, count_campaign','09 §4',
+   ['userSub 본인의 권한 범위만: 보증 만료(자산 범위), 계약 만료(contract.read), 실사 마감(count.read). 금액은 담지 않는다.',
+    'from·to는 UTC ISO 8601, 기간은 최대 100일. 날짜만 있는 일정은 allDay=true로 그날 00:00~24:00(UTC).'],
+   params=_TQ+[('from','query','datetime','Y','시작(포함)'), ('to','query','datetime','Y','끝(날짜 단위로 그 날짜까지 포함)')])
+_L = '09 §9'
+ep(R,'POST','/portal/tenant-export','portalTenantExport','테넌트 데이터 내보내기(공유→전용 이전)','Portal 머신',None,None,'401, 403, 501','-',_L,['R3 구현 예정. 지금은 501 ALM-E501. tenantId·userSub 없이 클라이언트만 확인한다.'])
+ep(R,'POST','/portal/tenant-import','portalTenantImport','테넌트 데이터 가져오기(전용 스택)','Portal 머신',None,None,'401, 403, 501','-',_L,['R3 구현 예정. 지금은 501 ALM-E501.'])
+ep(R,'POST','/portal/erase','portalErase','개인정보 익명화(GDPR)','Portal 머신',None,None,'401, 403, 501','-',_L,['R4 구현 예정. 지금은 501 ALM-E501.'])
+ep(R,'GET','/portal/jobs/{id}','portalGetJob','수명주기 작업 상태','Portal 머신',None,None,'401, 403, 501','-',_L,['R3 구현 예정. 지금은 501 ALM-E501.'],params=[('id','path','uuid','Y','작업 ID')])

@@ -49,7 +49,7 @@ export async function queueEmail(c: PoolClient, tenantId: string, r: MailRequest
 // api·worker 쪽: 커밋 뒤 작업 큐로 보낸다
 export class Mailer {
   constructor(private sqs: Pick<SQSClient, 'send'>, private queueUrl: string) {}
-  async enqueue(job: SendEmailJob | undefined) {
+  async enqueue(job: Job | undefined) {
     if (!job) return;
     await this.sqs.send(new SendMessageCommand({ QueueUrl: this.queueUrl, MessageBody: JSON.stringify(job) }));
   }

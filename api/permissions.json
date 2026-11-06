@@ -246,6 +246,11 @@
    "key": "sap.api",
    "area": "SAP 머신",
    "description": "SAP 배치 잡 전용(Client Credentials). 사람 역할에는 없음"
+  },
+  {
+   "key": "portal.feed",
+   "area": "Portal 연동",
+   "description": "Portal 머신(portal-backend) 전용 읽기 피드(Client Credentials). 사람 역할에는 없음"
   }
  ],
  "grants": {
@@ -603,6 +608,14 @@
   "sapPostPurchaseOrders": "sap.api",
   "sapPostGoodsReceipts": "sap.api",
   "sapPostReconciliation": "sap.api",
+  "portalGetManifest": "portal.feed",
+  "portalGetInbox": "portal.feed",
+  "portalGetBadges": "portal.feed",
+  "portalGetCalendarFeed": "portal.feed",
+  "portalTenantExport": "portal.feed",
+  "portalTenantImport": "portal.feed",
+  "portalErase": "portal.feed",
+  "portalGetJob": "portal.feed",
   "sapGetRunRequests": "sap.api"
  },
  "implicit": {

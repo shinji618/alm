@@ -11,6 +11,10 @@ export interface Config {
   // 중앙 ID 서비스(3.13). 있으면 로그인 판정·사용자·역할 변경을 위임하고 ALM DB는 미러가 된다
   central?: { url: string; tokenUrl: string; clientId: string; clientSecret: string };
   identityEventsQueueUrl?: string;   // 중앙 변경 이벤트(SNS → SQS)
+  // PAS Portal 연동(09 앱 연동 계약). clientIds가 비면 portal API는 닫힌다. scope를 주면 토큰에 그 범위가 있어야 한다(전용 범위 portal.feed 추가 전에는 비워 두고 클라이언트 ID만 확인)
+  portal?: { clientIds: string[]; scope?: string };
+  // ALM → Portal 인앱 알림(09 §6). 없으면 보내지 않는다. 토큰은 앱 백엔드 머신 클라이언트(alm-backend)로 받는다
+  portalNotify?: { url: string; tokenUrl: string; clientId: string; clientSecret: string; scope?: string };
   appOrigin: string;           // https://alm-dev.pasapps.com
   cookieKeys: Buffer[];        // [현재, 이전] — 분기 교체 뒤 8시간 동안 이전 키도 받는다(09 6.4)
   jobsQueueUrl?: string;
@@ -57,6 +61,9 @@ export function loadConfig(role: string): Config {
     sapCognito: opt('COGNITO_SAP_USER_POOL_ID') ? { userPoolId: req('COGNITO_SAP_USER_POOL_ID'), domain: req('COGNITO_SAP_DOMAIN') } : undefined,
     central: opt('CENTRAL_ID_URL') && opt('CENTRAL_ID_CLIENT_SECRET')
       ? { url: req('CENTRAL_ID_URL'), tokenUrl: req('CENTRAL_ID_TOKEN_URL'), clientId: req('CENTRAL_ID_CLIENT_ID'), clientSecret: req('CENTRAL_ID_CLIENT_SECRET') } : undefined,
+    portal: opt('PORTAL_CLIENT_IDS') ? { clientIds: req('PORTAL_CLIENT_IDS').split(',').map((x) => x.trim()).filter(Boolean), scope: opt('PORTAL_FEED_SCOPE') } : undefined,
+    portalNotify: opt('PORTAL_API_URL') && opt('PORTAL_NOTIFY_CLIENT_SECRET')
+      ? { url: req('PORTAL_API_URL'), tokenUrl: req('PORTAL_TOKEN_URL'), clientId: req('PORTAL_NOTIFY_CLIENT_ID'), clientSecret: req('PORTAL_NOTIFY_CLIENT_SECRET'), scope: opt('PORTAL_NOTIFY_SCOPE') } : undefined,
     identityEventsQueueUrl: opt('IDENTITY_EVENTS_QUEUE_URL'),
     appOrigin: needsHttp ? req('APP_ORIGIN') : process.env.APP_ORIGIN || '',
     cookieKeys: needsHttp ? [req('COOKIE_KEY'), opt('COOKIE_KEY_PREVIOUS')].filter((x): x is string => !!x).map(keyOf) : [],
