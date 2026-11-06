@@ -221,14 +221,16 @@ export class AppStack extends Stack {
       }
       c.addSecret('CENTRAL_ID_CLIENT_ID', ecs.Secret.fromSecretsManager(centralSecret, 'backendClientId'));
       c.addSecret('CENTRAL_ID_CLIENT_SECRET', ecs.Secret.fromSecretsManager(centralSecret, 'backendClientSecret'));
-      if (cfg.portal) {   // Portal 알림 송신(portal-notify 작업은 worker): 같은 alm-backend 클라이언트
-        c.addSecret('PORTAL_NOTIFY_CLIENT_ID', ecs.Secret.fromSecretsManager(centralSecret, 'backendClientId'));
-        c.addSecret('PORTAL_NOTIFY_CLIENT_SECRET', ecs.Secret.fromSecretsManager(centralSecret, 'backendClientSecret'));
-      }
+    };
+    // Portal 알림 송신(portal-notify 작업은 worker): 같은 alm-backend 클라이언트. migrate에는 넣지 않는다.
+    const portalNotifySecrets = (c: ecs.ContainerDefinition) => {
+      if (!centralSecret || !cfg.portal) return;
+      c.addSecret('PORTAL_NOTIFY_CLIENT_ID', ecs.Secret.fromSecretsManager(centralSecret, 'backendClientId'));
+      c.addSecret('PORTAL_NOTIFY_CLIENT_SECRET', ecs.Secret.fromSecretsManager(centralSecret, 'backendClientSecret'));
     };
     api.c.addSecret('COGNITO_WEB_CLIENT_SECRET', centralSecret ? ecs.Secret.fromSecretsManager(centralSecret, 'webClientSecret')
       : ecs.Secret.fromSecretsManager(props.webClientSecret, 'clientSecret'));
-    centralSecrets(api.c, true);
+    centralSecrets(api.c, true); portalNotifySecrets(api.c);
     api.td.obtainExecutionRole().addToPrincipalPolicy(new iam.PolicyStatement({ actions: ['kms:Decrypt'], resources: [props.secretsKey.keyArn],
       conditions: { StringEquals: { 'kms:ViaService': `secretsmanager.${this.region}.amazonaws.com` } } }));
     filesBucket.grantReadWrite(api.td.taskRole);
@@ -245,7 +247,7 @@ export class AppStack extends Stack {
     if (identityEvents) {
       identityEvents.grantConsumeMessages(worker.td.taskRole);
       worker.c.addEnvironment('IDENTITY_EVENTS_QUEUE_URL', identityEvents.queueUrl);
-      centralSecrets(worker.c, false);
+      centralSecrets(worker.c, false); portalNotifySecrets(worker.c);
       worker.td.obtainExecutionRole().addToPrincipalPolicy(new iam.PolicyStatement({ actions: ['kms:Decrypt'], resources: [props.secretsKey.keyArn],
         conditions: { StringEquals: { 'kms:ViaService': `secretsmanager.${this.region}.amazonaws.com` } } }));
     }
