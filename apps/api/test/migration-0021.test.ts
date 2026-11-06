@@ -30,5 +30,9 @@ test('0021: 중앙 테넌트 ID로 ALM 테넌트를 찾는다(비활성·미등�
     assert.equal(await f(CA), A);
     assert.equal(await f(CB), null, '비활성 테넌트');
     assert.equal(await f('00000000-0000-0000-0000-000000000000'), null, '미등록');
+    const CC = '9b713b63-5074-4c82-9a91-58aab684d861';
+    await o.query('SELECT auth_link_central_tenant($1, $2)', [A, CC]);
+    assert.equal(await f(CC), A, '로그인 때 매핑을 갱신한다');
+    assert.equal(await f(CA), null);
   } finally { await o.end(); }
 });

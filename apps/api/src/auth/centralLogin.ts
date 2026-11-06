@@ -22,7 +22,7 @@ export async function centralLogin(db: Db, central: Central, t: TenantMatch & { 
     const code = (await c.query('SELECT code FROM tenant WHERE id = $1', [t.tenant_id])).rows[0]?.code;
     if (code !== r.tenant.code) return deny('NO_USER', { centralTenant: r.tenant.code });
     // Portal과 주고받는 테넌트 ID는 중앙 ID의 것이다 — 매핑을 남겨 둔다(0021)
-    await c.query('UPDATE tenant SET central_tenant_id = $1 WHERE id = $2 AND central_tenant_id IS DISTINCT FROM $1', [r.tenant.id, t.tenant_id]);
+    await c.query('SELECT auth_link_central_tenant($1, $2)', [t.tenant_id, r.tenant.id]);
     await c.query(`SELECT set_config('app.user_id', $1, true)`, [r.user.id]);
     await mirrorUser(c, t.tenant_id, { id: r.user.id, email: r.user.email, displayName: r.user.displayName, employeeNo: r.user.employeeNo,
       isActive: true, idpSubject: t.idp_subject, touchLogin: true });

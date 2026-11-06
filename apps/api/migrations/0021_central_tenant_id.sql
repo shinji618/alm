@@ -12,4 +12,11 @@ RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
 $$;
 REVOKE ALL ON FUNCTION auth_tenant_by_central_id(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION auth_tenant_by_central_id(uuid) TO alm_app;
+-- ALM 앱 역할은 tenant를 수정할 수 없으므로(관리 화면도 읽기 전용), 로그인 때 매핑만 채우는 좁은 함수를 둔다
+CREATE FUNCTION auth_link_central_tenant(p_tenant_id uuid, p_central_id uuid)
+RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  UPDATE tenant SET central_tenant_id = p_central_id WHERE id = p_tenant_id AND central_tenant_id IS DISTINCT FROM p_central_id
+$$;
+REVOKE ALL ON FUNCTION auth_link_central_tenant(uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION auth_link_central_tenant(uuid, uuid) TO alm_app;
 COMMIT;
