@@ -52,7 +52,7 @@ test('limit: 기본 50, 1~200으로 맞춘다', () => {
 
 // ---- 가드(PORTAL 채널) ----
 const principal = { tenantId: T, userId: U, permissions: new Map() } as unknown as Principal;
-function guard(portal: Config['portal'], found: Principal | undefined) {
+function guard(portal: Config['portal'], found: Principal | undefined, central: Record<string, string> = {}) {
   const cfg = { portal } as Config;
   const cache = new PrincipalCache();
   const origGet = cache.get.bind(cache);
@@ -60,7 +60,8 @@ function guard(portal: Config['portal'], found: Principal | undefined) {
   const seen: string[] = [];
   const cognito = { verifyAccess: async (t: string) => { const [, client, scope] = t.split('|'); return { sub: 's', username: 'm', client_id: client, token_use: 'access', scope, exp: 0 }; } };
   const reflector = { get: (key: string) => (key === OPERATION ? op.current : false) };
-  const g = new AuthGuard(reflector as never, cfg, {} as never, cognito as never, cache, {} as never, new SharedLimiter(new MemoryCounterStore()), null);
+  const db = { query: async (_sql: string, p: string[]) => [{ id: central[p[0]] ?? null }] };
+  const g = new AuthGuard(reflector as never, cfg, db as never, cognito as never, cache, {} as never, new SharedLimiter(new MemoryCounterStore()), null);
   return { g, seen };
 }
 const op = { current: 'portalGetInbox' };
@@ -93,6 +94,14 @@ test('가드: tenantId·userSub 형식 검사, 활성 사용자가 아니면 403
   assert.equal(await g.canActivate(c as never), true);
   assert.equal((c.req.alm as { principal?: Principal }).principal, principal);
   assert.deepEqual(seen, [`portal:${T}:${U}`]);
+});
+
+test('가드: Portal이 보내는 중앙 테넌트 ID를 ALM 테넌트 ID로 바꿔 쓴다(0021)', async () => {
+  const p = { clientIds: ['portal-backend'] };
+  const CENTRAL = '9b713b63-5074-4c82-9a91-58aab684d859';
+  const { g, seen } = guard(p, principal, { [CENTRAL]: T });
+  assert.equal(await g.canActivate(ctx('Bearer at|portal-backend|', { tenantId: CENTRAL, userSub: U }) as never), true);
+  assert.deepEqual(seen, [`portal:${T}:${U}`], '캐시·DB 문맥은 ALM 테넌트 ID');
 });
 
 test('가드: 매니페스트는 사용자 문맥 없이 클라이언트만 확인한다', async () => {

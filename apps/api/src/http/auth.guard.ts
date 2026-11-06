@@ -144,8 +144,10 @@ export class AuthGuard implements CanActivate {
     if (perm !== 'portal.feed' || !pc || !pc.clientIds.includes(claims.client_id)) throw E.channel('Portal 클라이언트가 아닙니다');
     if (pc.scope && !(claims.scope ?? '').split(' ').includes(pc.scope)) throw E.channel('Portal 피드 범위가 토큰에 없습니다');
     if (op === 'portalGetManifest' || PORTAL_APP_LEVEL.has(op)) return true;                       // 앱 수준 정보 — 사용자 문맥 없음
-    const tenantId = String(req.query.tenantId ?? ''), userSub = String(req.query.userSub ?? '');
-    if (!UUID_RE.test(tenantId) || !UUID_RE.test(userSub)) throw E.badRequest('tenantId와 userSub(uuid)가 필요합니다');
+    const centralId = String(req.query.tenantId ?? ''), userSub = String(req.query.userSub ?? '');
+    if (!UUID_RE.test(centralId) || !UUID_RE.test(userSub)) throw E.badRequest('tenantId와 userSub(uuid)가 필요합니다');
+    // Portal이 보내는 tenantId는 중앙 ID의 테넌트 ID — ALM 테넌트 ID로 바꾼다(매핑이 없으면 그대로 두어 아래에서 거절됨)
+    const tenantId = (await this.db.query<{ id: string | null }>('SELECT auth_tenant_by_central_id($1) AS id', [centralId]))[0]?.id ?? centralId;
     const principal = await this.cache.get(`portal:${tenantId}:${userSub}`, () => this.db.withTx(
       { tenantId, userId: userSub, actorType: 'USER', correlationId: req.alm.correlationId, clientIp: req.alm.ip }, (c) => loadPrincipal(c, userSub)));
     if (!principal) {
