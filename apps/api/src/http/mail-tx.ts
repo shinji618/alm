@@ -13,8 +13,11 @@ export async function withMail<T>(db: Db, mailer: Mailer | null, cfg: Config, ct
   const jobs: Job[] = [];
   const out = await db.withTx(txOf(ctx), async (c) => {
     const mails: MailRequest[] = [];
+    // Portal은 중앙 ID의 테넌트 ID를 쓴다. 매핑이 아직 없으면(중앙 로그인 전) Portal 알림만 건너뛴다.
+    const central = cfg.portalNotify ? (await c.query('SELECT central_tenant_id FROM tenant WHERE id = $1', [ctx.principal!.tenantId])).rows[0]?.central_tenant_id as string | undefined : undefined;
+    if (cfg.portalNotify && !central) log.warn('portal notify skipped: no central tenant id', { tenantId: ctx.principal!.tenantId });
     const r = await fn(c, mails);
-    for (const m of mails) { const j = await queueEmail(c, ctx.principal!.tenantId, m, cfg.appOrigin); if (!j) continue; jobs.push(j); const pj = cfg.portalNotify ? toPortalJob(ctx.principal!.tenantId, m, (j as SendEmailJob).notificationId) : undefined; if (pj) jobs.push(pj); }
+    for (const m of mails) { const j = await queueEmail(c, ctx.principal!.tenantId, m, cfg.appOrigin); if (!j) continue; jobs.push(j); const pj = cfg.portalNotify && central ? toPortalJob(central, m, (j as SendEmailJob).notificationId) : undefined; if (pj) jobs.push(pj); }
     return r;
   });
   for (const j of jobs) {
