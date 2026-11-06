@@ -31,7 +31,7 @@ test('매니페스트: 계약 v1, 주소는 APP_ORIGIN에서, 선언하지 않�
   assert.deepEqual(m.feeds, { approvalInbox: '/inbox', calendar: '/calendar-feed', badges: '/badges' });
   assert.deepEqual(m.menu.map((x) => x.key), ['requests']);
   assert.equal(m.notifications.sends, false);
-  assert.equal('lifecycle' in m, false);
+  assert.deepEqual(m.lifecycle, { tenantExport: '/tenant-export', tenantImport: '/tenant-import', erasureHook: '/erase' });   // R1은 선언만 하고 호출하면 501(ALM-E501)
 });
 
 test('결재 대기 건 변환: 제목·단계·딥링크, 금액은 보내지 않는다', () => {

@@ -11025,6 +11025,12 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
+    E501:
+      description: 미구현(Portal 수명주기 훅, R3·R4 구현 예정)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
   schemas:
     PortalManifest:
       type: object
