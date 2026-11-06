@@ -160,9 +160,10 @@ describe('App (10 6장)', () => {
     };
     // DEV는 중앙 ID 사용(3.13): 중앙 클라이언트 비밀이 api·worker·migrate(이관)에 추가된다
     const C = ['CENTRAL_ID_CLIENT_ID', 'CENTRAL_ID_CLIENT_SECRET'];
+    const P = ['PORTAL_NOTIFY_CLIENT_ID', 'PORTAL_NOTIFY_CLIENT_SECRET'];   // Portal 알림 송신(2026-11-06): api·worker만, migrate는 제외
     expect(secretsOf('alm-dev-migrate')).toEqual([...C, 'DB_MASTER_PASSWORD', 'DB_MASTER_USER']);
-    expect(secretsOf('alm-dev-api')).toEqual([...C, 'COGNITO_PDA_CLIENT_ID', 'COGNITO_WEB_CLIENT_ID', 'COGNITO_WEB_CLIENT_SECRET', 'COOKIE_KEY']);
-    expect(secretsOf('alm-dev-worker')).toEqual(C);
+    expect(secretsOf('alm-dev-api')).toEqual([...C, 'COGNITO_PDA_CLIENT_ID', 'COGNITO_WEB_CLIENT_ID', 'COGNITO_WEB_CLIENT_SECRET', 'COOKIE_KEY', ...P]);
+    expect(secretsOf('alm-dev-worker')).toEqual([...C, ...P]);
     for (const f of ['alm-dev-audit-archive', 'alm-dev-partman']) expect(secretsOf(f)).toEqual([]);
     const prd = Object.values(tpl('prd', 'app').findResources('AWS::ECS::TaskDefinition')).find((r: any) => r.Properties.Family === 'alm-prd-api') as any;
     expect(prd.Properties.ContainerDefinitions[0].Secrets.map((x: any) => x.Name).sort()).toEqual(['COGNITO_WEB_CLIENT_SECRET', 'COOKIE_KEY']);   // PRD는 아직 ALM 풀
