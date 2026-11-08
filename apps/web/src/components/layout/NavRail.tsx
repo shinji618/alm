@@ -69,7 +69,7 @@ export function NavRail({ open, counts = {}, onNavigate }: { open: boolean; coun
   return (
     <aside className={`${s.rail} ${open ? s.railOpen : ''}`} aria-label="Main navigation">
       <div className={s.brand}>
-        <div className={s.mark}>ALM</div>
+        <img className={s.mark} src={`${import.meta.env.BASE_URL}logo.png`} alt="" />
         <div>
           {t('app.name')}
           <small className={s.tenant}>{t('app.tenant')}</small>
