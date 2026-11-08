@@ -254,15 +254,15 @@
 
 /* ───────── Blue palette: FTS 목업 형태 (data-palette="blue") — Green에는 영향 없음 ───────── */
 :global(:root[data-palette='blue']) .app { padding: 16px; gap: 16px; background: var(--shell-bg); }
-:global(:root[data-palette='blue']) .rail { background: linear-gradient(180deg, var(--rail) 0%, var(--rail-2) 100%); border-radius: 16px; top: 16px; height: calc(100vh - 32px); padding: 22px 12px; gap: 6px; }
-:global(:root[data-palette='blue']) .mark { width: 38px; }
-:global(:root[data-palette='blue']) .brand { border-bottom: 1px solid var(--rail-line); margin-bottom: 8px; padding-bottom: 18px; gap: 12px; font-weight: 800; font-size: 18px; }
-:global(:root[data-palette='blue']) .tenant { color: var(--rail-sub); font-size: 12px; }
-:global(:root[data-palette='blue']) .group { color: var(--rail-sub); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: none; padding: 14px 8px 4px; }
-:global(:root[data-palette='blue']) .link { min-height: 44px; padding: 0 12px; border-radius: 10px; font-size: 15px; gap: 12px; }
+:global(:root[data-palette='blue']) .rail { background: linear-gradient(180deg, var(--rail) 0%, var(--rail-2) 100%); border-radius: 16px; top: 16px; height: calc(100vh - 32px); }
+:global(:root[data-palette='blue']) .mark { width: 32px; }
+:global(:root[data-palette='blue']) .brand { border-bottom: 1px solid var(--rail-line); }
+:global(:root[data-palette='blue']) .tenant { color: var(--rail-sub); }
+:global(:root[data-palette='blue']) .group { color: var(--rail-sub); }
+:global(:root[data-palette='blue']) .link { border-radius: 10px; }
 :global(:root[data-palette='blue']) .link:hover { background: rgba(255, 255, 255, 0.07); color: var(--rail-hi); }
 :global(:root[data-palette='blue']) .active { background: var(--nav-active); color: #fff; font-weight: 600; box-shadow: none; }
-:global(:root[data-palette='blue']) .count { background: var(--rail-line); color: #e8eafc; font-family: inherit; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; }
+:global(:root[data-palette='blue']) .count { background: var(--rail-line); color: #e8eafc; }
 :global(:root[data-palette='blue']) .railFoot { color: var(--rail-sub); border-top: 1px solid var(--rail-line); }
 :global(:root[data-palette='blue']) .main { border-radius: 16px; background: var(--bg); overflow: clip; }
 :global(:root[data-palette='blue']) .top { padding: 14px 28px; gap: 14px; border-bottom-color: var(--sunk); }
