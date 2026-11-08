@@ -31,8 +31,8 @@
 .badText { color: var(--bad, #dc2626); font-weight: 600; }
 .actionCount { min-width: 32px; font-size: 18px; font-variant-numeric: tabular-nums; }
 
-/* ───────── Blue palette: SAP Fiori(Horizon) 형태 (data-palette="blue") — Green에는 영향 없음 ───────── */
-:global(:root[data-palette='blue']) .stageBar { height: 32px; border-radius: 8px; gap: 2px; }
+/* ───────── Blue palette: FTS 목업 형태 (data-palette="blue") — Green에는 영향 없음 ───────── */
+:global(:root[data-palette='blue']) .stageBar { height: 34px; border-radius: 8px; gap: 2px; }
 :global(:root[data-palette='blue']) .stageBar span { font-size: 12px; }
 :global(:root[data-palette='blue']) .stage { border-radius: 12px; }
 :global(:root[data-palette='blue']) .nbvBar { background: var(--accent); }

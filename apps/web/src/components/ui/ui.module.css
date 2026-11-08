@@ -590,22 +590,27 @@ textarea.input {
   }
 }
 
-/* ───────── Blue palette: SAP Fiori(Horizon) 형태 (data-palette="blue") — Green에는 영향 없음 ───────── */
-:global(:root[data-palette='blue']) .btn { border-radius: 8px; }
-:global(:root[data-palette='blue']) .btn:hover:not(:disabled) { background: var(--accent-soft); }
-:global(:root[data-palette='blue']) .btnPrimary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); box-shadow: none; }
+/* ───────── Blue palette: FTS 목업 형태 (data-palette="blue") — Green에는 영향 없음 ───────── */
+:global(:root[data-palette='blue']) .btn { border-radius: 10px; font-weight: 600; font-size: 14px; }
+:global(:root[data-palette='blue']) .btnPrimary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; font-size: 15px; box-shadow: none; }
 :global(:root[data-palette='blue']) .btnPrimary:hover:not(:disabled) { background: var(--accent); filter: brightness(0.92); }
-:global(:root[data-palette='blue']) .pill { border-radius: 8px; padding: 2px 9px; font-size: 12px; }
+:global(:root[data-palette='blue']) .pill { border-radius: 6px; padding: 3px 10px; font-size: 13px; font-weight: 700; }
 :global(:root[data-palette='blue']) .tag { border-radius: 4px; padding: 2px 7px; }
-:global(:root[data-palette='blue']) .panel { border-radius: 12px; border-color: transparent; box-shadow: var(--shadow); }
-:global(:root[data-palette='blue']) .panelTitle { font-weight: 600; }
-:global(:root[data-palette='blue']) .kpi { border-radius: 12px; border-color: transparent; box-shadow: var(--shadow); padding: 14px 16px; }
-:global(:root[data-palette='blue']) .kpiValue { font-size: 28px; font-weight: 500; }
-:global(:root[data-palette='blue']) .chip { height: 28px; padding: 0 12px; border-radius: 8px; font-size: 12.5px; }
-:global(:root[data-palette='blue']) .chipOn { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+:global(:root[data-palette='blue']) .panel { border-radius: 12px; box-shadow: var(--shadow); }
+:global(:root[data-palette='blue']) .panelHead { padding: 18px 20px 10px; }
+:global(:root[data-palette='blue']) .panelTitle { font-size: 17px; font-weight: 700; }
+:global(:root[data-palette='blue']) .kpi { border-radius: 12px; box-shadow: var(--shadow); padding: 18px 20px; gap: 8px; }
+:global(:root[data-palette='blue']) .kpiValue { font-family: var(--f-display); font-size: 26px; font-weight: 800; white-space: nowrap; }
+:global(:root[data-palette='blue']) .chip { height: 32px; padding: 0 14px; border-radius: 10px; font-size: 13.5px; }
+:global(:root[data-palette='blue']) .chipOn { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 600; }
 :global(:root[data-palette='blue']) .tabOn { color: var(--accent); }
-:global(:root[data-palette='blue']) .drawer { box-shadow: -8px 0 32px rgba(13, 20, 30, 0.18); }
-:global(:root[data-palette='blue']) .bar { border-radius: 4px; }
+:global(:root[data-palette='blue']) .table th { font-size: 13px; font-weight: 600; color: var(--muted); padding: 12px 16px; border-bottom-color: var(--sunk); }
+:global(:root[data-palette='blue']) .table td { font-size: 14px; padding: 13px 16px; border-bottom-color: var(--sunk); }
+:global(:root[data-palette='blue']) .drawer { box-shadow: -10px 0 40px rgba(20, 25, 80, 0.25); }
+:global(:root[data-palette='blue']) .drawerHead { background: var(--drawer-head); color: #fff; border-bottom: 0; }
+:global(:root[data-palette='blue']) .drawerTitle { color: #fff; }
+:global(:root[data-palette='blue']) .drawerHead :global(.muted) { color: rgba(255, 255, 255, 0.8); }
+:global(:root[data-palette='blue']) .bar { border-radius: 5px; }
 
 /* ───────── Black palette: 형태 (data-palette="black") — Green·Blue에는 영향 없음 ───────── */
 :global(:root[data-palette='black']) .btn { background: var(--sunk); border-color: var(--line); border-radius: 6px; }
