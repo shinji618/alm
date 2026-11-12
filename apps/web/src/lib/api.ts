@@ -1,8 +1,11 @@
 // API 호출(BFF, 09 6.2). 리프레시 토큰은 HttpOnly 쿠키(서버만 앎), 액세스 토큰은 메모리에만 둔다.
+// 공유 플랫폼 모드(lib/suite.ts): 토큰이 없다. 공통 틀의 window.suite.fetch가 통행증 쿠키·CSRF·만료 갱신을 맡는다(아래 send).
 //   - 첫 호출 전·401이면 POST /auth/refresh(x-alm-csrf + 같은 출처)로 액세스 토큰을 받아 한 번 다시 시도
 //   - 그래도 401이면 로그인 필요(onUnauthenticated)
 //   - 오류 응답 { code, message, errors[] } → ApiError
-export const BASE = '/api/v1';
+import { BASE_PATH, SUITE, suite } from './suite';
+
+export const BASE = `${BASE_PATH}/api/v1`;   // '/api/v1' 또는 '/alm/api/v1'
 
 export interface FieldError { field: string; code: string; message: string }
 export class ApiError extends Error {
@@ -19,6 +22,7 @@ export function setUnauthenticatedHandler(fn: () => void) { onUnauthenticated = 
 export function clearToken() { token = undefined; }
 
 async function refresh(): Promise<string | undefined> {
+  if (SUITE) return undefined;   // 통행증은 공통 틀이 갱신한다
   // 동시에 여러 호출이 401을 받아도 갱신은 한 번. 끝나면 바로 비워 다음 401은 새로 갱신한다
   refreshing ??= (async () => {
     try {
@@ -34,12 +38,14 @@ async function refresh(): Promise<string | undefined> {
   return token;
 }
 
+const http = (url: string, init: RequestInit): Promise<Response> => (SUITE ? suite().fetch(url, init) : fetch(url, init));
+
 export interface RequestOptions { method?: string; body?: unknown; headers?: Record<string, string>; signal?: AbortSignal }
 export interface ApiResponse<T> { data: T; headers: Headers; status: number }
 
 export async function request<T>(path: string, o: RequestOptions = {}): Promise<ApiResponse<T>> {
   if (!token) await refresh();
-  const send = () => fetch(`${BASE}${path}`, {
+  const send = () => http(`${BASE}${path}`, {
     method: o.method ?? (o.body === undefined ? 'GET' : 'POST'),
     credentials: 'same-origin',
     signal: o.signal,
@@ -64,7 +70,7 @@ export async function request<T>(path: string, o: RequestOptions = {}): Promise<
 /** 파일 내려받기(엑셀 등): Bearer 토큰으로 받아 브라우저 저장. 파일명은 Content-Disposition */
 export async function download(path: string, fallbackName = 'download'): Promise<string> {
   if (!token) await refresh();
-  const send = () => fetch(`${BASE}${path}`, { credentials: 'same-origin', headers: token ? { authorization: `Bearer ${token}` } : {} });
+  const send = () => http(`${BASE}${path}`, { credentials: 'same-origin', headers: token ? { authorization: `Bearer ${token}` } : {} });
   let r = await send();
   if (r.status === 401) { await refresh(); if (token) r = await send(); }
   if (!r.ok) {
@@ -104,14 +110,15 @@ export function qs(p: Record<string, string | number | undefined | null>): strin
 }
 
 export async function logout(): Promise<void> {
+  if (SUITE) return suite().logout();   // 플랫폼 세션을 끝낸다(모든 제품에서 로그아웃)
   try {
     const r = await fetch(`${BASE}/auth/logout`, { method: 'POST', credentials: 'same-origin', headers: { 'x-alm-csrf': '1' } });
     const b = r.ok ? ((await r.json()) as { logoutUrl?: string }) : undefined;
     clearToken();
-    window.location.assign(b?.logoutUrl ?? '/');
+    window.location.assign(b?.logoutUrl ?? `${BASE_PATH}/`);
   } catch {
     clearToken();
-    window.location.assign('/');
+    window.location.assign(`${BASE_PATH}/`);
   }
 }
 
