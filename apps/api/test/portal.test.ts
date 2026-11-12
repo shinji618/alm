@@ -61,7 +61,7 @@ function guard(portal: Config['portal'], found: Principal | undefined, central: 
   const cognito = { verifyAccess: async (t: string) => { const [, client, scope] = t.split('|'); return { sub: 's', username: 'm', client_id: client, token_use: 'access', scope, exp: 0 }; } };
   const reflector = { get: (key: string) => (key === OPERATION ? op.current : false) };
   const db = { query: async (_sql: string, p: string[]) => [{ id: central[p[0]] ?? null }] };
-  const g = new AuthGuard(reflector as never, cfg, db as never, cognito as never, cache, {} as never, new SharedLimiter(new MemoryCounterStore()), null);
+  const g = new AuthGuard(reflector as never, cfg, db as never, cognito as never, cache, {} as never, new SharedLimiter(new MemoryCounterStore()), null, null);
   return { g, seen };
 }
 const op = { current: 'portalGetInbox' };

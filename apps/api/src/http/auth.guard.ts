@@ -1,4 +1,5 @@
 // 인증·채널·권한 가드(09 6.3·7장). 순서: 액세스 토큰 → 채널(클라이언트 ID) → 주체(60초 캐시)·PDA 기기·SAP 연결 → 권한 키
+// 통행증 모드(SUITE_AUTH=1, 통합 WBS 5.4): 웹 채널만 액세스 토큰 대신 플랫폼 통행증 쿠키로 인증한다. PDA·SAP·Portal 채널은 그대로 토큰이다
 import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Config } from '../config';
@@ -13,7 +14,10 @@ import { TtlCache } from '../common/cache';
 import { LIMITS, SharedLimiter } from '../common/shared';
 import { log } from '../common/log';
 import { AlmRequest, OPERATION, PUBLIC } from './context';
-import { CONFIG, COGNITO, DB, LIMITER, PRINCIPALS, SAP_CONNS, CENTRAL } from './tokens';
+import { CONFIG, COGNITO, DB, LIMITER, PRINCIPALS, SAP_CONNS, CENTRAL, SUITE_PASS } from './tokens';
+import { CSRF_HEADER, PASS_COOKIE, PassClaims, PassError, SuitePassVerifier } from '../auth/suitePass';
+import { mirrorRoles, mirrorUser } from '../admin/identityMirror';
+import { catalog } from '../platform/identity/permissions';
 import type { Central } from '../auth/central';
 import { centralLogin } from '../auth/centralLogin';
 import type { Response } from 'express';
@@ -33,7 +37,7 @@ export class AuthGuard implements CanActivate {
   constructor(private reflector: Reflector, @Inject(CONFIG) private cfg: Config, @Inject(DB) private db: Db,
               @Inject(COGNITO) private cognito: Cognito, @Inject(PRINCIPALS) private cache: PrincipalCache,
               @Inject(SAP_CONNS) private sapConns: TtlCache<SapConn>, @Inject(LIMITER) private limiter: SharedLimiter,
-              @Inject(CENTRAL) private central: Central | null) {}
+              @Inject(CENTRAL) private central: Central | null, @Inject(SUITE_PASS) private pass: SuitePassVerifier | null) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const op = this.reflector.get<string>(OPERATION, ctx.getHandler());
@@ -45,11 +49,17 @@ export class AuthGuard implements CanActivate {
     if (perm === undefined) throw E.forbidden(`권한 카탈로그에 없는 작업: ${op}`);
 
     const m = /^Bearer (.+)$/.exec(req.header('authorization') ?? '');
+    const channel = channelOfPath(req.path);
+    req.alm.channel = channel;
+    // 통행증 모드의 웹 채널: 토큰이 없으면 통행증 쿠키로 인증한다(토큰을 보내면 아래 채널 확인에서 거절된다 — 웹 클라이언트가 없다)
+    if (this.pass && channel === 'WEB' && !m) {
+      const principal = await this.passPrincipal(req);
+      if (!principal) throw E.loginDenied('사용할 수 없는 사용자입니다(미등록·비활성·유효한 역할 없음)');
+      return this.authorize(ctx, req, principal, channel, op, perm);
+    }
     if (!m) throw E.unauthenticated();
     const claims = await this.cognito.verifyAccess(m[1]).catch(() => { throw E.unauthenticated('토큰이 만료되었거나 잘못되었습니다'); });
     req.alm.claims = claims;
-    const channel = channelOfPath(req.path);
-    req.alm.channel = channel;
 
     if (channel === 'SAP') return this.sap(req, claims, String(perm), ctx.switchToHttp().getResponse<Response>());
     if (channel === 'PORTAL') return this.portal(req, claims, op, String(perm), ctx.switchToHttp().getResponse<Response>());
@@ -61,20 +71,74 @@ export class AuthGuard implements CanActivate {
     let principal = await this.cache.get(claims.username, () => this.resolve(claims.username, req));
     if (!principal && channel === 'PDA') principal = await this.pdaFirstLogin(m[1], claims, req);
     if (!principal) throw E.loginDenied('사용할 수 없는 사용자입니다(미등록·비활성·유효한 역할 없음)');
-    req.alm.principal = principal;
+    if (channel === 'PDA') { req.alm.principal = principal; await this.device(req, principal, claims, op); }
+    return this.authorize(ctx, req, principal, channel, op, perm);
+  }
 
-    if (channel === 'PDA') await this.device(req, principal, claims, op);
+  // 호출 제한 → 권한 키(웹·PDA 공통)
+  private async authorize(ctx: ExecutionContext, req: AlmRequest, principal: Principal, channel: 'WEB' | 'PDA', op: string, perm: string | string[]): Promise<boolean> {
+    req.alm.principal = principal;
     await this.limit(ctx.switchToHttp().getResponse<Response>(), [
       [`u:${channel === 'PDA' ? 'pda' : 'web'}:${principal.userId}`, channel === 'PDA' ? LIMITS.pdaUser : LIMITS.webUser],
       [`t:${principal.tenantId}`, LIMITS.tenant]]);
 
-    if (!(Array.isArray(perm) ? perm.some((x) => principal!.permissions.has(x)) : principal.permissions.has(perm))) {
+    if (!(Array.isArray(perm) ? perm.some((x) => principal.permissions.has(x)) : principal.permissions.has(perm))) {
       log.warn('access denied', { op, perm, userId: principal.userId, correlationId: req.alm.correlationId });
       await this.event(principal.tenantId, req, { type: 'ACCESS_DENIED', actorId: principal.userId, channel,
         target: `${req.method} ${req.path}`, detail: { operation: op, permission: perm } });
       throw E.forbidden();
     }
     return true;
+  }
+
+  // 통행증 → 주체. 테넌트 = 통행증의 중앙 테넌트 ID에 연결된 ALM 테넌트(0021), 사용자 = 통행증의 sub(중앙 사용자 ID = app_user.id)
+  private async passPrincipal(req: AlmRequest): Promise<Principal | undefined> {
+    let p: PassClaims;
+    try { p = await this.pass!.verify(req.cookies?.[PASS_COOKIE]); }
+    catch (e) {
+      if (e instanceof PassError && e.code === 'JWKS') {   // 플랫폼 공개 키를 못 읽음 — 사용자 탓이 아니다
+        log.error('suite pass jwks failed', { err: e.message, correlationId: req.alm.correlationId });
+        throw new AlmError(502, 'ALM-E502', '플랫폼 인증 키를 읽지 못했습니다. 잠시 뒤 다시 시도하세요');
+      }
+      if (!(e instanceof PassError)) log.error('suite pass verify failed', { err: String(e), correlationId: req.alm.correlationId });
+      throw E.unauthenticated('통행증이 없거나 만료되었습니다');   // 401 → 화면(shell.js)이 통행증을 갱신하고 한 번 다시 부른다
+    }
+    req.alm.pass = p;
+    // 변경 요청은 X-Suite-Csrf 헤더가 통행증의 csrf와 같아야 한다(플랫폼 계약)
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && req.header(CSRF_HEADER) !== p.csrf) throw E.forbidden('요청 출처를 확인할 수 없습니다');
+    const tenantId = (await this.db.query<{ id: string | null }>('SELECT auth_tenant_by_central_id($1) AS id', [p.tid]))[0]?.id;
+    if (!tenantId) {
+      log.warn('suite pass: tenant not linked', { tenant: p.tcd, correlationId: req.alm.correlationId });
+      throw E.loginDenied('이 회사는 ALM에 등록되어 있지 않습니다. 관리자에게 문의하세요');
+    }
+    const tx = { tenantId, userId: p.sub, actorType: 'USER' as const, correlationId: req.alm.correlationId, clientIp: req.alm.ip };
+    return this.cache.get(`pass:${tenantId}:${p.sub}`, async () =>
+      (await this.db.withTx(tx, (c) => loadPrincipal(c, p.sub))) ?? this.passProvision(req, tenantId, p));
+  }
+
+  // ALM에 사본(미러)이 없거나 쓸 수 없는 상태 — 통행증은 플랫폼이 "지금 이 제품에 들어올 수 있다"고 확인한 것이므로 중앙의 값으로 사본을 맞춘다.
+  // 중앙 ID가 연결돼 있으면 거기서 읽고(변경 이벤트와 같은 값), 없으면 통행증의 역할(암묵 역할 제외)을 쓴다
+  private async passProvision(req: AlmRequest, tenantId: string, p: PassClaims): Promise<Principal | undefined> {
+    try {
+      let user = { id: p.sub, email: p.email, displayName: p.name || p.email, employeeNo: undefined as string | undefined };
+      let roles = p.roles.filter((r) => r.role !== catalog().implicit.role);
+      if (this.central) {
+        const u = await this.central.getUser(p.tcd, p.sub);
+        if (!u || !u.isActive) return undefined;
+        user = { id: u.id, email: u.email, displayName: u.displayName, employeeNo: u.employeeNo }; roles = u.roles;
+      } else if (p.rolesOmitted) return undefined;
+      return await this.db.withTx({ tenantId, userId: p.sub, actorType: 'USER', correlationId: req.alm.correlationId, clientIp: req.alm.ip }, async (c) => {
+        await mirrorUser(c, tenantId, { ...user, isActive: true, touchLogin: true });
+        await mirrorRoles(c, tenantId, p.sub, roles);
+        const principal = await loadPrincipal(c, p.sub);
+        if (principal) await securityEvent(c, { tenantId, type: 'LOGIN', actorId: p.sub, detail: { suite: true, provisioned: true },
+          meta: { ip: req.alm.ip, userAgent: req.alm.userAgent, correlationId: req.alm.correlationId } });
+        return principal;
+      });
+    } catch (e) {
+      log.error('suite pass provision failed', { err: String(e), userId: p.sub, correlationId: req.alm.correlationId });
+      return undefined;
+    }
   }
 
   private resolve(username: string, req: AlmRequest): Promise<Principal | undefined> {

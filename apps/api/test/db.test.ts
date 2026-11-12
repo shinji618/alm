@@ -234,7 +234,7 @@ test('가드: 권한 없는 작업은 403 ALM-E401 + ACCESS_DENIED 기록, 작�
   const t = (await tenantOf(app, 'T-ACME_oid-1'))!;
   assert.ok((await completeLogin(app, t, { username: 'T-ACME_oid-1', email: 'new@acme.com', emailVerified: true, idpType: 'SAML' }, meta)).ok);
   const guardFor = (meta: Record<string, unknown>) => new AuthGuard({ get: (k: string) => meta[k] } as never, cfg, app, fakeCognito as never, new PrincipalCache(), new TtlCache(),
-    new SharedLimiter(new MemoryCounterStore()), null);
+    new SharedLimiter(new MemoryCounterStore()), null, null);
   const ctx = (path: string) => {
     const req = { path, method: 'GET', header: (h: string) => (h === 'authorization' ? 'Bearer at:T-ACME_oid-1:web' : undefined),
       alm: { correlationId: randomUUID(), ip: '198.51.100.1' } };

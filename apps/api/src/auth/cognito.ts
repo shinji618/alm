@@ -29,7 +29,7 @@ export class Cognito {
     // 사용자 풀과 SAP 풀이 다르면(중앙 ID 전환 뒤) 두 풀의 토큰을 모두 받는다. 채널(클라이언트 ID·범위) 확인은 가드가 한다
     const pools = [...new Set([cfg.cognito.userPoolId, cfg.sapCognito?.userPoolId].filter((x): x is string => !!x))];
     this.accessVerifier = CognitoJwtVerifier.create(pools.map((userPoolId) => ({ userPoolId, tokenUse: 'access' as const, clientId: null })));
-    this.idVerifier = CognitoJwtVerifier.create({ userPoolId: cfg.cognito.userPoolId, tokenUse: 'id', clientId: cfg.cognito.webClientId });
+    this.idVerifier = CognitoJwtVerifier.create({ userPoolId: cfg.cognito.userPoolId, tokenUse: 'id', clientId: cfg.cognito.webClientId || null });   // 통행증 모드에는 웹 클라이언트가 없다
   }
 
   authorizeUrl(p: { idp: string; state: string; challenge: string }): string {

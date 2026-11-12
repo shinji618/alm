@@ -43,9 +43,13 @@ export class AuthController {
     res.clearCookie(name, { httpOnly: true, secure: true, sameSite, path: PATH });
   }
 
+  // 통행증 모드: 자체 웹 로그인은 없다. 로그인은 플랫폼 화면으로 보내고 나머지 BFF 경로는 닫는다(PDA 설정은 그대로)
+  private noBff() { if (this.cfg.suite) throw E.notFound(); }
+
   @Get('login')
   @Operation('authLogin')
   async login(@Query('email') email: string, @Query('returnTo') returnTo: string, @Req() req: AlmRequest, @Res() res: Response) {
+    if (this.cfg.suite) return res.redirect(302, `${this.cfg.suite.issuer}/login?returnTo=${encodeURIComponent('/alm' + safeReturnTo(returnTo))}`);
     const domain = typeof email === 'string' ? domainOf(email) : undefined;
     if (!domain) throw E.badRequest('이메일 형식이 아닙니다');
     const idp = (await this.db.query<{ idp: string | null }>('SELECT auth_idp_by_domain($1) AS idp', [domain]))[0]?.idp;
@@ -80,6 +84,7 @@ export class AuthController {
   @Operation('authCallback')
   async callback(@Query('code') code: string, @Query('state') state: string, @Query('error') error: string,
                  @Req() req: AlmRequest, @Res() res: Response) {
+    this.noBff();
     const pk = open<PkceCookie>(this.cfg.cookieKeys, PKCE, req.cookies?.[PKCE]);
     this.clear(res, PKCE, 'lax');
     if (error) throw new AlmError(400, 'ALM-E100', '로그인이 취소되었거나 IdP에서 거부되었습니다', { error });
@@ -124,6 +129,7 @@ export class AuthController {
   @HttpCode(200)
   @Operation('authRefresh')
   async refresh(@Req() req: AlmRequest) {
+    this.noBff();
     this.csrf(req);
     const c = open<RtCookie>(this.cfg.cookieKeys, RT, req.cookies?.[RT]);
     if (!c) throw E.unauthenticated('세션이 만료되었습니다. 다시 로그인하세요');
@@ -135,6 +141,7 @@ export class AuthController {
   @HttpCode(200)
   @Operation('authLogout')
   async logout(@Req() req: AlmRequest, @Res({ passthrough: true }) res: Response) {
+    this.noBff();
     this.csrf(req);
     const c = open<RtCookie>(this.cfg.cookieKeys, RT, req.cookies?.[RT]);
     this.clear(res, RT, 'strict');
@@ -153,7 +160,7 @@ export class AuthController {
   @Get('session')
   @Operation('authRefresh')
   async session(@Req() req: AlmRequest) {
-    if (this.cfg.env === 'prd') throw E.notFound();
+    if (this.cfg.env === 'prd' || this.cfg.suite) throw E.notFound();
     const c = open<RtCookie>(this.cfg.cookieKeys, RT, req.cookies?.[RT]);
     if (!c) throw E.unauthenticated('로그인 쿠키가 없습니다. /api/v1/auth/login?email=… 으로 먼저 로그인하세요');
     const t = await this.cognito.refresh(c.rt);
