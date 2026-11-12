@@ -47,7 +47,8 @@ describe('ALM on suite (dev)', () => {
     expect(resources('AWS::Scheduler::ScheduleGroup').map((x) => x.Properties.Name)).toEqual(['suite-dev-alm']);
     expect(resources('AWS::SES::ConfigurationSet').map((x) => x.Properties.Name)).toEqual(['suite-dev-alm']);
     // 같은 계정의 전용 환경(alm-dev-*, /alm/dev/*)과 이름이 겹치면 배포가 실패한다
-    const names = JSON.stringify([resources('AWS::SQS::Queue'), resources('AWS::Logs::LogGroup'), resources('AWS::ECS::TaskDefinition'), resources('AWS::SNS::Topic')].flat().map((r) => r.Properties));
+    const names = JSON.stringify([resources('AWS::SQS::Queue'), resources('AWS::Logs::LogGroup'), resources('AWS::ECS::TaskDefinition'), resources('AWS::SNS::Topic')].flat()
+      .map((r) => r.Properties.QueueName ?? r.Properties.LogGroupName ?? r.Properties.Family ?? r.Properties.TopicName));
     expect(names).not.toMatch(/"alm-dev-|"\/alm\/dev\//);
   });
 
@@ -100,15 +101,16 @@ describe('ALM on suite (dev)', () => {
     expect(resources('AWS::ECS::TaskDefinition').map((d) => d.Properties.Family)).not.toContain('suite-dev-alm-audit-archive');
   });
 
-  it('Portal 연동·SAP: 설정이 있을 때만 켠다', () => {
+  it('Portal 연동·SAP: 설정이 있을 때만 켠다. DEV는 새 중앙 ID의 portal-backend, SAP은 전용 환경의 ALM 풀', () => {
     const e = env('suite-dev-alm-api');
-    expect(e.PORTAL_CLIENT_IDS).toBeUndefined();   // 새 중앙 ID에 portal-backend를 등록하기 전: 피드 API 닫힘
-    expect([e.PORTAL_API_URL, e.PORTAL_NOTIFY_SCOPE]).toEqual(['https://app-dev.pasapps.com/api', 'portal/notify']);
-    expect(e.COGNITO_SAP_USER_POOL_ID).toBeUndefined();
-    const on = build({ portal: { clientIds: 'abc123', feedScope: 'portal/feed', notifyScope: 'portal/notify' }, sap: { userPoolId: 'us-east-1_x', domain: 'auth.alm-dev.pasapps.com', adminFunction: 'alm-dev-cognito-admin' } }).t;
-    const e2 = env('suite-dev-alm-api', on);
-    expect([e2.PORTAL_CLIENT_IDS, e2.PORTAL_FEED_SCOPE, e2.COGNITO_SAP_USER_POOL_ID, e2.COGNITO_SAP_DOMAIN, e2.COGNITO_ADMIN_FUNCTION])
-      .toEqual(['abc123', 'portal/feed', 'us-east-1_x', 'auth.alm-dev.pasapps.com', 'alm-dev-cognito-admin']);
+    expect([e.PORTAL_CLIENT_IDS, e.PORTAL_FEED_SCOPE, e.PORTAL_API_URL, e.PORTAL_NOTIFY_SCOPE]).toEqual(['25qk2s95tebtjhdrrtelg7r1mi', 'portal/feed', 'https://app-dev.pasapps.com/api', 'portal/notify']);
+    expect([e.COGNITO_SAP_USER_POOL_ID, e.COGNITO_SAP_DOMAIN, e.COGNITO_ADMIN_FUNCTION]).toEqual(['us-east-1_2iCIGqVTT', 'auth.alm-dev.pasapps.com', 'alm-dev-cognito-admin']);
+    // SAP 관리 함수 호출 권한은 그 함수 하나
+    const invoke = JSON.stringify(resources('AWS::IAM::Policy').flatMap((p) => p.Properties.PolicyDocument.Statement.filter((x: any) => x.Action === 'lambda:InvokeFunction')));
+    expect(invoke).toContain(':function:alm-dev-cognito-admin'); expect(invoke).not.toContain(':function:*');
+    const off = build({ portal: { clientIds: '', feedScope: 'portal/feed', notifyScope: 'portal/notify' }, sap: undefined }).t;
+    const e2 = env('suite-dev-alm-api', off);
+    expect([e2.PORTAL_CLIENT_IDS, e2.PORTAL_FEED_SCOPE, e2.COGNITO_SAP_USER_POOL_ID, e2.COGNITO_ADMIN_FUNCTION]).toEqual([undefined, undefined, undefined, undefined]);
   });
 
   it('태그: Project=Suite, Product=alm(플랫폼의 제품별 예산)', () => {
