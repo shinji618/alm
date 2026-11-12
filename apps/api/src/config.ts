@@ -26,7 +26,7 @@ export interface Config {
   auditBucket?: string;        // audit-archive: log-archive 계정 감사 버킷(Object Lock)
   filesBucket?: string;        // 첨부·사진(tenant/<id>/…)
   filesScanRequired?: boolean; // GuardDuty S3 악성코드 검사 태그가 NO_THREATS_FOUND일 때만 다운로드(FILES_SCAN=required)
-  cache?: { endpoint: string; user: string; name: string };   // Valkey(TLS + IAM 인증). 없으면 작업 메모리로 센다(로컬·시험)
+  cache?: { endpoint: string; user: string; name: string; keyPrefix?: string };   // Valkey(TLS + IAM 인증). 없으면 작업 메모리로 센다(로컬·시험)
   mail?: { from: string; configSet?: string; eventsQueueUrl?: string };
 }
 
@@ -84,7 +84,7 @@ export function loadConfig(role: string): Config {
     // 역할별 부가 설정은 없어도 시작한다(migrate는 배포 첫 단계라 이전 작업 정의의 환경 변수로 새 이미지를 돌린다).
     // 셋 중 하나라도 없으면 작업 메모리로 센다
     cache: opt('CACHE_ENDPOINT') && opt('CACHE_USER') && opt('CACHE_NAME')
-      ? { endpoint: req('CACHE_ENDPOINT'), user: req('CACHE_USER'), name: req('CACHE_NAME') } : undefined,
+      ? { endpoint: req('CACHE_ENDPOINT'), user: req('CACHE_USER'), name: req('CACHE_NAME'), ...(opt('CACHE_KEY_PREFIX') ? { keyPrefix: req('CACHE_KEY_PREFIX') } : {}) } : undefined,
     mail: opt('MAIL_FROM') ? { from: req('MAIL_FROM'), configSet: opt('SES_CONFIG_SET'), eventsQueueUrl: opt('SES_EVENTS_QUEUE_URL') } : undefined,
   };
 }

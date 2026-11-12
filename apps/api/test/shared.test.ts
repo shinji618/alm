@@ -31,6 +31,10 @@ test('호출 제한: Valkey 저장소는 MULTI INCR + EXPIRE NX', async () => {
   const s = new ValkeyCounterStore(fake);
   assert.equal(await s.incr('rl:x:1', 65), 7);
   assert.deepEqual(calls, ['incr rl:x:1', 'expire rl:x:1 65 NX']);
+  // 공유 Valkey(공유 플랫폼): 제품 접두어가 붙은 키만 쓴다
+  calls.length = 0;
+  await new ValkeyCounterStore(fake, undefined, 'alm:').incr('rl:x:1', 65);
+  assert.deepEqual(calls, ['incr alm:rl:x:1', 'expire alm:rl:x:1 65 NX']);
 });
 
 test('실제 Valkey로 세기', { skip: !process.env.TEST_VALKEY_HOST && 'TEST_VALKEY_HOST 없음' }, async () => {

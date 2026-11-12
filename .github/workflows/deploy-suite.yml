@@ -1,0 +1,66 @@
+# 공유 플랫폼(suite)에 ALM 배포(통합 WBS 5.4). 직접 실행만(workflow_dispatch) — 전용 환경(deploy.yml, main 푸시)과 따로 돈다.
+# 선행: pas-suite가 배포 역할 suite-alm-deploy-<env>(스택 Suite-<Env>-ProductCi)와 DB 초기 설정 선언(PRODUCTS[].db)을 배포해 둔다.
+# 이미지는 새로 만들지 않는다: 전용 환경 배포(deploy.yml)가 main의 그 커밋으로 올린 이미지(커밋 SHA 태그)를 그대로 쓴다.
+# GitHub Environment 이름 = suite-<env>. 공유 RDS가 꺼진 시간(DEV 매일 00~07시 ET)에는 실행하지 않는다.
+name: deploy-suite
+on:
+  workflow_dispatch:
+    inputs:
+      env: { description: '환경', type: choice, options: [dev], default: dev }
+permissions: { id-token: write, contents: read }
+concurrency: { group: 'deploy-suite-${{ inputs.env }}', cancel-in-progress: false }
+env:
+  AWS_REGION: us-east-1
+  NODE_VERSION: '22'
+  ECR_REPOSITORY: alm
+jobs:
+  image:
+    name: 이미지 확인(ECR)
+    runs-on: ubuntu-24.04
+    outputs: { tag: '${{ steps.t.outputs.tag }}' }
+    steps:
+      - id: t
+        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: { role-to-assume: 'arn:aws:iam::${{ vars.SHARED_ACCOUNT_ID }}:role/alm-ci-build', aws-region: us-east-1 }
+      - name: 이 커밋의 이미지가 있는지
+        env: { TAG: '${{ steps.t.outputs.tag }}' }
+        run: |
+          if ! aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$TAG" >/dev/null 2>&1; then
+            echo "::error::이미지 $TAG 가 ECR에 없습니다. main의 deploy(전용 환경)가 이 커밋의 이미지를 올린 뒤 다시 실행하세요."; exit 1
+          fi
+  web:
+    name: 웹 빌드(공유 플랫폼용)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
+      - run: npm ci && npm run build
+        env: { VITE_SUITE: '1' }
+      - uses: actions/upload-artifact@v4
+        with: { name: web-dist-suite, path: apps/web/dist, retention-days: 7 }
+  deploy:
+    name: 공유 플랫폼 배포
+    needs: [image, web]
+    runs-on: ubuntu-24.04
+    environment: 'suite-${{ inputs.env }}'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm, cache-dependency-path: infra/package-lock.json }
+      - run: npm ci
+        working-directory: infra
+      - run: npm run synth:suite   # cdk-nag 포함 합성 검증
+        working-directory: infra
+      - uses: actions/download-artifact@v4
+        with: { name: web-dist-suite, path: apps/web/dist }
+      # 입력값은 환경 변수로만 넘긴다(run 안에서 ${{ }}로 끼워 넣지 않는다 — 셸 주입 방지)
+      - id: acct
+        working-directory: infra
+        env: { ENV_NAME: '${{ inputs.env }}' }
+        run: echo "id=$(npx tsx -e "import { SUITE_ENVS } from './lib/suite-config'; console.log(SUITE_ENVS[process.env.ENV_NAME as 'dev'].account)")" >> "$GITHUB_OUTPUT"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: { role-to-assume: 'arn:aws:iam::${{ steps.acct.outputs.id }}:role/suite-alm-deploy-${{ inputs.env }}', aws-region: us-east-1, role-duration-seconds: 3600 }
+      - env: { ENV_NAME: '${{ inputs.env }}', TAG: '${{ needs.image.outputs.tag }}' }
+        run: bash infra/scripts/suite-deploy.sh "$ENV_NAME" "$TAG"
