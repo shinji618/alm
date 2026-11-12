@@ -14,11 +14,13 @@ import '@fontsource/jetbrains-mono/600.css';
 import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
 import '@/styles/global.css';
 import '@/i18n';
-import { applyPalette, applyTheme, getPalettePref, getThemePref } from '@/lib/theme';
+import { applyPalette, applyTheme, DEFAULT_PALETTE, getPalettePref, getThemePref } from '@/lib/theme';
+import { SUITE } from '@/lib/suite';
 import { App } from './App';
 
 applyTheme(getThemePref());
-applyPalette(getPalettePref());
+// 공유 플랫폼 모드: 팔레트는 PAS 공통(blue)으로 고정한다(공통 상단바와 같은 색 — 통합 WBS 5.2)
+applyPalette(SUITE ? DEFAULT_PALETTE : getPalettePref());
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

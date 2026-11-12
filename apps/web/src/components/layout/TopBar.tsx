@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import s from './layout.module.css';
 import { Button } from '../ui';
+import { SUITE } from '@/lib/suite';
 import { applyPalette, applyTheme, getPalettePref, getThemePref, type PalettePref, type ThemePref } from '@/lib/theme';
 import { setLanguage } from '@/i18n';
 
@@ -88,7 +89,7 @@ export function TopBar({ userName, userRole, onMenu, onSearch, onSignOut }: TopB
                 <option value="dark">{t('app.themeDark')}</option>
               </select>
             </label>
-            <label className={s.menuRow}>
+            {!SUITE && <label className={s.menuRow}>
               {t('app.palette')}
               <select
                 value={palette}
@@ -102,7 +103,7 @@ export function TopBar({ userName, userRole, onMenu, onSearch, onSignOut }: TopB
                 <option value="blue">{t('app.paletteBlue')}</option>
                 <option value="black">{t('app.paletteBlack')}</option>
               </select>
-            </label>
+            </label>}
             {onSignOut && (
               <button type="button" className={s.menuRow} role="menuitem" onClick={onSignOut}>
                 {t('app.signOut')}

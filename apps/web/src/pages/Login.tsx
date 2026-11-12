@@ -15,7 +15,7 @@ export function Login() {
     if (!EMAIL.test(email.trim())) return setError(t('login.invalid'));
     try { localStorage.setItem('alm.email', email.trim()); } catch { /* ignore */ }
     const back = `${window.location.pathname}${window.location.search}`;
-    window.location.assign(loginUrl(email.trim(), back.startsWith('/') ? back : '/'));
+    window.location.assign(loginUrl(email.trim(), back.startsWith('/') ? back : '/'));   // 공유 플랫폼 모드에서는 이 화면을 쓰지 않는다(App.tsx)
   };
   return (
     <div className={s.loginWrap}>

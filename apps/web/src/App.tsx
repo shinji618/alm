@@ -9,6 +9,7 @@ import { Dashboard } from '@/pages/dashboard/Dashboard';
 import { AssetImport } from '@/pages/admin/AssetImport';
 import { Placeholder } from '@/pages/Placeholder';
 import { Login } from '@/pages/Login';
+import { BASE_PATH, SUITE } from '@/lib/suite';
 import { AssetList } from '@/pages/assets/AssetList';
 import { AssetDetail } from '@/pages/assets/AssetDetail';
 import { AssetCreate } from '@/pages/assets/AssetCreate';
@@ -35,7 +36,8 @@ function Routed() {
   const { t } = useTranslation();
   const { state, reload } = useSession();
   if (state.status === 'loading') return <EmptyState message={t('app.loadingSession')} />;
-  if (state.status === 'anonymous') return <Login />;
+  // 공유 플랫폼 모드에는 자체 로그인 화면이 없다: 로그인이 끊기면 공통 틀이 플랫폼 로그인 화면으로 보낸다
+  if (state.status === 'anonymous') return SUITE ? <EmptyState message={t('app.loadingSession')} /> : <Login />;
   if (state.status === 'error') {
     return (
       <div style={{ padding: 24 }}>
@@ -85,7 +87,7 @@ export function App({ initialMe }: { initialMe?: Me } = {}) {
     <ToastProvider>
       <ConfirmProvider>
         <SessionProvider initial={initialMe}>
-          <BrowserRouter>
+          <BrowserRouter basename={BASE_PATH || undefined}>
             <Routed />
           </BrowserRouter>
         </SessionProvider>

@@ -10,6 +10,20 @@ body,
 #root {
   height: 100%;
 }
+/* 공유 플랫폼 모드(vite.config.ts가 <html data-suite>와 <suite-bar>를 넣는다): 공통 상단바(48px)를 위에 고정하고 그만큼 화면을 내린다 */
+:root[data-suite] {
+  --suite-top: 48px;
+}
+:root[data-suite] suite-bar {
+  display: block;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  height: var(--suite-top);
+}
+:root[data-suite] #root {
+  height: calc(100% - var(--suite-top));
+}
 body {
   margin: 0;
   background: var(--bg);
