@@ -31,7 +31,10 @@ export const SUITE_ENVS: Record<SuiteEnvName, SuiteEnvConfig> = {
   dev: { name: 'dev', account: '236501162716', appDomain: 'app-dev.pasapps.com', idApiUrl: 'https://id.app-dev.pasapps.com', azs: ['us-east-1a', 'us-east-1b'],
     api: { cpu: 512, memoryMiB: 1024, desired: 1 }, worker: { cpu: 256, memoryMiB: 512, desired: 1 },
     logRetentionDays: 30, execCommand: true, nightlyStop: true, imageTag: 'bootstrap',
-    portal: { clientIds: '', feedScope: 'portal/feed', notifyScope: 'portal/notify' } },
+    // 2026-11-11 새 중앙 ID(풀 us-east-1_ULHTQjnp6): portal-backend(피드 호출 주체, 범위 portal/feed). 알림 송신은 비밀의 alm-backend(범위 portal/notify)
+    portal: { clientIds: '25qk2s95tebtjhdrrtelg7r1mi', feedScope: 'portal/feed', notifyScope: 'portal/notify' },
+    // SAP 연결 클라이언트(alm-sap-*)와 그 관리 함수는 전용 환경의 ALM 풀 것을 그대로 쓴다(같은 계정). 5.6에서 중앙으로 옮긴다
+    sap: { userPoolId: 'us-east-1_2iCIGqVTT', domain: 'auth.alm-dev.pasapps.com', adminFunction: 'alm-dev-cognito-admin' } },
 };
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
 export const suiteStackName = (env: SuiteEnvName) => `Suite-${cap(env)}-${cap(PRODUCT)}`;
