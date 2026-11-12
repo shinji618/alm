@@ -5,6 +5,8 @@ export interface Config {
   port: number;
   db: { host: string; port: number; name: string; user: string; password?: string; ssl: boolean };
   dbMaster?: { user: string; password: string };   // migrate 부트스트랩 때만(Secrets Manager → ECS 비밀)
+  // 공유 플랫폼(suite) 모드(SUITE_MODE=1). DB 소유자가 RDS 마스터가 아니다(rds_superuser 없음): 확장·이벤트 트리거는 플랫폼이 대신 만든다(ops/migrate.ts)
+  suiteMode?: boolean;
   cognito: { userPoolId: string; webClientId: string; webClientSecret: string; pdaClientId: string; domain: string };
   // SAP 연결 클라이언트(alm-sap-*)가 있는 풀. 사용자 로그인을 중앙 ID 풀로 옮긴 뒤에도 SAP은 ALM 풀에 둔다(3.13). 없으면 cognito와 같음
   sapCognito?: { userPoolId: string; domain: string };
@@ -50,6 +52,7 @@ export function loadConfig(role: string): Config {
       password: opt('DB_PASSWORD'),                                          // DB_PASSWORD가 있으면 IAM 토큰 대신(로컬)
       ssl: process.env.DB_SSL !== 'false',
     },
+    suiteMode: process.env.SUITE_MODE === '1',
     dbMaster: opt('DB_MASTER_PASSWORD') ? { user: process.env.DB_MASTER_USER || 'alm_owner', password: req('DB_MASTER_PASSWORD') } : undefined,
     cognito: {
       userPoolId: needsHttp ? req('COGNITO_USER_POOL_ID') : process.env.COGNITO_USER_POOL_ID || '',
