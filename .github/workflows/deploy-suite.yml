@@ -24,9 +24,10 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4
         with: { role-to-assume: 'arn:aws:iam::${{ vars.SHARED_ACCOUNT_ID }}:role/alm-ci-build', aws-region: us-east-1 }
       - name: 이 커밋의 이미지가 있는지
+        env: { TAG: '${{ steps.t.outputs.tag }}' }
         run: |
-          if ! aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="${{ steps.t.outputs.tag }}" >/dev/null 2>&1; then
-            echo "::error::이미지 ${{ steps.t.outputs.tag }} 가 ECR에 없습니다. main의 deploy(전용 환경)가 이 커밋의 이미지를 올린 뒤 다시 실행하세요."; exit 1
+          if ! aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$TAG" >/dev/null 2>&1; then
+            echo "::error::이미지 $TAG 가 ECR에 없습니다. main의 deploy(전용 환경)가 이 커밋의 이미지를 올린 뒤 다시 실행하세요."; exit 1
           fi
   web:
     name: 웹 빌드(공유 플랫폼용)
@@ -54,9 +55,12 @@ jobs:
         working-directory: infra
       - uses: actions/download-artifact@v4
         with: { name: web-dist-suite, path: apps/web/dist }
+      # 입력값은 환경 변수로만 넘긴다(run 안에서 ${{ }}로 끼워 넣지 않는다 — 셸 주입 방지)
       - id: acct
         working-directory: infra
-        run: echo "id=$(npx tsx -e "import { SUITE_ENVS } from './lib/suite-config'; console.log(SUITE_ENVS['${{ inputs.env }}'].account)")" >> "$GITHUB_OUTPUT"
+        env: { ENV_NAME: '${{ inputs.env }}' }
+        run: echo "id=$(npx tsx -e "import { SUITE_ENVS } from './lib/suite-config'; console.log(SUITE_ENVS[process.env.ENV_NAME as 'dev'].account)")" >> "$GITHUB_OUTPUT"
       - uses: aws-actions/configure-aws-credentials@v4
         with: { role-to-assume: 'arn:aws:iam::${{ steps.acct.outputs.id }}:role/suite-alm-deploy-${{ inputs.env }}', aws-region: us-east-1, role-duration-seconds: 3600 }
-      - run: bash infra/scripts/suite-deploy.sh "${{ inputs.env }}" "${{ needs.image.outputs.tag }}"
+      - env: { ENV_NAME: '${{ inputs.env }}', TAG: '${{ needs.image.outputs.tag }}' }
+        run: bash infra/scripts/suite-deploy.sh "$ENV_NAME" "$TAG"
