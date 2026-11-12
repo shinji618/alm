@@ -6,9 +6,11 @@ import type { Principal } from '../platform/identity/principal';
 import type { AccessClaims } from '../auth/cognito';
 import type { TxContext } from '../db/pool';
 import type { SapConn } from '../auth/sap';
+import type { PassClaims } from '../auth/suitePass';
 
 export interface AlmContext {
   correlationId: string; ip?: string; userAgent?: string; claims?: AccessClaims; principal?: Principal;
+  pass?: PassClaims;                                  // 통행증 모드의 웹 채널(이때 claims는 없다)
   channel?: 'WEB' | 'PDA' | 'SAP' | 'PORTAL';
   sap?: SapConn;                                      // SAP 채널: 연결(테넌트·회사코드)
   device?: { id?: string; serial: string };           // PDA 채널: X-Device-Id

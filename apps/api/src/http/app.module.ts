@@ -13,7 +13,8 @@ import { AdminController } from './admin.controller';
 import { PdaController } from './pda.controller';
 import { SapController } from './sap.controller';
 import { TtlCache } from '../common/cache';
-import { CONFIG, COGNITO, DB, FILES, LIMITER, MAILER, PRINCIPALS, SAP_CONNS, CENTRAL } from './tokens';
+import { CONFIG, COGNITO, DB, FILES, LIMITER, MAILER, PRINCIPALS, SAP_CONNS, CENTRAL, SUITE_PASS } from './tokens';
+import { SuitePassVerifier } from '../auth/suitePass';
 import type { Mailer } from '../notify/mail';
 import { MemoryCounterStore, SharedLimiter } from '../common/shared';
 import { FilesController } from './files.controller';
@@ -30,7 +31,7 @@ import type { Central } from '../auth/central';
 
 @Module({})
 export class AppModule {
-  static create(deps: { cfg: Config; db: Db; cognito: Cognito; principals?: PrincipalCache; limiter?: SharedLimiter; files?: FileStore; mailer?: Mailer; central?: Central }): DynamicModule {
+  static create(deps: { cfg: Config; db: Db; cognito: Cognito; principals?: PrincipalCache; limiter?: SharedLimiter; files?: FileStore; mailer?: Mailer; central?: Central; pass?: SuitePassVerifier }): DynamicModule {
     return {
       module: AppModule,
       controllers: [HealthController, AuthController, MeController, AdminController, PdaController, SapController, FilesController, AssetsController, RequestsController, SapWebController, CountsController, TaxController, LabelsController, DashboardController, PortalController],
@@ -44,6 +45,7 @@ export class AppModule {
         { provide: FILES, useValue: deps.files ?? null },
         { provide: MAILER, useValue: deps.mailer ?? null },
         { provide: CENTRAL, useValue: deps.central ?? null },
+        { provide: SUITE_PASS, useValue: deps.pass ?? (deps.cfg.suite ? new SuitePassVerifier(deps.cfg.suite) : null) },
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_FILTER, useClass: ProblemFilter },
       ],
