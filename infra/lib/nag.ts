@@ -37,6 +37,15 @@ const RULES: Rule[] = [
     'SES identity/*: 발신 도메인 identity, 구성 세트는 이름으로 지정. Lambda 호출 :* 는 버전·별칭',
   ].join(' ')],
 
+  // ---- 공유 플랫폼 위의 ALM(Suite-<Env>-Alm, 통합 WBS 5.4) ----
+  ['Alm', 'AwsSolutions-SMG4', '중앙 ID 클라이언트 비밀(alm-backend)은 중앙 ID가 발급·교체한다(중앙 ID 관리 스크립트). Secrets Manager 자동 교체 Lambda 대상 아님'],
+  ['Alm', 'AwsSolutions-ECS2', '환경 변수는 비밀이 아닌 구성값(엔드포인트·이름·ID)만. 비밀(중앙 ID 클라이언트 비밀)은 Secrets Manager secrets로 주입'],
+  ['Alm', 'AwsSolutions-IAM5', [
+    'ecr:GetAuthorizationToken·ssmmessages(ECS Exec, DEV만)·logs는 리소스 수준 권한이 없다.',
+    'S3 객체 권한(파일 버킷)은 객체 키 와일드카드가 필요하다(CDK grant 표준 묶음).',
+    '일정 작업 역할의 태스크 정의 ARN은 리비전 와일드카드(:*)가 붙는다(CDK Scheduler 대상 표준)',
+  ].join(' ')],
+
   // ---- Edge ----
   ['Edge', 'AwsSolutions-CFR1', '사용자는 미국 고객사지만 출장·해외 법인 접근을 막지 않는다. 지역 제한 대신 WAF IP 평판·익명 IP 규칙 사용(10 정의서 5.2)'],
   ['Edge', 'AwsSolutions-CFR3', 'CloudFront 표준 로그 v2(CloudWatch Logs 전송 → log-archive S3)로 기록한다. 규칙은 구 방식(Logging 속성)만 검사'],

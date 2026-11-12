@@ -124,6 +124,24 @@ ALM·ITSM·멀티 뱅크가 함께 쓰는 사용자 관리 서비스의 인프�
 - `lambda/cognito-admin/`: `alm-<env>-cognito-admin` 본문(테넌트 IdP·SAP 클라이언트·비밀 교체, 배포 뒤 `syncIdps`). 시험 `test/cognito-admin.test.mjs`
 - `scripts/cognito-admin.sh <env> info|<JSON>`: 관리 계정 CloudShell에서 호출. 절차는 산출물 `13_테넌트_SSO_등록_런북.md`
 
+## 공유 플랫폼(suite) 배포 (통합 WBS 5.4)
+
+ALM을 공유 플랫폼(`app[-env].pasapps.com/alm`, 저장소 pas-suite)에 올리는 스택이다. 지금 쓰는 전용 환경(`Alm-<Env>-*`, `alm-dev.pasapps.com`)은 그대로 두고 전환 시험(5.7)까지 함께 돈다.
+
+| 무엇 | 어디 |
+| --- | --- |
+| 설정 | `lib/suite-config.ts` — 이름 규칙, 환경 값, Portal·SAP 연동 값 |
+| 스택 | `lib/suite-alm-stack.ts` → `Suite-<Env>-Alm`(CDK 앱 `bin/suite.ts`) |
+| 배포 | `scripts/suite-deploy.sh`, 워크플로 `deploy-suite`(직접 실행) |
+| 시험 | `test/suite.test.ts` |
+
+- 플랫폼이 가진 것(VPC·RDS·Valkey·클러스터·ALB·CloudFront·WAF·발신 도메인·야간 정지)은 만들지 않고 SSM 파라미터 `/suite/<env>/*`로 참조한다.
+- 앱 동작은 환경 변수로 바뀐다: `SUITE_MODE=1`(DB 소유자가 RDS 마스터가 아님), `SUITE_AUTH=1`(웹은 플랫폼 통행증), `CACHE_KEY_PREFIX=alm:`(공유 Valkey). 화면은 `VITE_SUITE=1`로 빌드한다(기준 경로 `/alm/`).
+- DB: 소유자 `alm_owner`(IAM 인증)로 migrate한다. pgaudit 확장·감사 보호 이벤트 트리거는 플랫폼 준비 함수가 대신 만든다(배포 스크립트 1·3단계, pas-suite `PRODUCTS[].db`).
+- 배포 뒤에 넣을 값: 비밀 `alm/<env>/suite-central-id`(새 중앙 ID의 `alm-backend`·`alm-pda` 클라이언트), `suite-config.ts`의 `portal.clientIds`(새 중앙 ID의 `portal-backend`), `sap`(전용 환경의 ALM 풀 — 5.6에서 중앙으로 옮기기 전까지).
+- 아직 옮기지 않은 것: 감사 보관(audit-archive) 일정(보관 버킷의 `<env>/` 접두사를 전용 환경과 함께 쓰게 되므로 전환 때), 자동 확장, 알람.
+- 공유 RDS가 꺼진 시간(DEV 매일 00~07시 ET)에는 배포하지 않는다.
+
 ## 3.3 이후에 이어서 할 것
 
 - 앱: RDS IAM 토큰 접속, Valkey IAM 인증 토큰(SigV4) 생성, EMF 지표 `ALM/SapOverdue`·`SapPostingFailed`·`SapAuthFailed`·`Requests(TenantId)`.

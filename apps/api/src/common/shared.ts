@@ -32,8 +32,10 @@ export class MemoryCounterStore implements CounterStore {
 interface Pipeline { incr(k: string): Pipeline; expire(k: string, s: number, mode: 'NX'): Pipeline; exec(): Promise<[Error | null, unknown][] | null> }
 type RedisLike = { multi(): Pipeline; quit(): Promise<unknown> };
 export class ValkeyCounterStore implements CounterStore {
-  constructor(private r: RedisLike, private onClose?: () => void) {}
-  async incr(key: string, ttlSec: number) {
+  // prefix: 공유 Valkey에서는 제품 접두어('alm:')가 붙은 키만 쓸 수 있다(CACHE_KEY_PREFIX)
+  constructor(private r: RedisLike, private onClose?: () => void, private prefix = '') {}
+  async incr(k: string, ttlSec: number) {
+    const key = this.prefix + k;
     const res = await this.r.multi().incr(key).expire(key, ttlSec, 'NX').exec();
     const [err, n] = res?.[0] ?? [new Error('Valkey MULTI 결과 없음'), 0];
     if (err) throw err;
@@ -74,7 +76,7 @@ export async function elasticacheIamToken(o: { cacheName: string; userId: string
   return `${o.cacheName}/?${q}`;
 }
 
-export async function connectCounterStore(c: { endpoint: string; user: string; name: string }, region: string): Promise<CounterStore> {
+export async function connectCounterStore(c: { endpoint: string; user: string; name: string; keyPrefix?: string }, region: string): Promise<CounterStore> {
   const [{ default: Redis }, { defaultProvider }] = await Promise.all([import('ioredis'), import('@aws-sdk/credential-provider-node')]);
   const credentials = defaultProvider();
   const token = () => elasticacheIamToken({ cacheName: c.name, userId: c.user, region, credentials });
@@ -87,5 +89,5 @@ export async function connectCounterStore(c: { endpoint: string; user: string; n
   r.on('error', (e) => log.warn('valkey error', { err: String(e) }));
   const timer = setInterval(() => { token().then((t) => { r.options.password = t; }, (e) => log.warn('valkey token refresh failed', { err: String(e) })); }, 10 * 60_000);
   timer.unref();
-  return new ValkeyCounterStore(r as unknown as RedisLike, () => clearInterval(timer));
+  return new ValkeyCounterStore(r as unknown as RedisLike, () => clearInterval(timer), c.keyPrefix ?? '');
 }

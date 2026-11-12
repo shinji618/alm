@@ -3,3 +3,4 @@ cdk.out/
 .scratch/
 dist/
 *.js.map
+cdk.out.suite/

@@ -11,6 +11,7 @@
     "test": "vitest run",
     "synth": "cdk synth -c env=dev -q && cdk synth -c env=qa -q && cdk synth -c env=prd -q && cdk synth -c env=global -q",
     "synth:dev": "cdk synth -c env=dev",
+    "synth:suite": "cdk -a \"npx tsx bin/suite.ts\" synth -c env=dev -q -o cdk.out.suite",
     "diff:dev": "cdk diff -c env=dev",
     "check": "npm run build && npm test && npm run synth && npm run synth:id",
     "synth:id": "cdk -a \"npx tsx bin/identity.ts\" synth -c env=dev -q && cdk -a \"npx tsx bin/identity.ts\" synth -c env=qa -q && cdk -a \"npx tsx bin/identity.ts\" synth -c env=prd -q",
