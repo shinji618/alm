@@ -153,7 +153,8 @@ export class SuiteAlmStack extends Stack {
     worker.c.addEnvironment('IDENTITY_EVENTS_QUEUE_URL', identityEvents.queueUrl);
     for (const q of [jobsQueue, sesEvents, identityEvents]) q.grantConsumeMessages(worker.td.taskRole);
     filesBucket.grantRead(worker.td.taskRole);
-    worker.td.addToTaskRolePolicy(new iam.PolicyStatement({ actions: ['ses:SendEmail', 'ses:SendRawEmail'], resources: [P('mail-identity-arn'),
+    // 발신 identity만 주면 SES 시험 모드(sandbox)에서 수신자 쪽 identity(예: pasapps.com) 권한이 없어 거부된다 — 기존 ALM 스택과 같이 계정의 identity 전체
+    worker.td.addToTaskRolePolicy(new iam.PolicyStatement({ actions: ['ses:SendEmail', 'ses:SendRawEmail'], resources: [`arn:aws:ses:${this.region}:${this.account}:identity/*`,
       `arn:aws:ses:${this.region}:${this.account}:configuration-set/${configSet.configurationSetName}`] }));
     worker.td.addToTaskRolePolicy(cacheConnect);
 
