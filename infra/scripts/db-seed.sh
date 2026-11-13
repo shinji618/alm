@@ -9,13 +9,17 @@
 #   "sapConnections":[{"systemId":"S4D-100","companyCode":"1000","clientId":"<createSapClient의 clientId>","allowedCidrs":["108.79.59.91/32"]}]
 # ALM 시험 마스터(사이트·룸·카테고리·모델·공급사·라벨 템플릿, 마스터 화면 5.x 전): JSON 대신 @파일 경로
 #   bash db-seed.sh dev @seed/dev-masters.json     ← tenant.code만 있으면 테넌트·도메인·사용자는 건드리지 않는다
+# 통합 플랫폼(suite)의 ALM에 등록할 때는 환경 앞에 suite- 를 붙인다(런북 13 7-3). 소유자(alm_owner, IAM 인증)로 실행된다
+#   bash db-seed.sh suite-dev '{"tenant":{"code":"TEST"},"companies":[…],"sapConnections":[…]}'
+# suite-<env> 계정의 CloudShell에서는 그대로 실행하고, 다른 계정(관리 계정)에서는 그 계정의 실행 역할을 맡는다.
 set -euo pipefail
-ENV=${1:?dev|qa|prd}; JSON=${2:?seed JSON}
+ENV=${1:?dev|qa|prd 또는 suite-dev|suite-qa|suite-prd}; JSON=${2:?seed JSON}
+SUITE=0; [[ "$ENV" == suite-* ]] && { SUITE=1; ENV=${ENV#suite-}; }
 case "$ENV" in
   dev) acct=236501162716 ;;
   qa)  acct=428477779499 ;;
   prd) acct=482545366457 ;;
-  *) echo "env는 dev|qa|prd" >&2; exit 2 ;;
+  *) echo "env는 dev|qa|prd 또는 suite-dev|suite-qa|suite-prd" >&2; exit 2 ;;
 esac
 if [[ "$JSON" == @* ]]; then
   f="${JSON#@}"; [[ -f "$f" ]] || f="$(dirname "$0")/${JSON#@}"
@@ -25,19 +29,24 @@ fi
 jq -e . >/dev/null <<< "$JSON" || { echo "JSON 형식이 아니다(작은따옴표로 감쌌는지 확인)" >&2; exit 2; }
 JSON=$(jq -c . <<< "$JSON")   # 작업 덮어쓰기 크기 제한(8KB) 안에 들도록 공백 제거
 (( ${#JSON} < 7000 )) || { echo "JSON이 너무 크다(${#JSON}자). 나눠서 실행" >&2; exit 2; }
-read -r AK SK ST <<< "$(aws sts assume-role --role-arn "arn:aws:iam::${acct}:role/AWSControlTowerExecution" \
-  --role-session-name alm-db-seed --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' --output text)"
-export AWS_ACCESS_KEY_ID=$AK AWS_SECRET_ACCESS_KEY=$SK AWS_SESSION_TOKEN=$ST AWS_REGION=us-east-1 AWS_DEFAULT_REGION=us-east-1
+export AWS_REGION=us-east-1 AWS_DEFAULT_REGION=us-east-1
+if [[ "$SUITE" == 1 && "$(aws sts get-caller-identity --query Account --output text)" == "$acct" ]]; then :   # 이미 그 계정이다
+else
+  read -r AK SK ST <<< "$(aws sts assume-role --role-arn "arn:aws:iam::${acct}:role/AWSControlTowerExecution" \
+    --role-session-name alm-db-seed --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' --output text)"
+  export AWS_ACCESS_KEY_ID=$AK AWS_SECRET_ACCESS_KEY=$SK AWS_SESSION_TOKEN=$ST
+fi
 Env="$(tr '[:lower:]' '[:upper:]' <<< "${ENV:0:1}")${ENV:1}"
-out() { aws cloudformation describe-stacks --stack-name "Alm-${Env}-App" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue | [0]" --output text; }
+if [[ "$SUITE" == 1 ]]; then STACK="Suite-${Env}-Alm"; LOGS="/suite/${ENV}/alm/migrate"; else STACK="Alm-${Env}-App"; LOGS="/alm/${ENV}/migrate"; fi
+out() { aws cloudformation describe-stacks --stack-name "$STACK" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue | [0]" --output text; }
 family=$(out MigrateFamily); cluster=$(out ClusterName); sg=$(out MigrateSecurityGroupId); subnets=$(out AppSubnetIds)
 overrides=$(jq -cn --arg j "$JSON" '{containerOverrides:[{name:"app",command:["node","dist/main","seed",$j]}]}')
 task=$(aws ecs run-task --cluster "$cluster" --task-definition "$family" --launch-type FARGATE --started-by db-seed \
   --network-configuration "awsvpcConfiguration={subnets=[${subnets}],securityGroups=[${sg}],assignPublicIp=DISABLED}" \
   --overrides "$overrides" --query 'tasks[0].taskArn' --output text)
-echo "task: ${task##*/} (1~2분)"
+echo "task: ${task##*/} → $STACK (1~2분)"
 aws ecs wait tasks-stopped --cluster "$cluster" --tasks "$task"
 code=$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" --query 'tasks[0].containers[?name==`app`].exitCode | [0]' --output text)
-aws logs filter-log-events --log-group-name "/alm/${ENV}/migrate" --log-stream-name-prefix "migrate/app/${task##*/}" \
+aws logs filter-log-events --log-group-name "$LOGS" --log-stream-name-prefix "migrate/app/${task##*/}" \
   --query 'events[].message' --output text | tr '\t' '\n' | tail -20
 [[ "$code" == "0" ]] && echo "seed 완료" || { echo "seed 실패(exit $code)" >&2; exit 1; }
