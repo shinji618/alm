@@ -60,10 +60,9 @@ export function TopBar({ userName, userRole, onMenu, onSearch, onSignOut }: TopB
       </div>
       <div className={s.user} ref={ref}>
         <button type="button" className={s.userBtn} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((m) => !m)}>
-          <span className={s.userName}>
-            {userName} · {userRole}
-          </span>
-          <span className={s.avatar}>{initials}</span>
+          {/* 공유 플랫폼: 이름·로그아웃은 공통 상단바에 있다. 여기는 이 제품의 역할과 화면 설정만 보인다 */}
+          <span className={s.userName}>{SUITE ? userRole : `${userName} · ${userRole}`}</span>
+          {SUITE ? <span aria-hidden="true">▾</span> : <span className={s.avatar}>{initials}</span>}
         </button>
         {menu && (
           <div className={s.menu} role="menu">
@@ -104,7 +103,7 @@ export function TopBar({ userName, userRole, onMenu, onSearch, onSignOut }: TopB
                 <option value="black">{t('app.paletteBlack')}</option>
               </select>
             </label>}
-            {onSignOut && (
+            {onSignOut && !SUITE && (
               <button type="button" className={s.menuRow} role="menuitem" onClick={onSignOut}>
                 {t('app.signOut')}
               </button>

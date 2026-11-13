@@ -5,7 +5,10 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { Client } from 'pg';
 import { migrate, loadMigrations, skipEventTriggers } from '../src/ops/migrate';
+import { parseSeed, seed } from '../src/ops/seed';
+import { catalog } from '../src/platform/identity/permissions';
 
+catalog(join(__dirname, '..', '..', '..', '..', 'api', 'permissions.json'));   // seed가 역할 이름을 확인한다
 const host = process.env.TEST_PG_HOST;
 const port = Number(process.env.TEST_PG_PORT || 5432);
 const skip = !host && 'TEST_PG_HOST 없음';
@@ -83,5 +86,14 @@ test('공유 플랫폼 모드: 슈퍼유저가 아닌 소유자로 전부 적용
     assert.ok(t, '감사 트리거가 붙은 표');
     await assert.rejects(o2.query(`ALTER TABLE ${t.relname} DISABLE TRIGGER ${t.tgname}`), /audit triggers must stay enabled/);
     await assert.rejects(o2.query(`DROP TRIGGER ${t.tgname} ON ${t.relname}`), /is not allowed/);
+    // 테넌트·SAP 연결 등록(런북 13 6·7장, db-seed.sh suite): 슈퍼유저가 아닌 소유자로도 되고, 다시 실행해도 같은 결과다
+    const input = parseSeed(JSON.stringify({ tenant: { code: 'NEWCO', name: 'New Co', idpType: 'OIDC' }, domains: [`newco-${tag}.example.com`],
+      users: [{ email: `admin@newco-${tag}.example.com`, displayName: 'Admin', roles: ['SYS_ADMIN'] }], companies: [{ code: '1000', name: 'New Co US' }],
+      sapConnections: [{ systemId: 'S4P-100', companyCode: '1000', clientId: 'client-id-0001', clientAlias: 'NEWCO-S4P', allowedCidrs: ['203.0.113.10/32'] }] }));
+    await seed(o2, input); await seed(o2, input);
+    const got = (await o2.query(`SELECT t.code, (SELECT count(*)::int FROM tenant_domain d WHERE d.tenant_id = t.id) AS domains, (SELECT count(*)::int FROM app_user u WHERE u.tenant_id = t.id) AS users,
+      (SELECT count(*)::int FROM company c WHERE c.tenant_id = t.id) AS companies, (SELECT count(*)::int FROM sap_connection s WHERE s.tenant_id = t.id AND s.client_alias = 'NEWCO-S4P') AS conns
+      FROM tenant t WHERE t.code = 'NEWCO'`)).rows;
+    assert.deepEqual(got, [{ code: 'NEWCO', domains: 1, users: 1, companies: 1, conns: 1 }]);
   } finally { await o2.end(); }
 });
