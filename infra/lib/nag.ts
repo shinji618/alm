@@ -44,6 +44,7 @@ const RULES: Rule[] = [
     'ecr:GetAuthorizationToken·ssmmessages(ECS Exec, DEV만)·logs는 리소스 수준 권한이 없다.',
     'S3 객체 권한(파일 버킷)은 객체 키 와일드카드가 필요하다(CDK grant 표준 묶음).',
     '일정 작업 역할의 태스크 정의 ARN은 리비전 와일드카드(:*)가 붙는다(CDK Scheduler 대상 표준)',
+    'SES identity/*: 시험 모드(sandbox)에서는 수신자 identity 권한도 필요하다. 구성 세트는 이름으로 지정',
   ].join(' ')],
 
   // ---- Edge ----

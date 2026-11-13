@@ -31,7 +31,7 @@ describe('ALM on suite (dev)', () => {
       'AWS::SES::EmailIdentity', 'AWS::WAFv2::WebACL', 'AWS::Cognito::UserPool', 'AWS::Lambda::Function']) expect(resources(type), type).toEqual([]);
     expect(ssmParams().sort()).toEqual(['access-logs-bucket', 'alb-listener-arn', 'alb-security-group-id', 'app-subnet-ids', 'cache-arn', 'cache-endpoint', 'cache-name',
       'cache-security-group-id', 'data-key-arn', 'db-host', 'db-port', 'db-resource-id', 'db-security-group-id', 'id-api-url', 'id-auth-domain', 'id-events-topic-arn',
-      'id-token-url', 'id-user-pool-id', 'mail-identity-arn', 'vpc-id'].map((k) => `/suite/dev/${k}`));
+      'id-token-url', 'id-user-pool-id', 'vpc-id'].map((k) => `/suite/dev/${k}`));
   });
 
   it('이름 규칙: 서비스 alm-*, 태스크 정의 suite-dev-alm-*, 로그 /suite/dev/alm/*(플랫폼 키로 암호화), 버킷·큐·비밀·일정 그룹. 전용 환경 이름과 겹치지 않는다', () => {
