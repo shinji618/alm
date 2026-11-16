@@ -4,7 +4,7 @@ import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/commo
 import { Reflector } from '@nestjs/core';
 import { Config } from '../config';
 import { Db } from '../db/pool';
-import { AccessClaims, Cognito, SAP_SCOPE } from '../auth/cognito';
+import { AccessClaims, CENTRAL_SAP_SCOPE, Cognito, SAP_SCOPE } from '../auth/cognito';
 import { permissionFor } from '../platform/identity/permissions';
 import { loadPrincipal, Principal, PrincipalCache, tenantOf } from '../platform/identity/principal';
 import { completeLogin, securityEvent } from '../platform/identity/login';
@@ -181,7 +181,8 @@ export class AuthGuard implements CanActivate {
   // 09 6.6: 토큰 범위 sap.api → client_id로 연결 → 허용 IP·시스템 ID·회사코드
   private async sap(req: AlmRequest, claims: AccessClaims, perm: string, res: Response): Promise<boolean> {
     const scopes = (claims.scope ?? '').split(' ');
-    if (!scopes.includes(SAP_SCOPE)) throw E.channel();
+    // 전용 풀의 범위(alm-api/sap.api) 또는, 중앙 ID를 쓰는 환경이면 중앙 SAP 연결의 범위(alm/sap.api). 어느 쪽이든 client_id가 ALM의 SAP 연결에 있어야 한다
+    if (!scopes.includes(SAP_SCOPE) && !(this.cfg.central && scopes.includes(CENTRAL_SAP_SCOPE))) throw E.channel();
     const conn = await this.sapConns.get(claims.client_id, () => sapConnection(this.db, claims.client_id));
     if (!conn) throw E.channel('등록된 SAP 연결의 클라이언트가 아닙니다');
     req.alm.sap = conn;

@@ -192,6 +192,7 @@ test('SAP API: /sap/ping, 범위·연결·시스템 ID·회사코드·허용 IP,
   assert.equal((await call('/sap/ping', { auth: sapTok, headers: { 'x-company-code': '2000' } })).status, 403);
   assert.equal((await call('/sap/ping', { auth: tok('sapclient1', 'sapclient1') })).body.code, 'ALM-E407', 'sap.api 범위 없음');
   assert.equal((await call('/sap/ping', { auth: tok('x', 'unknownclient', SAP) })).body.code, 'ALM-E407', '연결 없는 클라이언트');
+  assert.equal((await call('/sap/ping', { auth: tok('sapclient1', 'sapclient1', 'alm/sap.api') })).body.code, 'ALM-E407', '중앙 ID 범위는 중앙 ID를 쓰는 환경에서만');
   assert.equal((await call('/sap/ping', { auth: tok('T-CHN_cnt1', 'web') })).body.code, 'ALM-E407', '웹 토큰');
   assert.equal((await call('/me', { auth: sapTok })).body.code, 'ALM-E407', 'SAP 토큰으로 웹 API');
   const outside = await call('/sap/ping', { auth: tok('sapclient2', 'sapclient2', SAP) });
