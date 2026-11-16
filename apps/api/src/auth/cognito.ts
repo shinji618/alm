@@ -13,6 +13,8 @@ export interface IdClaims {
 type Fetch = typeof fetch;
 export const RESOURCE_SERVER = 'alm-api';   // infra auth-stack resourceServerId
 export const SAP_SCOPE = `${RESOURCE_SERVER}/sap.api`;
+// 중앙 ID의 SAP 연결이 주는 범위(<제품 코드>/sap.api). 중앙 ID를 쓰는 환경(공유 플랫폼)에서만 받는다 — 토큰은 SAP가 플랫폼의 /oauth/token에서 받는다
+export const CENTRAL_SAP_SCOPE = 'alm/sap.api';
 
 export class Cognito {
   readonly base: string;
