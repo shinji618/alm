@@ -5,6 +5,8 @@ import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as kms from 'aws-cdk-lib/aws-kms';
+import * as cw from 'aws-cdk-lib/aws-cloudwatch';
+import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
@@ -16,15 +18,15 @@ import * as secrets from 'aws-cdk-lib/aws-secretsmanager';
 import * as scheduler from 'aws-cdk-lib/aws-scheduler';
 import * as schedTargets from 'aws-cdk-lib/aws-scheduler-targets';
 import { Construct } from 'constructs';
-import { ORG } from './config';
+import { AUDIT_BUCKET, ORG } from './config';
 import { ALB_PRIORITY, OWNER_DB_USER, PRODUCT, PRODUCT_HEADER, SuiteEnvConfig, paramName, suitePrefix } from './suite-config';
 
 const CONTAINER_PORT = 3000;
 
 // 공유 플랫폼 위의 ALM(통합 WBS 5.4). 플랫폼이 가진 것(네트워크·RDS·Valkey·클러스터·ALB·CloudFront·WAF·발신 도메인·야간 정지)은 SSM 파라미터로 참조하고,
-// ALM 것만 만든다: api·worker 서비스, migrate·partman 태스크, ALB 규칙(제품 헤더), 파일 버킷, 큐, 일정, 비밀, 로그.
-// 웹 인증은 플랫폼 통행증(SUITE_AUTH=1). PDA·SAP·Portal 채널은 토큰 그대로다.
-// 아직 옮기지 않은 것: 감사 보관(audit-archive) 일정 — 보관 버킷의 <env>/ 접두사를 전용 환경과 함께 쓰게 되므로 전환(5.7) 때 옮긴다.
+// ALM 것만 만든다: api·worker 서비스, migrate·partman·audit-archive 태스크, ALB 규칙(제품 헤더), 파일 버킷, 큐, 일정, 비밀, 로그, 제품 알람.
+// 웹 인증은 플랫폼 통행증(SUITE_AUTH=1). PDA·SAP·Portal 채널은 토큰 그대로다(모두 새 중앙 ID 풀 — SAP은 2026-11-16부터).
+// 감사 보관(audit-archive)은 전용 환경과 같은 보관 버킷·같은 <env>/ 접두사를 쓴다. 온라인 13개월이 지난 파티션만 올리므로 전용 환경을 내리기(5.8) 전에는 올릴 것이 없다.
 export class SuiteAlmStack extends Stack {
   constructor(scope: Construct, id: string, cfg: SuiteEnvConfig, props: StackProps) {
     super(scope, id, props);
@@ -101,9 +103,8 @@ export class SuiteAlmStack extends Stack {
       SUITE_MODE: '1',   // DB 소유자가 RDS 마스터가 아니다(확장·이벤트 트리거는 플랫폼이 만든다)
       // 웹 인증: 플랫폼 통행증. 공개 키는 중앙 ID에서 직접 읽는다(CloudFront·WAF를 거치지 않는다)
       SUITE_AUTH: '1', SUITE_ORIGIN: appOrigin, SUITE_JWKS_URL: `${cfg.idApiUrl}/auth/jwks.json`,
-      // PDA·Portal 토큰은 새 중앙 ID 풀, SAP 토큰은 (5.6까지) 전용 환경의 ALM 풀
+      // PDA·Portal·SAP 토큰 모두 새 중앙 ID 풀(SAP은 중앙 ID의 SAP 연결이 주는 alm/sap.api)
       COGNITO_USER_POOL_ID: P('id-user-pool-id'), COGNITO_DOMAIN: P('id-auth-domain'), CENTRAL_ID_URL: P('id-api-url'), CENTRAL_ID_TOKEN_URL: P('id-token-url'),
-      ...(cfg.sap ? { COGNITO_SAP_USER_POOL_ID: cfg.sap.userPoolId, COGNITO_SAP_DOMAIN: cfg.sap.domain, COGNITO_ADMIN_FUNCTION: cfg.sap.adminFunction } : {}),
       APP_ORIGIN: `${appOrigin}/${PRODUCT}`,   // 메일 링크·화면 주소
       JOBS_QUEUE_URL: jobsQueue.queueUrl, FILES_BUCKET: filesBucket.bucketName,
       CACHE_ENDPOINT: P('cache-endpoint'), CACHE_NAME: P('cache-name'), CACHE_USER: cacheUser, CACHE_KEY_PREFIX: `${PRODUCT}:`,   // 공유 Valkey: 자기 접두어 키만 쓸 수 있다
@@ -143,8 +144,6 @@ export class SuiteAlmStack extends Stack {
     filesBucket.grantReadWrite(api.td.taskRole);
     jobsQueue.grantSendMessages(api.td.taskRole);
     api.td.addToTaskRolePolicy(cacheConnect);
-    if (cfg.sap) api.td.addToTaskRolePolicy(new iam.PolicyStatement({ actions: ['lambda:InvokeFunction'],
-      resources: [`arn:aws:lambda:${this.region}:${this.account}:function:${cfg.sap.adminFunction}`] }));
 
     // worker: 작업 큐·메일 발송·중앙 변경 이벤트·SES 반송 이벤트
     const worker = makeTask('worker', cfg.worker.cpu, cfg.worker.memoryMiB, ['node', 'dist/main', 'worker'], 'alm_app_login');
@@ -164,6 +163,14 @@ export class SuiteAlmStack extends Stack {
 
     // partman(감사 파티션 관리): 보관 계정이 log_partition_maintain()으로
     const partman = makeTask('partman', 256, 512, ['node', 'dist/main', 'partman'], 'alm_archive_login');
+    // audit-archive(월 1회): 보관 계정이 온라인 13개월이 지난 감사 파티션을 log-archive 계정의 감사 버킷(Object Lock 10년)에 올리고 지운다 — 전용 환경과 같은 권한
+    const archive = makeTask('audit-archive', 512, 1024, ['node', 'dist/main', 'audit-archive'], 'alm_archive_login');
+    archive.c.addEnvironment('AUDIT_BUCKET', AUDIT_BUCKET);
+    archive.td.addToTaskRolePolicy(new iam.PolicyStatement({ actions: ['s3:PutObject', 's3:GetObject', 's3:ListBucket'],
+      resources: [`arn:aws:s3:::${AUDIT_BUCKET}`, `arn:aws:s3:::${AUDIT_BUCKET}/${cfg.name}/*`] }));
+    archive.td.addToTaskRolePolicy(new iam.PolicyStatement({ actions: ['kms:GenerateDataKey', 'kms:Decrypt'],
+      resources: [`arn:aws:kms:${ORG.region}:${ORG.accounts.logArchive}:alias/alm/audit`, `arn:aws:kms:${ORG.region}:${ORG.accounts.logArchive}:key/*`],
+      conditions: { 'ForAnyValue:StringLike': { 'kms:ResourceAliases': 'alias/alm/audit' } } }));
 
     const service = (id: string, name: string, td: ecs.FargateTaskDefinition, desired: number, g: ec2.ISecurityGroup, grace?: Duration) => new ecs.FargateService(this, id, {
       serviceName: `${PRODUCT}-${name}`, cluster, taskDefinition: td, desiredCount: desired, securityGroups: [g], vpcSubnets: subnets, assignPublicIp: false,
@@ -191,8 +198,48 @@ export class SuiteAlmStack extends Stack {
     job('DiscoveryCleanup', '0 2 * * ? *', 'discovery-cleanup');
     job('NotificationCleanup', '0 4 1 * ? *', 'notification-cleanup');
     // 야간 정지 환경은 DB가 켜져 있는 시간에(평일 07:30)
-    new scheduler.Schedule(this, 'PartitionMaintenance', { schedule: scheduler.ScheduleExpression.cron({ ...parseCron(cfg.nightlyStop ? '30 7 ? * MON-FRI *' : '30 2 * * ? *'), timeZone: tz }),
-      scheduleGroup: group, target: new schedTargets.EcsRunFargateTask(cluster, { taskDefinition: partman.td, securityGroups: [archiveSg], vpcSubnets: subnets }) });
+    const runTask = (id: string, cron: string, td: ecs.FargateTaskDefinition) => new scheduler.Schedule(this, id, { schedule: scheduler.ScheduleExpression.cron({ ...parseCron(cron), timeZone: tz }),
+      scheduleGroup: group, target: new schedTargets.EcsRunFargateTask(cluster, { taskDefinition: td, securityGroups: [archiveSg], vpcSubnets: subnets }) });
+    runTask('PartitionMaintenance', cfg.nightlyStop ? '30 7 ? * MON-FRI *' : '30 2 * * ? *', partman.td);
+    runTask('AuditArchive', cfg.nightlyStop ? '0 8 ? * MON#1 *' : '0 3 1 * ? *', archive.td);   // 첫 월요일 08시 / 매월 1일 03시
+
+    // ---- 자동 확장: 야간 정지가 없는 환경에서만(플랫폼 야간 정지가 서비스 수를 0으로 내리므로 함께 쓰면 서로 되돌린다) ----
+    if (!cfg.nightlyStop && cfg.api.max > cfg.api.desired)
+      apiService.autoScaleTaskCount({ minCapacity: cfg.api.desired, maxCapacity: cfg.api.max }).scaleOnCpuUtilization('Cpu', { targetUtilizationPercent: 60 });
+    if (!cfg.nightlyStop && cfg.worker.max > cfg.worker.desired)
+      workerService.autoScaleTaskCount({ minCapacity: cfg.worker.desired, maxCapacity: cfg.worker.max }).scaleOnMetric('QueueAge', {
+        metric: jobsQueue.metricApproximateAgeOfOldestMessage({ period: Duration.minutes(1) }),
+        scalingSteps: [{ upper: 60, change: 0 }, { lower: 60, change: +1 }, { lower: 300, change: +2 }] });
+
+    // ---- 제품 알람 → 플랫폼 알람 주제(공용 ALB·RDS·Valkey·CloudFront 알람은 플랫폼에 있다) ----
+    const alertAction = new cwActions.SnsAction(sns.Topic.fromTopicArn(this, 'AlarmTopic', P('alarm-topic-arn')));
+    const m5 = Duration.minutes(5);
+    const alarm = (id: string, name: string, metric: cw.IMetric, threshold: number, desc: string,
+      o: { periods?: number; op?: cw.ComparisonOperator; missing?: cw.TreatMissingData; notify?: boolean } = {}) => {
+      const a = new cw.Alarm(this, id, { alarmName: `${p}-${name}`, metric, threshold, evaluationPeriods: o.periods ?? 1,
+        comparisonOperator: o.op ?? cw.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD, treatMissingData: o.missing ?? cw.TreatMissingData.NOT_BREACHING, alarmDescription: desc });
+      if (o.notify !== false) { a.addAlarmAction(alertAction); a.addOkAction(alertAction); }
+      return a;
+    };
+    // 대상 그룹 지표(공용 ALB 차원 + 이 제품의 대상 그룹)
+    const tgMetric = (metricName: string, statistic: string, period = m5) => new cw.Metric({ namespace: 'AWS/ApplicationELB', metricName, statistic, period,
+      dimensionsMap: { LoadBalancer: P('alb-full-name'), TargetGroup: targetGroup.targetGroupFullName } });
+    alarm('Api5xx', 'api-5xx', new cw.MathExpression({ label: '5xx %', period: m5, expression: '100 * FILL(t5,0) / IF(req > 0, req, 1)',
+      usingMetrics: { req: tgMetric('RequestCount', 'Sum'), t5: tgMetric('HTTPCode_Target_5XX_Count', 'Sum') } }), 2, 'ALM API 5xx 비율 5분간 2% 이상');
+    alarm('ApiLatency', 'api-p95', tgMetric('TargetResponseTime', 'p95'), 2, 'ALM API 응답 p95 5분간 2초 이상');
+    // 야간 정지 환경은 밤마다 정상 대상이 0이 된다 → 알림 없이 상태만 둔다
+    alarm('ApiHealthy', 'api-healthy', tgMetric('HealthyHostCount', 'Minimum', Duration.minutes(1)), 1, 'ALM API 정상 대상 수 1 미만 3분',
+      { periods: 3, op: cw.ComparisonOperator.LESS_THAN_THRESHOLD, missing: cw.TreatMissingData.BREACHING, notify: !cfg.nightlyStop });
+    for (const [name, svc] of [['api', apiService], ['worker', workerService]] as const)
+      for (const [kind, metric] of [['cpu', svc.metricCpuUtilization({ period: m5 })], ['memory', svc.metricMemoryUtilization({ period: m5 })]] as const)
+        alarm(`Ecs-${name}-${kind}`, `ecs-${name}-${kind}`, metric, 85, `ALM ${name} ${kind} 85% 이상 15분`, { periods: 3 });
+    alarm('Dlq', 'jobs-dlq', jobsDlq.metricApproximateNumberOfMessagesVisible({ period: m5, statistic: 'Maximum' }), 1, 'ALM 작업 DLQ 메시지 1건 이상');
+    alarm('QueueAge', 'jobs-age', jobsQueue.metricApproximateAgeOfOldestMessage({ period: m5, statistic: 'Maximum' }), 900, 'ALM 작업 큐 가장 오래된 메시지 15분 이상');
+    // SAP 연계(앱 지표, 네임스페이스 ALM·차원 Env — 전용 환경과 같은 이름이다. 전용 환경을 내린 뒤에는 이쪽만 남는다)
+    const appMetric = (metricName: string, period = Duration.minutes(15)) => new cw.Metric({ namespace: 'ALM', metricName, dimensionsMap: { Env: cfg.name }, statistic: 'Sum', period });
+    alarm('SapOverdue', 'sap-overdue', appMetric('SapOverdue'), 1, 'SAP 잡 호출 지연(전기 30분·마스터 예정+2시간)');
+    alarm('SapPostingFailed', 'sap-posting-failed', appMetric('SapPostingFailed'), 1, 'SAP 전기 실패 건 발생');
+    alarm('SapAuthFailed', 'sap-auth-failed', appMetric('SapAuthFailed', Duration.hours(1)), 5, 'SAP 인증 실패 1시간 5회 이상');
 
     Tags.of(this).add('Project', 'Suite'); Tags.of(this).add('Env', cfg.name); Tags.of(this).add('Owner', 'BSG');
     Tags.of(this).add('CostCenter', ORG.costCenter); Tags.of(this).add('Product', PRODUCT);
