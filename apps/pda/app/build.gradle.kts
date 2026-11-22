@@ -14,33 +14,33 @@ android {
         applicationId = "com.bsg.alm"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "1.0.9"
+        versionCode = 11
+        versionName = "1.1.0"
         // AppAuth 리디렉트(Cognito alm-pda 콜백 com.bsg.alm://auth)
         manifestPlaceholders["appAuthRedirectScheme"] = "com.bsg.alm"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    // 환경별 API 주소. 앱 설정(MDM 관리형 구성)으로 바꿀 수 있다
+    // 환경별 API 주소(공유 플랫폼: app[-env].pasapps.com/alm/api/v1, 통합 WBS 5.7). 앱 설정(MDM 관리형 구성)으로 바꿀 수 있다
     flavorDimensions += "env"
     productFlavors {
         create("dev") {
             dimension = "env"
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-dev"
-            buildConfigField("String", "API_BASE", "\"https://alm-dev.pasapps.com/api/v1\"")
+            buildConfigField("String", "API_BASE", "\"https://app-dev.pasapps.com/alm/api/v1\"")
             resValue("string", "app_name", "ALM Count DEV")
         }
         create("qa") {
             dimension = "env"
             applicationIdSuffix = ".qa"
             versionNameSuffix = "-qa"
-            buildConfigField("String", "API_BASE", "\"https://alm-qa.pasapps.com/api/v1\"")
+            buildConfigField("String", "API_BASE", "\"https://app-qa.pasapps.com/alm/api/v1\"")
             resValue("string", "app_name", "ALM Count QA")
         }
         create("prd") {
             dimension = "env"
-            buildConfigField("String", "API_BASE", "\"https://alm.pasapps.com/api/v1\"")
+            buildConfigField("String", "API_BASE", "\"https://app.pasapps.com/alm/api/v1\"")
             resValue("string", "app_name", "ALM Count")
         }
     }

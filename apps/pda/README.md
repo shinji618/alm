@@ -29,7 +29,7 @@ cd apps/pda
 ./gradlew testDevDebugUnitTest assembleDevPilot     # app/build/outputs/apk/dev/pilot/app-dev-pilot.apk (R8 축소, 디버그 키 서명)
 ```
 
-환경(flavor): `dev`(alm-dev.pasapps.com) · `qa` · `prd`. CI(`ci.yml`의 PDA 작업)가 DEV 시험용(pilot) APK를 아티팩트로 올린다. 운영 배포는 release + 배포 키 서명.
+환경(flavor): `dev`(`https://app-dev.pasapps.com/alm/api/v1`) · `qa`(`app-qa…`) · `prd`(`app.pasapps.com/alm/api/v1`) — 공유 플랫폼 주소(1.1.0부터, 이전 빌드는 alm-dev.pasapps.com). 이미 설치한 앱은 설정 화면에 저장한 주소가 우선한다. CI(`ci.yml`의 PDA 작업)가 DEV 시험용(pilot) APK를 아티팩트로 올린다. 운영 배포는 release + 배포 키 서명.
 
 ## 스캐너 설정 (Farset G47 · Scan Tool 등)
 
