@@ -234,7 +234,9 @@ export class SuiteAlmStack extends Stack {
       for (const [kind, metric] of [['cpu', svc.metricCpuUtilization({ period: m5 })], ['memory', svc.metricMemoryUtilization({ period: m5 })]] as const)
         alarm(`Ecs-${name}-${kind}`, `ecs-${name}-${kind}`, metric, 85, `ALM ${name} ${kind} 85% 이상 15분`, { periods: 3 });
     alarm('Dlq', 'jobs-dlq', jobsDlq.metricApproximateNumberOfMessagesVisible({ period: m5, statistic: 'Maximum' }), 1, 'ALM 작업 DLQ 메시지 1건 이상');
-    alarm('QueueAge', 'jobs-age', jobsQueue.metricApproximateAgeOfOldestMessage({ period: m5, statistic: 'Maximum' }), 900, 'ALM 작업 큐 가장 오래된 메시지 15분 이상');
+    // 야간 정지 환경은 worker가 멈춘 밤에도 일정(sap-watch 15분마다 등)이 큐에 쌓여 밤마다 울린다 → 알림 없이 상태만 둔다(2026-11-24 전환 시험)
+    alarm('QueueAge', 'jobs-age', jobsQueue.metricApproximateAgeOfOldestMessage({ period: m5, statistic: 'Maximum' }), 900, 'ALM 작업 큐 가장 오래된 메시지 15분 이상',
+      { notify: !cfg.nightlyStop });
     // SAP 연계(앱 지표, 네임스페이스 ALM·차원 Env — 전용 환경과 같은 이름이다. 전용 환경을 내린 뒤에는 이쪽만 남는다)
     const appMetric = (metricName: string, period = Duration.minutes(15)) => new cw.Metric({ namespace: 'ALM', metricName, dimensionsMap: { Env: cfg.name }, statistic: 'Sum', period });
     alarm('SapOverdue', 'sap-overdue', appMetric('SapOverdue'), 1, 'SAP 잡 호출 지연(전기 30분·마스터 예정+2시간)');
