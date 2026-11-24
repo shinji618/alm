@@ -119,12 +119,12 @@ describe('ALM on suite (dev)', () => {
     expect(resources('AWS::IAM::Policy').flatMap((p) => p.Properties.PolicyDocument.Statement).filter((x: any) => x.Action === 'lambda:InvokeFunction')).toEqual([]);
   });
 
-  it('알람: 제품 알람 12개 → 플랫폼 알람 주제(/suite/dev/alarm-topic-arn). 야간 정지 환경은 정상 대상 수 알람만 알림 없이', () => {
+  it('알람: 제품 알람 12개 → 플랫폼 알람 주제(/suite/dev/alarm-topic-arn). 야간 정지 환경은 밤마다 울리는 알람 2개(정상 대상 수·큐 대기 시간)를 알림 없이', () => {
     const a = resources('AWS::CloudWatch::Alarm');
     expect(a.map((x) => x.Properties.AlarmName).sort()).toEqual(['api-5xx', 'api-healthy', 'api-p95', 'ecs-api-cpu', 'ecs-api-memory', 'ecs-worker-cpu', 'ecs-worker-memory',
       'jobs-age', 'jobs-dlq', 'sap-auth-failed', 'sap-overdue', 'sap-posting-failed'].map((n) => `suite-dev-alm-${n}`));
     const withAction = a.filter((x) => (x.Properties.AlarmActions ?? []).length).map((x) => x.Properties.AlarmName);
-    expect(withAction).not.toContain('suite-dev-alm-api-healthy'); expect(withAction.length).toBe(11);
+    expect(withAction).not.toContain('suite-dev-alm-api-healthy'); expect(withAction).not.toContain('suite-dev-alm-jobs-age'); expect(withAction.length).toBe(10);
     for (const x of a.filter((y) => (y.Properties.AlarmActions ?? []).length)) expect(JSON.stringify(x.Properties.AlarmActions)).toContain('alarmtopicarn');
     const off = build({ nightlyStop: false }).t;
     expect(resources('AWS::CloudWatch::Alarm', off).filter((x) => String(x.Properties.AlarmName ?? '').startsWith('suite-dev-alm-') && (x.Properties.AlarmActions ?? []).length).length).toBe(12);   // 자동 확장의 단계 조정 알람은 제외
