@@ -1,6 +1,7 @@
-# 공유 플랫폼(suite)에 ALM 배포(통합 WBS 5.4). 직접 실행만(workflow_dispatch) — 전용 환경(deploy.yml, main 푸시)과 따로 돈다.
+# 공유 플랫폼(suite)에 ALM 배포(통합 WBS 5.4). 직접 실행만(workflow_dispatch).
+# 전용 환경(deploy.yml)은 2026-11-24에 환경을 지우면서 GitHub에서 꺼 두었다(통합 WBS 5.8) — DEV 배포는 이 워크플로 하나다.
 # 선행: pas-suite가 배포 역할 suite-alm-deploy-<env>(스택 Suite-<Env>-ProductCi)와 DB 초기 설정 선언(PRODUCTS[].db)을 배포해 둔다.
-# 이미지는 새로 만들지 않는다: 전용 환경 배포(deploy.yml)가 main의 그 커밋으로 올린 이미지(커밋 SHA 태그)를 그대로 쓴다.
+# 검사(ci) → 이미지(이 커밋의 이미지가 ECR에 없으면 빌드·취약점 검사·푸시, 있으면 그대로) → 웹 빌드 → 배포.
 # GitHub Environment 이름 = suite-<env>. 공유 RDS가 꺼진 시간(DEV 매일 00~07시 ET)에는 실행하지 않는다.
 name: deploy-suite
 on:
@@ -14,23 +15,61 @@ env:
   NODE_VERSION: '22'
   ECR_REPOSITORY: alm
 jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   image:
-    name: 이미지 확인(ECR)
+    name: 이미지(ARM64) → ECR(없으면 빌드)
+    needs: ci
+    # 비공개 저장소에서도 무료인 x86 실행기 + QEMU로 ARM64 이미지를 만든다
     runs-on: ubuntu-24.04
     outputs: { tag: '${{ steps.t.outputs.tag }}' }
     steps:
+      - uses: actions/checkout@v4
       - id: t
         run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
       - uses: aws-actions/configure-aws-credentials@v4
         with: { role-to-assume: 'arn:aws:iam::${{ vars.SHARED_ACCOUNT_ID }}:role/alm-ci-build', aws-region: us-east-1 }
-      - name: 이 커밋의 이미지가 있는지
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - id: have
+        name: 이 커밋의 이미지가 있는지
         env: { TAG: '${{ steps.t.outputs.tag }}' }
         run: |
-          if ! aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$TAG" >/dev/null 2>&1; then
-            echo "::error::이미지 $TAG 가 ECR에 없습니다. main의 deploy(전용 환경)가 이 커밋의 이미지를 올린 뒤 다시 실행하세요."; exit 1
-          fi
+          if aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$TAG" >/dev/null 2>&1; then echo "exists=true" >> "$GITHUB_OUTPUT"; echo "image $TAG already in ECR"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
+      - uses: docker/setup-qemu-action@v3
+        if: steps.have.outputs.exists != 'true'
+        with: { platforms: arm64 }
+      - uses: docker/setup-buildx-action@v3
+        if: steps.have.outputs.exists != 'true'
+      - name: 기반 이미지 고르기(ECR Public 429면 미러)
+        id: base
+        if: steps.have.outputs.exists != 'true'
+        run: |
+          # 같은 Docker 공식 node 이미지를 ECR Public → Google 미러 → Docker Hub 순으로 시도한다(deploy.yml과 같은 방식)
+          for img in public.ecr.aws/docker/library/node:24-alpine mirror.gcr.io/library/node:24-alpine docker.io/library/node:24-alpine; do
+            for try in 1 2; do
+              if docker buildx imagetools inspect "$img" --format '{{json .Manifest.Digest}}' > /tmp/digest 2>/tmp/err; then
+                echo "node=$img" >> "$GITHUB_OUTPUT"; echo "base $img digest $(cat /tmp/digest)"; exit 0
+              fi
+              echo "::warning::$img 받기 실패($try): $(head -c 300 /tmp/err)"; sleep $((try * 10))
+            done
+          done
+          echo "::error::기반 이미지를 받을 수 없습니다"; exit 1
+      - name: 빌드·검사·푸시
+        if: steps.have.outputs.exists != 'true'
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+          TAG: ${{ steps.t.outputs.tag }}
+          NODE_IMAGE: ${{ steps.base.outputs.node }}
+        run: |
+          docker buildx build --platform linux/arm64 --load --build-arg BUILD_ID="$TAG" --build-arg NODE_IMAGE="$NODE_IMAGE" -t "$IMAGE:$TAG" -f apps/api/Dockerfile .
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.1 image --platform linux/arm64 \
+            --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --no-progress "$IMAGE:$TAG"
+          docker push "$IMAGE:$TAG"
   web:
     name: 웹 빌드(공유 플랫폼용)
+    needs: ci
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
