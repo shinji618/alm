@@ -12,7 +12,7 @@
 | ZCX_ALM | 예외 클래스 | 통신·인증·설정 오류(mv_text, mv_http_status) |
 | ZCL_ALM_CFG | 클래스 | ZALM_CFG·ZALM_MAP 읽기·쓰기, 마지막 성공 시각, 델타 시작점(10분 겹침·서머타임) |
 | ZCL_ALM_LOG | 클래스 | ZALM_IF_LOG 기록 + SLG1(객체 ZALM, 하위 객체 = IF ID) + 잡 로그 |
-| ZCL_ALM_HTTP_CLIENT | 클래스 | SM59 ZALM_API 호출, 토큰(SM59 ZALM_TOKEN), 헤더, 재시도(1·2·4분 3회, 401 토큰 갱신), 분할 송신, 207 해석 |
+| ZCL_ALM_HTTP_CLIENT | 클래스 | SM59 ZALM_API 호출, 토큰(SM59 ZALM_TOKEN), 헤더, 재시도(1·2·4분 3회, 401 토큰 갱신), 응답 대기(`HTTP_TIMEOUT_SEC`, 기본 120초), 분할 송신, 207 해석. 호출·토큰·재시도는 공통 패키지 **ZPAS_IF**(2026-11-26, 통합 WBS 7.3) |
 | ZALM_IF_PING | 프로그램 | 연결 시험(토큰 → GET /sap/ping), 로그 남김 |
 | ZALM_IF_CONFIG | 프로그램 | ZALM_CFG·ZALM_MAP 조회·저장·삭제, 기본값 넣기 |
 | ZALM_IF_POSTING | 프로그램 | 7.6 전기 잡 1단계: claim(ASSET_CREATE·ASSET_CHANGE) → BAPI_FIXEDASSET_CREATE1/CHANGE(동적 호출) → 로그 후 커밋 → 결과 회신 → 회신 실패 재회신. 이관·폐기·실사 결과(IF-AA-05~07)는 이어서 추가 |
@@ -36,9 +36,10 @@ SM59 기본 인증의 사용자 필드가 12자라 Cognito clientId(26자)를 �
 
    `allowedCidrs`를 빼면 기존 허용 IP를 그대로 둔다. 별칭은 대문자·숫자·`_-` 3~12자, 전체에서 유일.
 
-2. **abapGit으로 가져오기**: SE38 `ZABAPGIT_STANDALONE` → New Offline → 이름 `ZALM_IF`, 패키지 `ZALM_IF`(없으면 만들기) → Import ZIP(`zalm_if.zip`) → Pull → 운반 요청 선택 → 활성화까지 확인.
-3. **SLG0**: 객체 `ZALM`(ALM interface). 하위 객체 `PING`, `IF-MD-01`, `IF-AA-01`, `IF-AA-02`, `IF-MM-01`, `IF-MM-03`, `IF-AA-03`~`IF-AA-07`, `IF-MM-02`, `IF-RC-01`, `IF-OP-01`. 없으면 SLG1만 건너뛰고 ZALM_IF_LOG에는 남는다.
-4. **SM59** (둘 다 유형 G, SSL 활성·ANONYM — STRUST의 Amazon Root CA는 이미 넣어 둠)
+2. **공통 패키지 ZPAS_IF 먼저**(2026-11-26부터): pas-suite 저장소 `sap/abap/zpas_if`의 README대로 `ZPAS_IF.zip`을 Pull·활성화한다. `ZCL_ALM_HTTP_CLIENT`가 그 클래스를 쓴다.
+3. **abapGit으로 가져오기**: SE38 `ZABAPGIT_STANDALONE` → New Offline → 이름 `ZALM_IF`, 패키지 `ZALM_IF`(없으면 만들기) → Import ZIP(`zalm_if.zip`) → Pull → 운반 요청 선택 → 활성화까지 확인.
+4. **SLG0**: 객체 `ZALM`(ALM interface). 하위 객체 `PING`, `IF-MD-01`, `IF-AA-01`, `IF-AA-02`, `IF-MM-01`, `IF-MM-03`, `IF-AA-03`~`IF-AA-07`, `IF-MM-02`, `IF-RC-01`, `IF-OP-01`. 없으면 SLG1만 건너뛰고 ZALM_IF_LOG에는 남는다.
+5. **SM59** (둘 다 유형 G, SSL 활성·ANONYM — STRUST의 Amazon Root CA는 이미 넣어 둠)
 
    | 이름 | 호스트 | 포트 | 경로 접두어 | 로그온 |
    | --- | --- | --- | --- | --- |
@@ -46,8 +47,8 @@ SM59 기본 인증의 사용자 필드가 12자라 Cognito clientId(26자)를 �
    | `ZALM_TOKEN` | `alm-dev.pasapps.com` | 443 | `/api/v1/oauth/token` | 기본 인증: 사용자 = 별칭, 비밀번호 = 클라이언트 비밀 |
 
    기존 시험용 `ZALM_DEV`를 복사해 `ZALM_API`로 만들어도 된다.
-5. **SE38 `ZALM_IF_CONFIG`** → 기본값 넣기(BUKRS 1000, RETRY_WAIT_SEC 60, POST_BLOCK, PO_DOC_TYPE NB, RETIRE_TT SCRAP = 200).
-6. **SE38 `ZALM_IF_PING`** → ① 토큰 ② `/sap/ping` HTTP 200 ③ 다시 호출(저장된 토큰) 200이면 완료. SE16 `ZALM_IF_LOG`(IF_ID = PING)와 SLG1(객체 ZALM)에서 기록 확인.
+6. **SE38 `ZALM_IF_CONFIG`** → 기본값 넣기(BUKRS 1000, RETRY_WAIT_SEC 60, POST_BLOCK, PO_DOC_TYPE NB, RETIRE_TT SCRAP = 200). 응답 대기를 바꾸려면 `HTTP_TIMEOUT_SEC`(초, 없으면 120).
+7. **SE38 `ZALM_IF_PING`** → ① 토큰 ② `/sap/ping` HTTP 200 ③ 다시 호출(저장된 토큰) 200이면 완료. SE16 `ZALM_IF_LOG`(IF_ID = PING)와 SLG1(객체 ZALM)에서 기록 확인.
 
 SM59 비밀번호 칸이 클라이언트 비밀 길이를 받지 못하면, ZALM_TOKEN 없이 `ZALM_IF_PING`의 시험 모드(P_MANUAL)로 연결만 확인하고 알려 주세요.
 
