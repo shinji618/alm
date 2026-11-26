@@ -4,6 +4,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Pool, PoolClient, PoolConfig } from 'pg';
 import { Signer } from '@aws-sdk/rds-signer';
+import { tenantDb } from '@shinji618/platform-db';
 import { Config } from '../config';
 
 export type ActorType = 'USER' | 'SYSTEM' | 'SAP' | 'PDA';
@@ -39,31 +40,18 @@ export function createPool(cfg: Config, opts: { user?: string; password?: string
 }
 
 export class Db {
-  constructor(readonly pool: Pool) {}
+  private readonly tx;
+  constructor(readonly pool: Pool) { this.tx = tenantDb(() => pool.connect()); }
 
   // 테넌트를 모르는 단계(로그인): SECURITY DEFINER 함수만 부른다
   async query<T extends object = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
     return (await this.pool.query(sql, params)).rows as T[];
   }
 
-  async withTx<T>(ctx: TxContext, fn: (c: PoolClient) => Promise<T>): Promise<T> {
-    const c = await this.pool.connect();
-    try {
-      await c.query('BEGIN');
-      await c.query(
-        `SELECT set_config('app.tenant_id', $1, true), set_config('app.user_id', $2, true), set_config('app.actor_type', $3, true),
-                set_config('app.correlation_id', $4, true), set_config('app.client_ip', $5, true)`,
-        [ctx.tenantId, ctx.userId ?? '', ctx.actorType, ctx.correlationId ?? '', ctx.clientIp ?? ''],
-      );
-      const r = await fn(c);
-      await c.query('COMMIT');
-      return r;
-    } catch (e) {
-      await c.query('ROLLBACK').catch(() => undefined);
-      throw e;
-    } finally {
-      c.release();
-    }
+  // 트랜잭션 하나에만 값을 건다(SET LOCAL) — 공통 패키지 @shinji618/platform-db(통합 WBS 7.1). 감사 트리거가 app.* 다섯 값을 읽는다
+  withTx<T>(ctx: TxContext, fn: (c: PoolClient) => Promise<T>): Promise<T> {
+    return this.tx.withSettings({ 'app.tenant_id': ctx.tenantId, 'app.user_id': ctx.userId, 'app.actor_type': ctx.actorType,
+      'app.correlation_id': ctx.correlationId, 'app.client_ip': ctx.clientIp }, fn);
   }
 
   close() { return this.pool.end(); }

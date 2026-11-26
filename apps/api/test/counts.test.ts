@@ -26,8 +26,8 @@ const ids: Record<string, string> = {};
 let wlIds: string[] = [];
 const cfg: Config = {
   env: 'dev', region: 'us-east-1', port: 0, db: { host: host ?? '', port, name: dbName, user: 'alm_app_login', ssl: false },
-  cognito: { userPoolId: 'p', webClientId: 'web', webClientSecret: 's', pdaClientId: 'pda', domain: 'auth.example.test' },
-  appOrigin: 'https://alm.example.test', cookieKeys: [Buffer.alloc(32, 1)], filesScanRequired: false,
+  cognito: { userPoolId: 'p', webClientId: 'web', pdaClientId: 'pda', domain: 'auth.example.test' },
+  appOrigin: 'https://alm.example.test', filesScanRequired: false,
 };
 const fakeCognito = {
   verifyAccess: async (t: string) => { const [, u, c] = t.split(':'); if (!u) throw new Error('bad'); return { sub: 's', username: u, client_id: c, token_use: 'access', exp: 0 }; },

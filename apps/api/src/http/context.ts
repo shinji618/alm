@@ -7,6 +7,7 @@ import type { AccessClaims } from '../auth/cognito';
 import type { TxContext } from '../db/pool';
 import type { SapConn } from '../auth/sap';
 import type { PassClaims } from '../auth/suitePass';
+import { clientIp } from '@shinji618/platform-http';
 
 export interface AlmContext {
   correlationId: string; ip?: string; userAgent?: string; claims?: AccessClaims; principal?: Principal;
@@ -20,12 +21,8 @@ export type AlmRequest = Request & { alm: AlmContext };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// CloudFront가 붙이는 CloudFront-Viewer-Address('IP:포트')를 우선한다. ALB는 내부 전용(VPC 오리진)이라 직접 위조할 경로가 없다
-export function clientIp(req: Request): string | undefined {
-  const v = req.header('cloudfront-viewer-address');
-  if (v) return v.slice(0, v.lastIndexOf(':')).replace(/^\[|\]$/g, '');
-  return req.ip;
-}
+// 실제 출발지 IP: CloudFront가 붙이는 CloudFront-Viewer-Address만 믿는다(공통 패키지, 통합 WBS 7.1)
+export { clientIp };
 
 export function contextMiddleware(req: Request, res: Response, next: NextFunction) {
   const h = req.header('x-correlation-id');

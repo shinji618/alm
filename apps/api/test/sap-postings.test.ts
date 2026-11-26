@@ -24,8 +24,8 @@ let co: string, acct: string, asset1: string, asset3: string, req1: string, req3
 const jobs: SendEmailJob[] = [];
 const cfg: Config = {
   env: 'dev', region: 'us-east-1', port: 0, db: { host: host ?? '', port, name: dbName, user: 'alm_app_login', ssl: false },
-  cognito: { userPoolId: 'p', webClientId: 'web', webClientSecret: 's', pdaClientId: 'pda', domain: 'auth.example.test' },
-  appOrigin: 'https://alm.example.test', cookieKeys: [Buffer.alloc(32, 1)],
+  cognito: { userPoolId: 'p', webClientId: 'web', pdaClientId: 'pda', domain: 'auth.example.test' },
+  appOrigin: 'https://alm.example.test',
 };
 const fakeCognito = {
   verifyAccess: async (t: string) => {

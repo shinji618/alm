@@ -24,8 +24,8 @@ let owner: Client, app: Db, tenantId: string, base: string, close: () => Promise
 const SAP = 'alm-api/sap.api';
 const cfg: Config = {
   env: 'dev', region: 'us-east-1', port: 0, db: { host: host ?? '', port, name: dbName, user: 'alm_app_login', ssl: false },
-  cognito: { userPoolId: 'p', webClientId: 'web', webClientSecret: 's', pdaClientId: 'pda', domain: 'auth.example.test' },
-  appOrigin: 'https://alm.example.test', cookieKeys: [Buffer.alloc(32, 1)],
+  cognito: { userPoolId: 'p', webClientId: 'web', pdaClientId: 'pda', domain: 'auth.example.test' },
+  appOrigin: 'https://alm.example.test',
 };
 const emails: Record<string, string> = { cnt1: 'counter@chan.test', emp1: 'emp@chan.test' };
 const cognitoCalls: string[] = [];
