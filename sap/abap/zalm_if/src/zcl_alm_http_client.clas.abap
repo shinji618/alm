@@ -1,11 +1,13 @@
 "! ALM API 클라이언트. 08 명세서 4.3·4.4, 13 런북 7-2(2026-10-21 결정)
-"! - SM59 ZALM_API(유형 G, 경로 접두어 /api/v1, SSL)로 ALM API 호출
-"! - 토큰: SM59 ZALM_TOKEN(경로 /api/v1/oauth/token, 기본 인증 사용자 = ALM 연결 별칭, 비밀번호 = 클라이언트 비밀)에
+"! - SM59 ZALM_API(유형 G, 경로 접두어 = ALM API)로 ALM API 호출
+"! - 토큰: SM59 ZALM_TOKEN(기본 인증 사용자 = 연결 별칭, 비밀번호 = 클라이언트 비밀)에
 "!   grant_type=client_credentials&scope=sap.api를 보내 받는다. 비밀은 SM59(보안 저장소)에만 있고 코드·테이블에 두지 않는다.
 "!   만료 5분 전까지 메모리에 둔다(실행 단위). 시험용으로 set_credentials( )를 부르면 ZALM_API로 직접 Basic 인증
 "! - 헤더: Authorization, X-SAP-System(<SID>-<클라이언트>), X-Company-Code, X-Correlation-Id, Idempotency-Key
 "! - 재시도: 통신 오류(0)·5xx·429는 1·2·4분(RETRY_WAIT_SEC × 2^n) 간격 3회, 401은 토큰을 새로 받아 한 번 더. 그 밖의 4xx는 재시도 없음
+"! - 응답 대기: ZALM_CFG HTTP_TIMEOUT_SEC(기본 120초)
 "! - 응답 207·200의 건별 결과(results)는 parse_batch( )로 읽는다
+"! 호출·토큰·재시도는 PAS 공통 패키지(ZCL_PAS_HTTP·ZCL_PAS_TOKEN_DEST, 통합 WBS 7.3)가 한다. 이 클래스의 공개 메서드·결과 형식은 그대로다.
 CLASS zcl_alm_http_client DEFINITION
   PUBLIC
   CREATE PUBLIC.
@@ -53,13 +55,15 @@ CLASS zcl_alm_http_client DEFINITION
       c_json       TYPE string VALUE 'application/json; charset=utf-8'.
 
     "! iv_retry_wait: 첫 재시도 대기(초). -1이면 ZALM_CFG RETRY_WAIT_SEC(기본 60). 대화 시험은 0 권장
+    "! iv_timeout: 응답 대기(초). -1이면 ZALM_CFG HTTP_TIMEOUT_SEC(기본 120), 0이면 시스템 기본
     METHODS constructor
       IMPORTING
         iv_bukrs      TYPE bukrs
         iv_dest_api   TYPE rfcdest DEFAULT c_dest_api
         iv_dest_token TYPE rfcdest DEFAULT c_dest_token
         iv_retry_wait TYPE i DEFAULT -1
-        iv_max_retry  TYPE i DEFAULT 3.
+        iv_max_retry  TYPE i DEFAULT 3
+        iv_timeout    TYPE i DEFAULT -1.
 
     "! 시험용: 클라이언트 ID·비밀을 직접 넣는다(SM59 ZALM_TOKEN 없이 ZALM_API로 토큰 요청). 운영은 쓰지 않는다
     METHODS set_credentials
@@ -156,23 +160,24 @@ CLASS zcl_alm_http_client DEFINITION
     CLASS-METHODS clear_token_cache.
 
   PRIVATE SECTION.
-    TYPES:
-      BEGIN OF ty_token,
-        dest    TYPE rfcdest,
-        client  TYPE string,
-        token   TYPE string,
-        expires TYPE timestamp,
-      END OF ty_token.
-
-    CLASS-DATA gt_tokens TYPE STANDARD TABLE OF ty_token WITH EMPTY KEY.
+    "! 같은 세션에서 토큰을 나눠 쓰는 열쇠의 앞부분(PAS 공통 보관소)
+    CONSTANTS c_cache_prefix TYPE string VALUE 'ALM|'.
+    CONSTANTS c_cfg_timeout TYPE string VALUE 'HTTP_TIMEOUT_SEC'.
+    CONSTANTS c_default_timeout TYPE i VALUE 120.
 
     DATA mv_dest_api TYPE rfcdest.
     DATA mv_dest_token TYPE rfcdest.
     DATA mv_bukrs TYPE bukrs.
     DATA mv_retry_wait TYPE i.
     DATA mv_max_retry TYPE i.
+    DATA mv_timeout TYPE i.
     DATA mv_client_id TYPE string.
     DATA mv_secret TYPE string.
+    DATA mo_token TYPE REF TO zcl_pas_token_dest.
+    DATA mo_http TYPE REF TO zcl_pas_http.
+
+    "! 토큰 공급자·HTTP 호출기를 만든다(생성자와 set_credentials 뒤)
+    METHODS setup.
 
     METHODS execute
       IMPORTING
@@ -185,26 +190,12 @@ CLASS zcl_alm_http_client DEFINITION
       RAISING
         zcx_alm.
 
-    "! 한 번 호출. SM59 연결을 못 열면 예외, 통신 오류는 ev_status = 0
-    METHODS call
+    "! PAS 공통 예외 → ZCX_ALM(예전과 같은 문구)
+    METHODS raise_alm
       IMPORTING
-        iv_dest        TYPE rfcdest
-        iv_method      TYPE string
-        iv_path        TYPE csequence OPTIONAL
-        iv_ctype       TYPE string
-        iv_body        TYPE string OPTIONAL
-        it_headers     TYPE tihttpnvp OPTIONAL
-      EXPORTING
-        ev_status      TYPE i
-        ev_body        TYPE string
-        ev_retry_after TYPE i
+        ix_pas TYPE REF TO zcx_pas_http
       RAISING
         zcx_alm.
-
-    METHODS wait_before_retry
-      IMPORTING
-        iv_attempt     TYPE i
-        iv_retry_after TYPE i.
 ENDCLASS.
 
 
@@ -221,12 +212,51 @@ CLASS zcl_alm_http_client IMPLEMENTATION.
     ELSE.
       mv_retry_wait = zcl_alm_cfg=>get_int( iv_param = zcl_alm_cfg=>c_retry_wait_sec iv_default = 60 ).
     ENDIF.
+    IF iv_timeout >= 0.
+      mv_timeout = iv_timeout.
+    ELSE.
+      mv_timeout = zcl_alm_cfg=>get_int( iv_param = c_cfg_timeout iv_default = c_default_timeout ).
+    ENDIF.
+    setup( ).
   ENDMETHOD.
 
 
   METHOD set_credentials.
     mv_client_id = iv_client_id.
     mv_secret = iv_secret.
+    setup( ).
+  ENDMETHOD.
+
+
+  METHOD setup.
+    DATA ls_token TYPE zcl_pas_token_dest=>ty_config.
+    DATA ls_options TYPE zcl_pas_http=>ty_options.
+
+    ls_token-scope = 'sap.api'.
+    ls_token-margin_sec = 300.
+    ls_token-max_retry = mv_max_retry.
+    ls_token-retry_wait_sec = mv_retry_wait.
+    ls_token-timeout_sec = mv_timeout.
+    IF mv_client_id IS NOT INITIAL.
+      " 시험: ZALM_API로 직접(HTTP Basic = client_secret_basic)
+      ls_token-destination = mv_dest_api.
+      ls_token-path = '/oauth/token'.
+      ls_token-client_id = mv_client_id.
+      ls_token-client_secret = mv_secret.
+      ls_token-cache_key = |{ c_cache_prefix }{ mv_dest_api }\|{ mv_client_id }|.
+    ELSE.
+      " 운영: SM59 ZALM_TOKEN의 기본 인증(사용자 = 연결 별칭, 비밀번호 = 비밀)을 SAP이 붙인다
+      ls_token-destination = mv_dest_token.
+      ls_token-cache_key = |{ c_cache_prefix }{ mv_dest_api }\|{ mv_dest_token }|.
+    ENDIF.
+    mo_token = NEW #( ls_token ).
+
+    ls_options-timeout_sec = mv_timeout.
+    ls_options-max_retry = mv_max_retry.
+    ls_options-retry_wait_sec = mv_retry_wait.
+    ls_options-request_id_header = 'X-Correlation-Id'.
+    ls_options-raise_on_error = abap_false.
+    mo_http = zcl_pas_http=>create( iv_dest = mv_dest_api io_token = mo_token is_options = ls_options ).
   ENDMETHOD.
 
 
@@ -247,173 +277,68 @@ CLASS zcl_alm_http_client IMPLEMENTATION.
 
   METHOD execute.
     DATA lt_headers TYPE tihttpnvp.
-    DATA lv_retry_after TYPE i.
-    DATA lv_refreshed TYPE abap_bool.
+    DATA ls_response TYPE zcl_pas_http=>ty_response.
+    DATA lx_pas TYPE REF TO zcx_pas_http.
 
     rs_response-corr_id = new_corr_id( ).
-    DO.
-      rs_response-attempts = rs_response-attempts + 1.
-      CLEAR lt_headers.
-      APPEND VALUE #( name = 'Authorization' value = |Bearer { token( ) }| ) TO lt_headers.
-      APPEND VALUE #( name = 'X-SAP-System' value = system_id( ) ) TO lt_headers.
-      APPEND VALUE #( name = 'X-Company-Code' value = mv_bukrs ) TO lt_headers.
-      APPEND VALUE #( name = 'X-Correlation-Id' value = rs_response-corr_id ) TO lt_headers.
-      APPEND VALUE #( name = 'Accept' value = 'application/json' ) TO lt_headers.
-      IF iv_key IS NOT INITIAL.
-        APPEND VALUE #( name = 'Idempotency-Key' value = iv_key ) TO lt_headers.
-      ENDIF.
+    APPEND VALUE #( name = 'X-SAP-System' value = system_id( ) ) TO lt_headers.
+    APPEND VALUE #( name = 'X-Company-Code' value = mv_bukrs ) TO lt_headers.
+    APPEND VALUE #( name = 'Accept' value = 'application/json' ) TO lt_headers.
+    IF iv_key IS NOT INITIAL.
+      APPEND VALUE #( name = 'Idempotency-Key' value = iv_key ) TO lt_headers.
+    ENDIF.
 
-      call( EXPORTING iv_dest = mv_dest_api iv_method = iv_method iv_path = iv_path iv_ctype = c_json
-                      iv_body = iv_body it_headers = lt_headers
-            IMPORTING ev_status = rs_response-status ev_body = rs_response-body ev_retry_after = lv_retry_after ).
-
-      " 401: 토큰이 만료·폐기됐을 수 있다 → 한 번만 새로 받아 다시(횟수에 넣지 않음)
-      IF rs_response-status = 401 AND lv_refreshed = abap_false.
-        lv_refreshed = abap_true.
-        token( iv_force = abap_true ).
-        rs_response-attempts = rs_response-attempts - 1.
-        CONTINUE.
-      ENDIF.
-      IF is_retryable( rs_response-status ) = abap_false OR rs_response-attempts > mv_max_retry.
-        EXIT.
-      ENDIF.
-      wait_before_retry( iv_attempt = rs_response-attempts iv_retry_after = lv_retry_after ).
-    ENDDO.
+    TRY.
+        ls_response = mo_http->execute( iv_method       = iv_method
+                                        iv_uri          = CONV #( iv_path )
+                                        it_headers      = lt_headers
+                                        iv_body_c       = iv_body
+                                        iv_content_type = c_json
+                                        iv_request_id   = rs_response-corr_id ).
+        rs_response-status = ls_response-status.
+        rs_response-body = ls_response-body_c.
+        rs_response-attempts = ls_response-attempts.
+      CATCH zcx_pas_http INTO lx_pas.
+        IF lx_pas->stage = zcx_pas_http=>c_stage-call AND lx_pas->kind = zcx_pas_http=>c_kind-network.
+          " 통신 오류는 예외가 아니라 상태 0으로 돌려준다(재시도를 다 쓴 뒤 — 호출한 프로그램이 로그를 남기고 판단)
+          rs_response-status = 0.
+          rs_response-body = |통신 오류({ lx_pas->comm_code }): { lx_pas->comm_message }|.
+          rs_response-attempts = lx_pas->attempts.
+        ELSE.
+          raise_alm( lx_pas ).
+        ENDIF.
+    ENDTRY.
   ENDMETHOD.
 
 
   METHOD token.
-    DATA lv_client TYPE string.
-    DATA lv_status TYPE i.
-    DATA lv_body TYPE string.
-    DATA lv_retry_after TYPE i.
-    DATA lv_expires_in TYPE string.
-    DATA lv_now TYPE timestamp.
-    DATA lt_headers TYPE tihttpnvp.
-    DATA lv_attempt TYPE i.
-    DATA ls_token TYPE ty_token.
+    DATA lx_pas TYPE REF TO zcx_pas_http.
 
-    lv_client = COND #( WHEN mv_client_id IS NOT INITIAL THEN mv_client_id ELSE mv_dest_token ).
-    GET TIME STAMP FIELD lv_now.
-    IF iv_force = abap_false.
-      READ TABLE gt_tokens INTO ls_token WITH KEY dest = mv_dest_api client = lv_client.
-      IF sy-subrc = 0 AND ls_token-expires > lv_now.
-        rv_token = ls_token-token.
-        RETURN.
-      ENDIF.
-    ENDIF.
-    DELETE gt_tokens WHERE dest = mv_dest_api AND client = lv_client.
-
-    DATA(lv_form) = `grant_type=client_credentials&scope=sap.api`.
-    DO.
-      lv_attempt = lv_attempt + 1.
-      IF mv_client_id IS NOT INITIAL.
-        " 시험: ZALM_API로 직접(HTTP Basic = client_secret_basic)
-        CLEAR lt_headers.
-        APPEND VALUE #( name = 'Authorization'
-                        value = |Basic { cl_http_utility=>encode_base64( unencoded = |{ mv_client_id }:{ mv_secret }| ) }| ) TO lt_headers.
-        call( EXPORTING iv_dest = mv_dest_api iv_method = 'POST' iv_path = '/oauth/token' iv_ctype = 'application/x-www-form-urlencoded'
-                        iv_body = lv_form it_headers = lt_headers
-              IMPORTING ev_status = lv_status ev_body = lv_body ev_retry_after = lv_retry_after ).
-      ELSE.
-        " 운영: SM59 ZALM_TOKEN의 기본 인증(사용자 = 연결 별칭, 비밀번호 = 비밀)을 SAP이 붙인다
-        call( EXPORTING iv_dest = mv_dest_token iv_method = 'POST' iv_ctype = 'application/x-www-form-urlencoded' iv_body = lv_form
-              IMPORTING ev_status = lv_status ev_body = lv_body ev_retry_after = lv_retry_after ).
-      ENDIF.
-      IF is_retryable( lv_status ) = abap_false OR lv_attempt > mv_max_retry.
-        EXIT.
-      ENDIF.
-      wait_before_retry( iv_attempt = lv_attempt iv_retry_after = lv_retry_after ).
-    ENDDO.
-
-    IF lv_status <> 200.
-      DATA(ls_problem) = parse_problem( lv_body ).
-      zcx_alm=>raise( iv_text = |토큰 발급 실패 HTTP { lv_status }: { COND string( WHEN ls_problem-detail IS NOT INITIAL
-                                                                           THEN ls_problem-detail ELSE lv_body ) }|
-                      iv_http_status = lv_status ).
-    ENDIF.
-    FIND REGEX '"access_token"\s*:\s*"([^"]+)"' IN lv_body SUBMATCHES rv_token.
-    FIND REGEX '"expires_in"\s*:\s*(\d+)' IN lv_body SUBMATCHES lv_expires_in.
-    IF rv_token IS INITIAL.
-      zcx_alm=>raise( iv_text = |토큰 응답에 access_token이 없습니다: { lv_body }| iv_http_status = lv_status ).
-    ENDIF.
-    IF lv_expires_in IS INITIAL OR lv_expires_in CN '0123456789'.
-      lv_expires_in = '3600'.
-    ENDIF.
-    ls_token-dest = mv_dest_api.
-    ls_token-client = lv_client.
-    ls_token-token = rv_token.
-    ls_token-expires = cl_abap_tstmp=>add( tstmp = lv_now secs = nmax( val1 = 60 val2 = CONV i( lv_expires_in ) - 300 ) ).
-    APPEND ls_token TO gt_tokens.
+    TRY.
+        rv_token = mo_token->get_token( iv_force ).
+      CATCH zcx_pas_http INTO lx_pas.
+        raise_alm( lx_pas ).
+    ENDTRY.
   ENDMETHOD.
 
 
-  METHOD call.
-    DATA lo_http TYPE REF TO if_http_client.
-    DATA lv_msg TYPE string.
-    DATA lv_code TYPE i.
-    DATA lv_ra TYPE string.
+  METHOD raise_alm.
+    DATA ls_problem TYPE ty_problem.
 
-    CLEAR: ev_status, ev_body, ev_retry_after.
-    cl_http_client=>create_by_destination(
-      EXPORTING
-        destination              = iv_dest
-      IMPORTING
-        client                   = lo_http
-      EXCEPTIONS
-        argument_not_found       = 1
-        destination_not_found    = 2
-        destination_no_authority = 3
-        plugin_not_active        = 4
-        internal_error           = 5
-        OTHERS                   = 6 ).
-    IF sy-subrc <> 0.
-      zcx_alm=>raise( |SM59 연결 { iv_dest }을(를) 열 수 없습니다(sy-subrc { sy-subrc }). SM59 설정을 확인하세요| ).
-    ENDIF.
-    lo_http->propertytype_logon_popup = if_http_client=>co_disabled.
-    lo_http->request->set_method( iv_method ).
-    IF iv_path IS NOT INITIAL.
-      cl_http_utility=>set_request_uri( request = lo_http->request uri = CONV string( iv_path ) ).
-    ENDIF.
-    lo_http->request->set_header_field( name = 'Content-Type' value = iv_ctype ).
-    LOOP AT it_headers INTO DATA(ls_h).
-      lo_http->request->set_header_field( name = ls_h-name value = ls_h-value ).
-    ENDLOOP.
-    IF iv_body IS NOT INITIAL.
-      lo_http->request->set_cdata( iv_body ).
-    ENDIF.
-
-    lo_http->send( EXCEPTIONS OTHERS = 1 ).
-    IF sy-subrc = 0.
-      lo_http->receive( EXCEPTIONS OTHERS = 1 ).
-    ENDIF.
-    IF sy-subrc <> 0.
-      lo_http->get_last_error( IMPORTING code = lv_code message = lv_msg ).
-      ev_status = 0.
-      ev_body = |통신 오류({ lv_code }): { lv_msg }|.
-      lo_http->close( ).
-      RETURN.
-    ENDIF.
-    lo_http->response->get_status( IMPORTING code = ev_status ).
-    ev_body = lo_http->response->get_cdata( ).
-    lv_ra = lo_http->response->get_header_field( 'retry-after' ).
-    IF lv_ra IS NOT INITIAL AND lv_ra CO '0123456789'.
-      ev_retry_after = lv_ra.
-    ENDIF.
-    lo_http->close( ).
-  ENDMETHOD.
-
-
-  METHOD wait_before_retry.
-    DATA lv_wait TYPE i.
-    lv_wait = mv_retry_wait.
-    DO iv_attempt - 1 TIMES.
-      lv_wait = lv_wait * 2.
-    ENDDO.
-    lv_wait = nmax( val1 = lv_wait val2 = iv_retry_after ).
-    IF lv_wait > 0.
-      WAIT UP TO lv_wait SECONDS.
-    ENDIF.
+    CASE ix_pas->kind.
+      WHEN zcx_pas_http=>c_kind-config.
+        zcx_alm=>raise( |SM59 연결 { ix_pas->destination }을(를) 열 수 없습니다(sy-subrc { ix_pas->rc }). SM59 설정을 확인하세요| ).
+      WHEN zcx_pas_http=>c_kind-bad_response.
+        zcx_alm=>raise( iv_text = |토큰 응답에 access_token이 없습니다: { ix_pas->body }| iv_http_status = ix_pas->http_status ).
+      WHEN zcx_pas_http=>c_kind-network.
+        " 토큰 받기의 통신 오류(재시도를 다 쓴 뒤)
+        zcx_alm=>raise( iv_text = |토큰 발급 실패 HTTP 0: 통신 오류({ ix_pas->comm_code }): { ix_pas->comm_message }| ).
+      WHEN OTHERS.
+        ls_problem = parse_problem( ix_pas->body ).
+        zcx_alm=>raise( iv_text = |토큰 발급 실패 HTTP { ix_pas->http_status }: { COND string( WHEN ls_problem-detail IS NOT INITIAL
+                                                                                    THEN ls_problem-detail ELSE ix_pas->body ) }|
+                        iv_http_status = ix_pas->http_status ).
+    ENDCASE.
   ENDMETHOD.
 
 
@@ -495,32 +420,22 @@ CLASS zcl_alm_http_client IMPLEMENTATION.
 
 
   METHOD parse_problem.
-    IF iv_body IS INITIAL OR iv_body(1) <> '{'.
-      rs_problem-detail = iv_body.
-      RETURN.
-    ENDIF.
-    /ui2/cl_json=>deserialize( EXPORTING json = iv_body
-                                         pretty_name = /ui2/cl_json=>pretty_mode-camel_case
-                               CHANGING  data = rs_problem ).
+    rs_problem = CORRESPONDING #( zcl_pas_problem=>parse( iv_body ) ).
   ENDMETHOD.
 
 
   METHOD new_corr_id.
-    TRY.
-        rv_id = to_lower( cl_system_uuid=>create_uuid_c36_static( ) ).
-      CATCH cx_uuid_error.
-        rv_id = |{ sy-datum }{ sy-uzeit }{ sy-uname }|.
-    ENDTRY.
+    rv_id = zcl_pas_http=>new_request_id( ).
   ENDMETHOD.
 
 
   METHOD is_retryable.
-    rv_ok = xsdbool( iv_status = 0 OR iv_status = 429 OR iv_status >= 500 ).
+    rv_ok = zcl_pas_problem=>is_retryable( iv_status ).
   ENDMETHOD.
 
 
   METHOD clear_token_cache.
-    CLEAR gt_tokens.
+    zcl_pas_token_dest=>clear_cache( c_cache_prefix ).
   ENDMETHOD.
 
 ENDCLASS.
