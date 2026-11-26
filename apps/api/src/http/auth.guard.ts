@@ -15,7 +15,7 @@ import { LIMITS, SharedLimiter } from '../common/shared';
 import { log } from '../common/log';
 import { AlmRequest, OPERATION, PUBLIC } from './context';
 import { CONFIG, COGNITO, DB, LIMITER, PRINCIPALS, SAP_CONNS, CENTRAL, SUITE_PASS } from './tokens';
-import { CSRF_HEADER, PASS_COOKIE, PassClaims, PassError, SuitePassVerifier } from '../auth/suitePass';
+import { CSRF_HEADER, csrfMatches, needsCsrf, PASS_COOKIE, PassClaims, PassError, SuitePassVerifier } from '../auth/suitePass';
 import { mirrorRoles, mirrorUser } from '../admin/identityMirror';
 import { catalog } from '../platform/identity/permissions';
 import type { Central } from '../auth/central';
@@ -105,7 +105,7 @@ export class AuthGuard implements CanActivate {
     }
     req.alm.pass = p;
     // 변경 요청은 X-Suite-Csrf 헤더가 통행증의 csrf와 같아야 한다(플랫폼 계약)
-    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && req.header(CSRF_HEADER) !== p.csrf) throw E.forbidden('요청 출처를 확인할 수 없습니다');
+    if (needsCsrf(req.method) && !csrfMatches(p, req.header(CSRF_HEADER))) throw E.forbidden('요청 출처를 확인할 수 없습니다');
     const tenantId = (await this.db.query<{ id: string | null }>('SELECT auth_tenant_by_central_id($1) AS id', [p.tid]))[0]?.id;
     if (!tenantId) {
       log.warn('suite pass: tenant not linked', { tenant: p.tcd, correlationId: req.alm.correlationId });

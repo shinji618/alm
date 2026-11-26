@@ -6,6 +6,8 @@
 ARG NODE_IMAGE=public.ecr.aws/docker/library/node:24-alpine
 FROM ${NODE_IMAGE} AS build
 WORKDIR /src
+# 플랫폼 공통 패키지 묶음 파일(vendor/, 통합 WBS 7.1) — package.json이 file:../../vendor/…로 설치한다
+COPY vendor vendor
 COPY apps/api/package.json apps/api/package-lock.json apps/api/
 RUN cd apps/api && npm ci --ignore-scripts --no-audit --no-fund
 COPY api/permissions.json api/permissions.json

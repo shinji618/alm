@@ -2,7 +2,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { seal, open, s256 } from '../src/auth/crypto';
 import { catalog, effectiveRoles, permissionsOf, permissionFor } from '../src/platform/identity/permissions';
 import { safeReturnTo, domainOf } from '../src/http/auth.controller';
 import { stripTx } from '../src/ops/migrate';
@@ -12,21 +11,7 @@ import { channelOfPath } from '../src/http/auth.guard';
 import { loadConfig } from '../src/config';
 import { upgradeWarning } from '../src/tax/warnings';
 
-const k1 = Buffer.alloc(32, 1), k2 = Buffer.alloc(32, 2);
 const cat = catalog(join(__dirname, '..', '..', '..', '..', 'api', 'permissions.json'));
-
-test('쿠키 봉인: 왕복·용도 불일치·키 교체·만료·변조', () => {
-  const v = seal([k1], 'alm_rt', { rt: 'x' }, 60);
-  assert.equal(open<{ rt: string }>([k1], 'alm_rt', v)?.rt, 'x');
-  assert.equal(open([k1], 'alm_pkce', v), undefined);
-  assert.equal(open<{ rt: string }>([k2, k1], 'alm_rt', v)?.rt, 'x', '이전 키로도 열린다');
-  assert.equal(open([k2], 'alm_rt', v), undefined);
-  assert.equal(open([k1], 'alm_rt', seal([k1], 'alm_rt', {}, -1)), undefined, '만료');
-  const b = Buffer.from(v, 'base64url'); b[b.length - 1] ^= 1;
-  assert.equal(open([k1], 'alm_rt', b.toString('base64url')), undefined, '변조');
-  assert.equal(open([k1], 'alm_rt', 'garbage'), undefined);
-  assert.equal(s256('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk'), 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM'); // RFC 7636 부록 B
-});
 
 test('권한: 암묵 EMPLOYEE·감사인 배타·ALL 우선', () => {
   assert.deepEqual(effectiveRoles([], cat), ['EMPLOYEE']);

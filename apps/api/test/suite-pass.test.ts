@@ -96,8 +96,8 @@ after(async () => {
 
 const cfg = (): Config => ({
   env: 'dev', region: 'us-east-1', port: 0, db: { host: host ?? '', port, name: dbName, user: 'alm_app_login', ssl: false },
-  cognito: { userPoolId: 'us-east-1_x', webClientId: '', webClientSecret: '', pdaClientId: 'pda', domain: 'auth.example.test' },
-  suite: { issuer: ISS, jwksUrl: `${ISS}/auth/jwks.json` }, appOrigin: `${ISS}/alm`, cookieKeys: [],
+  cognito: { userPoolId: 'us-east-1_x', webClientId: '', pdaClientId: 'pda', domain: 'auth.example.test' },
+  suite: { issuer: ISS, jwksUrl: `${ISS}/auth/jwks.json` }, appOrigin: `${ISS}/alm`,
 });
 const fakeCognito = {
   base: 'https://auth.example.test',

@@ -1,2 +1,4 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+# 플랫폼 공통 패키지 묶음 파일 — 내용을 바꾸지 않는다
+vendor/*.tgz binary

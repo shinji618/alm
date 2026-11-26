@@ -12,7 +12,6 @@ import { Db } from '../src/db/pool';
 import { completeLogin } from '../src/platform/identity/login';
 import { tenantOf, PrincipalCache } from '../src/platform/identity/principal';
 import { catalog } from '../src/platform/identity/permissions';
-import { seal } from '../src/auth/crypto';
 import { createApi } from '../src/main';
 import type { Config } from '../src/config';
 import { AuthGuard } from '../src/http/auth.guard';
@@ -127,29 +126,23 @@ test('로그인: JIT 테넌트는 EMPLOYEE로 생성(SAML은 이메일 검증 �
   if (r.ok) assert.deepEqual(r.principal.effectiveRoles, ['EMPLOYEE']);
 });
 
-// ---- HTTP: 가짜 Cognito로 BFF 흐름 전체 ----
+// ---- HTTP: 가짜 Cognito(액세스 토큰 검증만). 웹 로그인(BFF)은 7.1에서 지웠다 — 통행증 로그인은 suite-pass.test.ts ----
 const cfg: Config = {
   env: 'dev', region: 'us-east-1', port: 0,
   db: { host: host ?? '', port, name: dbName, user: 'alm_app_login', ssl: false },
-  cognito: { userPoolId: 'us-east-1_x', webClientId: 'web', webClientSecret: 's', pdaClientId: 'pda', domain: 'auth.example.test' },
-  appOrigin: 'https://alm.example.test', cookieKeys: [Buffer.alloc(32, 7)],
+  cognito: { userPoolId: 'us-east-1_x', webClientId: 'web', pdaClientId: 'pda', domain: 'auth.example.test' },
+  appOrigin: 'https://alm.example.test',
 };
 const fakeCognito = {
   base: 'https://auth.example.test',
-  authorizeUrl: (p: { idp: string; state: string; challenge: string }) => `https://auth.example.test/oauth2/authorize?identity_provider=${p.idp}&state=${p.state}&code_challenge=${p.challenge}`,
-  logoutUrl: () => 'https://auth.example.test/logout?client_id=web',
-  exchangeCode: async (code: string) => ({ access_token: `at:${code}:web`, id_token: 'id', refresh_token: 'rt-1', expires_in: 900, token_type: 'Bearer' }),
-  refresh: async (rt: string) => { if (rt !== 'rt-1') throw Object.assign(new Error('x'), {}); return { access_token: 'at:T-TEST_00uokta1:web', expires_in: 900, token_type: 'Bearer' }; },
-  revoke: async () => undefined,
   verifyAccess: async (tok: string) => {
     const [, user, client] = tok.split(':');
     if (!user) throw new Error('bad');
     return { sub: 's', username: user, client_id: client, token_use: 'access', exp: 0 };
   },
-  verifyId: async () => ({ sub: 's', 'cognito:username': 'T-TEST_00uokta1', email: 'admin@example.com', email_verified: 'true', name: '김관리' }),
 };
 
-test('HTTP: 로그인 → 콜백 → 갱신 → /me → 로그아웃', { skip }, async () => {
+test('HTTP: 상태 확인 → PDA 로그인 설정 → /me, 옛 웹 로그인 경로는 닫힘', { skip }, async () => {
   const api = await createApi({ cfg, db: app, cognito: fakeCognito as never, principals: new PrincipalCache() });
   await api.listen(0, '127.0.0.1');
   const base = `http://127.0.0.1:${(api.getHttpServer().address() as AddressInfo).port}/api/v1`;
@@ -159,52 +152,32 @@ test('HTTP: 로그인 → 콜백 → 갱신 → /me → 로그아웃', { skip },
     assert.deepEqual(await live.json(), { status: 'ok', build: 'local' });
     assert.equal((await fetch(`${base}/health/ready`)).status, 200);
 
-    const unknown = await fetch(`${base}/auth/login?email=a@unknown.com`, { redirect: 'manual' });
+    // PDA 로그인 설정: 도메인 → IdP, Cognito 엔드포인트·공개 클라이언트. 모르는 도메인은 403(고객사 여부를 드러내지 않는 같은 문구)
+    const unknown = await fetch(`${base}/auth/pda-config?email=a@unknown.com`);
     assert.equal(unknown.status, 403);
     const prob = (await unknown.json()) as any;
     assert.equal(prob.code, 'ALM-E405');
     assert.equal(unknown.headers.get('content-type'), 'application/problem+json; charset=utf-8');
     assert.equal(prob.correlationId, unknown.headers.get('x-correlation-id'));
-
-    // PDA 로그인 설정: 도메인 → IdP, Cognito 엔드포인트·공개 클라이언트(모르는 도메인은 같은 403)
-    assert.equal((await fetch(`${base}/auth/pda-config?email=a@unknown.com`)).status, 403);
     const pc = (await (await fetch(`${base}/auth/pda-config?email=admin@Example.com`)).json()) as any;
     assert.deepEqual(pc, { authorizationEndpoint: 'https://auth.example.test/oauth2/authorize', tokenEndpoint: 'https://auth.example.test/oauth2/token',
       revocationEndpoint: 'https://auth.example.test/oauth2/revoke', endSessionEndpoint: 'https://auth.example.test/logout', clientId: 'pda',
       redirectUri: 'com.bsg.alm://auth', identityProvider: 'T-TEST', scopes: ['openid', 'email', 'profile'] });
 
+    // 웹 로그인은 플랫폼 공통 로그인뿐이다. 통행증 설정이 없는 환경에서는 503으로 알리고, 옛 BFF 경로는 404(쿠키를 만들지 않는다)
     const login = await fetch(`${base}/auth/login?email=admin@Example.com&returnTo=/assets`, { redirect: 'manual' });
-    assert.equal(login.status, 302);
-    const loc = new URL(login.headers.get('location')!);
-    assert.equal(loc.searchParams.get('identity_provider'), 'T-TEST');
-    const pkce = login.headers.get('set-cookie')!;
-    assert.match(pkce, /alm_pkce=.*Path=\/api\/v1\/auth.*HttpOnly.*Secure.*SameSite=Lax/);
-    const pkceCookie = pkce.split(';')[0];
-
-    const badState = await fetch(`${base}/auth/callback?code=T-TEST_00uokta1&state=wrong`, { redirect: 'manual', headers: { cookie: pkceCookie } });
-    assert.equal(badState.status, 400);
-
-    const cb = await fetch(`${base}/auth/callback?code=T-TEST_00uokta1&state=${loc.searchParams.get('state')}`, { redirect: 'manual', headers: { cookie: pkceCookie } });
-    assert.equal(cb.status, 302, JSON.stringify(await cb.clone().text()));
-    assert.equal(cb.headers.get('location'), 'https://alm.example.test/assets');
-    const rtSet = cb.headers.getSetCookie().find((c) => c.startsWith('alm_rt='))!;
-    assert.match(rtSet, /Max-Age=28800.*Path=\/api\/v1\/auth.*HttpOnly.*Secure.*SameSite=Strict/);
-    const rt = rtSet.split(';')[0];
-
-    assert.equal((await fetch(`${base}/auth/refresh`, { method: 'POST', headers: { cookie: rt } })).status, 403, 'CSRF 헤더 없음');
-    assert.equal((await fetch(`${base}/auth/refresh`, { method: 'POST', headers: { cookie: rt, 'x-alm-csrf': '1', origin: 'https://evil.test' } })).status, 403);
+    assert.equal(login.status, 503);
+    assert.equal(((await login.json()) as any).code, 'ALM-E503');
+    assert.equal(login.headers.get('set-cookie'), null);
     const csrf = { 'x-alm-csrf': '1', origin: cfg.appOrigin };
-    const ref = await fetch(`${base}/auth/refresh`, { method: 'POST', headers: { cookie: rt, ...csrf } });
-    assert.equal(ref.status, 200);
-    const tok = (await ref.json()) as any;
-    assert.deepEqual(tok, { accessToken: 'at:T-TEST_00uokta1:web', expiresIn: 900, tokenType: 'Bearer' });
-    assert.equal((await fetch(`${base}/auth/refresh`, { method: 'POST', headers: { ...csrf } })).status, 401, '쿠키 없음');
-    const forged = seal([Buffer.alloc(32, 9)], 'alm_rt', { rt: 'rt-1' }, 60);
-    assert.equal((await fetch(`${base}/auth/refresh`, { method: 'POST', headers: { cookie: `alm_rt=${forged}`, ...csrf } })).status, 401, '다른 키');
+    assert.equal((await fetch(`${base}/auth/callback?code=T-TEST_00uokta1&state=x`, { redirect: 'manual' })).status, 404);
+    assert.equal((await fetch(`${base}/auth/refresh`, { method: 'POST', headers: csrf })).status, 404);
+    assert.equal((await fetch(`${base}/auth/logout`, { method: 'POST', headers: csrf })).status, 404);
+    assert.equal((await fetch(`${base}/auth/session`)).status, 404);
 
     assert.equal((await fetch(`${base}/me`)).status, 401);
     assert.equal((await fetch(`${base}/me`, { headers: { authorization: 'Bearer at:T-TEST_00uokta1:pda' } })).status, 403, '채널');
-    const me = await fetch(`${base}/me`, { headers: { authorization: `Bearer ${tok.accessToken}` } });
+    const me = await fetch(`${base}/me`, { headers: { authorization: 'Bearer at:T-TEST_00uokta1:web' } });
     assert.equal(me.status, 200);
     const body = (await me.json()) as any;
     assert.equal(body.tenantCode, 'TEST');
@@ -213,18 +186,7 @@ test('HTTP: 로그인 → 콜백 → 갱신 → /me → 로그아웃', { skip },
     assert.ok(body.permissions.includes('admin.user') && body.permissions.includes('auth'));
     assert.equal(me.headers.get('cache-control'), 'no-store');
 
-    const session = await fetch(`${base}/auth/session`, { headers: { cookie: rt } });
-    assert.equal(session.status, 200);
-    assert.equal(((await session.json()) as any).token.username, 'T-TEST_00uokta1');
-
     assert.equal((await fetch(`${base}/nope`)).status, 404);
-
-    const out = await fetch(`${base}/auth/logout`, { method: 'POST', headers: { cookie: rt, ...csrf } });
-    assert.equal(out.status, 200);
-    assert.deepEqual(await out.json(), { logoutUrl: 'https://auth.example.test/logout?client_id=web' });
-    assert.match(out.headers.getSetCookie()[0], /alm_rt=;.*Expires=Thu, 01 Jan 1970/);
-    const ev = (await owner.query(`SELECT count(*)::int AS n FROM security_event WHERE event_type = 'LOGOUT'`)).rows[0].n;
-    assert.equal(ev, 1);
   } finally {
     await api.close();
   }
